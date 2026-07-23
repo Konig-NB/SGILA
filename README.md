@@ -38,7 +38,7 @@ password123
 Learner:
 
 ```text
-learner@sgila.test
+sipho_d
 ```
 
 Parent:
