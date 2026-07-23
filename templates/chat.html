@@ -192,6 +192,7 @@ document.getElementById('chat-form').addEventListener('submit', async (e) => {
     const msg = await res.json();
 
     appendBubble(msg.sender_name, msg.body, 'mine', formatTime(msg.sent_at));
+    lastCount++; // keep the poller's count in sync so it doesn't re-add this message
     input.value = '';
     input.style.height = 'auto';
     msgArea.scrollTop = msgArea.scrollHeight;
