@@ -1490,3 +1490,35 @@ def send_message(request, child_id):
         'body': msg.body,
         'sent_at': msg.sent_at.isoformat(),
     }, status=201)
+
+
+@csrf_exempt
+@require_http_methods(['GET'])
+def unread_messages_count(request):
+    """
+    GET /api/messages/unread-count
+    Total unread messages for the logged-in parent/teacher, across every
+    conversation (not just one child). Does NOT mark anything as read —
+    it's only used to light up the "Messages" nav badge. Powers the
+    periodic badge refresh in base.html.
+    """
+    payload, err = _messaging_auth(request)
+    if err:
+        return err
+
+    role = payload['role']
+    uid = payload['sub']
+    opposite_role = 'teacher' if role == 'parent' else 'parent'
+
+    if role == 'parent':
+        child_ids = Child.objects.filter(
+            Q(parent_id=uid) | Q(parent_email__iexact=Parent.objects.filter(pk=uid).values_list('email', flat=True).first() or '')
+        ).values_list('id', flat=True)
+    else:
+        child_ids = Child.objects.filter(teacher_id=uid).values_list('id', flat=True)
+
+    count = Message.objects.filter(
+        child_id__in=child_ids, sender_role=opposite_role, is_read=False
+    ).count()
+
+    return JsonResponse({'unread_count': count})

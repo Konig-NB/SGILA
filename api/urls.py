@@ -77,6 +77,7 @@ urlpatterns = [
     path('lessons/<int:lesson_id>/written-response', views.written_response_activity, name='written-response-activity'),
 
     # ── Messaging — Parent ↔ Teacher ─────────────────────────────────────────
+    path('messages/unread-count', views.unread_messages_count, name='messages-unread-count'),
     path('messages/<int:child_id>', views.get_messages, name='get-messages'),
     path('messages/<int:child_id>/send', views.send_message, name='send-message'),
 ]
