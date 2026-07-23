@@ -22,13 +22,13 @@
       {% elif request.session.account_role == 'parent' %}
         <span>{{ request.session.account_name }}</span>
         <a href="/parent/dashboard">Dashboard</a>
-        <a href="/conversations">Messages</a>
+        <a href="/conversations" class="nav-messages-link">Messages<span id="nav-unread-badge" class="nav-unread-badge" {% if not unread_messages_count %}style="display:none;"{% endif %}>{{ unread_messages_count }}</span></a>
         <a href="/parent/add-child">Add child</a>
         <a href="/logout">Logout</a>
       {% elif request.session.account_role == 'teacher' %}
         <span>{{ request.session.account_name }}</span>
         <a href="/teacher/dashboard">Dashboard</a>
-        <a href="/conversations">Messages</a>
+        <a href="/conversations" class="nav-messages-link">Messages<span id="nav-unread-badge" class="nav-unread-badge" {% if not unread_messages_count %}style="display:none;"{% endif %}>{{ unread_messages_count }}</span></a>
         <a href="/logout">Logout</a>
       {% else %}
         <a href="/login">Sign in</a>
@@ -48,5 +48,42 @@
     {% endif %}
     {% block content %}{% endblock %}
   </main>
+
+  <style>
+  .nav-messages-link { position: relative; }
+  .nav-unread-badge {
+    display: inline-flex; align-items: center; justify-content: center;
+    min-width: 16px; height: 16px; padding: 0 4px; margin-left: 4px;
+    border-radius: 999px; background: #a30d0d; color: #141414;
+    font-size: .68rem; font-weight: 700; line-height: 1; vertical-align: 2px;
+  }
+  </style>
+
+  {% if request.session.account_role == 'parent' or request.session.account_role == 'teacher' %}
+  <script>
+  // Keeps the "Messages" nav badge live on every page, so a parent/teacher
+  // knows a new message arrived even if they're not on the chat screen.
+  (function () {
+    const badge = document.getElementById('nav-unread-badge');
+    if (!badge) return;
+
+    async function refreshUnreadBadge() {
+      try {
+        const res = await fetch('/api/messages/unread-count', { credentials: 'same-origin' });
+        if (!res.ok) return;
+        const data = await res.json();
+        if (data.unread_count > 0) {
+          badge.textContent = data.unread_count;
+          badge.style.display = 'inline-flex';
+        } else {
+          badge.style.display = 'none';
+        }
+      } catch (_) { /* ignore network hiccups, try again next interval */ }
+    }
+
+    setInterval(refreshUnreadBadge, 15000);
+  })();
+  </script>
+  {% endif %}
 </body>
 </html>
