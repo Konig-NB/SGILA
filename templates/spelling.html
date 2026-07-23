@@ -1,0 +1,171 @@
+{% extends 'base.html' %}
+{% load static %}
+{% block title %}Spelling - SGILA{% endblock %}
+{% block content %}
+<section class="activity-shell">
+  <div class="activity-top">
+    <a href="/lessons/{{ lesson.id }}/pronunciation" class="back-link">Back</a>
+    <span class="step-pill">Spelling</span>
+  </div>
+  <h1>Complete the spelling activities</h1>
+  <div id="spelling-koaly" class="reactive-koaly koaly-ready">
+    <img src="{% static 'img/koaly_cutout.png' %}" alt="Koaly mascot">
+    <div>
+      <strong>Koaly is ready</strong>
+      <span>Type your answer, then check it before finishing.</span>
+    </div>
+  </div>
+  <form id="spelling-form" method="POST" class="spelling-form">
+    {% csrf_token %}
+    {% for activity in activities %}
+      <label
+        class="spelling-card"
+        data-activity-id="{{ activity.id }}"
+        data-activity-type="{{ activity.activity_type }}"
+      >
+        <span>{{ activity.get_activity_type_display }}</span>
+        <strong>{{ activity.display_text|default:activity.answer }}</strong>
+        <input type="text" name="activity_{{ activity.id }}" placeholder="Type your answer" autocomplete="off" required>
+        <div class="spelling-actions">
+          <button class="btn btn-light check-spelling" type="button">Check answer</button>
+          <p class="spelling-feedback message-area hidden" aria-live="polite"></p>
+        </div>
+      </label>
+    {% empty %}
+      <p class="empty">No spelling activities yet.</p>
+    {% endfor %}
+    <button class="btn btn-primary btn-full" type="submit">Finish lesson</button>
+  </form>
+</section>
+<script>
+const lessonId = {{ lesson.id }};
+const childId = {{ child.id }};
+const storageKey = `sgila_lesson_${lessonId}`;
+const spellingKoaly = document.getElementById('spelling-koaly');
+const KOALY_IMAGES = {
+  ready: "{% static 'img/koaly_cutout.png' %}",
+  happy: "{% static 'img/koaly_happy.png' %}",
+  sad: "{% static 'img/koaly_sad.png' %}",
+};
+let answerAudioContext = null;
+
+function setSpellingKoaly(state, title, detail) {
+  spellingKoaly.className = `reactive-koaly koaly-${state}`;
+  spellingKoaly.querySelector('img').src = KOALY_IMAGES[state] || KOALY_IMAGES.ready;
+  spellingKoaly.querySelector('strong').textContent = title;
+  spellingKoaly.querySelector('span').textContent = detail;
+}
+
+function primeAnswerAudio() {
+  const AudioContext = window.AudioContext || window.webkitAudioContext;
+  if (!AudioContext) return null;
+  if (!answerAudioContext) answerAudioContext = new AudioContext();
+  if (answerAudioContext.state === 'suspended') answerAudioContext.resume();
+  return answerAudioContext;
+}
+
+function playTone(ctx, start, frequency, duration, type, volume) {
+  const oscillator = ctx.createOscillator();
+  const gain = ctx.createGain();
+  oscillator.type = type;
+  oscillator.frequency.setValueAtTime(frequency, start);
+  gain.gain.setValueAtTime(0.0001, start);
+  gain.gain.exponentialRampToValueAtTime(volume, start + 0.025);
+  gain.gain.exponentialRampToValueAtTime(0.0001, start + duration);
+  oscillator.connect(gain);
+  gain.connect(ctx.destination);
+  oscillator.start(start);
+  oscillator.stop(start + duration + 0.02);
+}
+
+function playAnswerSound(correct) {
+  const ctx = primeAnswerAudio();
+  if (!ctx) return;
+  const now = ctx.currentTime + 0.02;
+  if (correct) {
+    playTone(ctx, now, 523.25, 0.12, 'sine', 0.12);
+    playTone(ctx, now + 0.1, 659.25, 0.13, 'sine', 0.12);
+    playTone(ctx, now + 0.21, 783.99, 0.18, 'triangle', 0.10);
+  } else {
+    playTone(ctx, now, 220, 0.16, 'triangle', 0.10);
+    playTone(ctx, now + 0.15, 164.81, 0.22, 'sine', 0.08);
+  }
+}
+
+async function checkSpellingCard(card) {
+  primeAnswerAudio();
+  const input = card.querySelector('input[type="text"]');
+  const feedback = card.querySelector('.spelling-feedback');
+  const checkButton = card.querySelector('.check-spelling');
+  const given = input.value.trim();
+
+  card.classList.remove('is-correct', 'is-wrong');
+  input.classList.remove('input-correct', 'input-wrong');
+
+  if (!given) {
+    feedback.className = 'spelling-feedback message-area wrong';
+    feedback.textContent = 'Type your answer first.';
+    setSpellingKoaly('sad', 'Try typing first', 'Koaly is waiting for your answer.');
+    return;
+  }
+
+  checkButton.disabled = true;
+  let data;
+  try {
+    const response = await fetch('/api/check-spelling-answer', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({
+        child_id: childId,
+        lesson_id: lessonId,
+        activity_id: card.dataset.activityId,
+        answer: input.value,
+      }),
+    });
+    data = await response.json();
+    if (!response.ok) throw new Error(data.message || data.error || 'Unable to check this answer.');
+  } catch (error) {
+    feedback.className = 'spelling-feedback message-area wrong';
+    feedback.textContent = error.message;
+    setSpellingKoaly('sad', 'Try again', 'Koaly could not check that answer yet.');
+    checkButton.disabled = false;
+    return;
+  }
+
+  const correct = data.correct;
+  card.classList.add(correct ? 'is-correct' : 'is-wrong');
+  input.classList.add(correct ? 'input-correct' : 'input-wrong');
+  feedback.className = `spelling-feedback message-area ${correct ? 'correct' : 'wrong'}`;
+  feedback.textContent = data.message;
+  setSpellingKoaly(
+    correct ? 'happy' : 'sad',
+    correct ? 'Great spelling!' : 'Try again',
+    correct ? 'Koaly is proud of that answer.' : 'Koaly thinks you should look carefully and try once more.'
+  );
+  playAnswerSound(correct);
+  checkButton.disabled = false;
+}
+
+document.querySelectorAll('.spelling-card').forEach((card) => {
+  const input = card.querySelector('input[type="text"]');
+  const checkButton = card.querySelector('.check-spelling');
+  checkButton.addEventListener('click', () => checkSpellingCard(card));
+  input.addEventListener('keydown', (event) => {
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      checkSpellingCard(card);
+    }
+  });
+  input.addEventListener('input', () => {
+    card.classList.remove('is-correct', 'is-wrong');
+    input.classList.remove('input-correct', 'input-wrong');
+    card.querySelector('.spelling-feedback').className = 'spelling-feedback message-area hidden';
+    setSpellingKoaly('ready', 'Koaly is ready', 'Type your answer, then check it before finishing.');
+  });
+});
+
+document.getElementById('spelling-form').addEventListener('submit', () => {
+  sessionStorage.removeItem(storageKey);
+});
+</script>
+{% endblock %}

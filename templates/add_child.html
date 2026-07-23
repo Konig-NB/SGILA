@@ -1,0 +1,60 @@
+{% extends 'base.html' %}
+{% block title %}Add Child - SGILA{% endblock %}
+{% block content %}
+<section class="auth-layout auth-compact add-child-layout role-parent">
+  <aside class="auth-intro add-child-intro">
+    <p class="eyebrow">Parent dashboard</p>
+    <h1>Add child profile</h1>
+    <p>Create a learner login connected to {{ parent.full_name }}.</p>
+    <div class="add-child-guidance">
+      <p>The <strong>username</strong> is what your child uses to sign in, so choose something they can remember easily.</p>
+      <p>Ask your child's teacher for their <strong>class code</strong> to automatically link your child to their class. You can also skip this and add it later.</p>
+    </div>
+  </aside>
+
+  <form class="form-card auth-card-blue add-child-card" method="POST" enctype="multipart/form-data">
+    {% csrf_token %}
+    <h2>Learner details</h2>
+
+    <label>Username
+      <input type="text" name="username" placeholder="e.g. Lerato" pattern="[A-Za-z]+" required>
+      <small>Letters only, upper- or lowercase. No numbers or special characters. Must be unique.</small>
+    </label>
+
+    <div class="two-col">
+      <label>First name<input type="text" name="first_name" required></label>
+      <label>Last name<input type="text" name="last_name" required></label>
+    </div>
+
+    <div class="two-col">
+      <label>Age<input type="number" name="age" min="5" max="10" required></label>
+      <label>Grade
+        <select name="grade" required>
+          <option value="">-- select --</option>
+          <option value="1">Grade 1</option>
+          <option value="2">Grade 2</option>
+          <option value="3">Grade 3</option>
+          <option value="4">Grade 4</option>
+        </select>
+      </label>
+    </div>
+
+    <label>Class code
+      <small>(optional - from your child's teacher)</small>
+      <input type="text" name="class_code" placeholder="E.G. A1B2C3">
+    </label>
+
+    <label>Child photo
+      <input type="file" name="photo" accept="image/*">
+      <small>This photo appears on the parent dashboard report card.</small>
+    </label>
+
+    <label>Parent email (linked automatically)
+      <input type="email" name="parent_email" value="{{ parent.email }}" readonly>
+    </label>
+
+    <label>Learner password<input type="password" name="password" required></label>
+    <button class="btn btn-primary btn-full add-learner-button" type="submit">Add learner</button>
+  </form>
+</section>
+{% endblock %}

@@ -1,0 +1,189 @@
+{% extends 'base.html' %}
+{% load static %}
+{% block title %}Lesson Results - {{ lesson.title }}{% endblock %}
+{% block content %}
+<section class="result-screen">
+  <p class="eyebrow">Lesson complete</p>
+  <h1>{{ reaction }}, {{ child.name }}!</h1>
+
+  <div class="result-koaly-reaction {% if stars|length <= 1 %}is-sad{% else %}is-happy{% endif %}" aria-live="polite">
+    <img
+      src="{% if stars|length <= 1 %}{% static 'img/koaly_sad.png' %}{% else %}{% static 'img/koaly_happy.png' %}{% endif %}"
+      alt="{% if stars|length <= 1 %}Sad Koaly{% else %}Happy Koaly{% endif %}">
+    <div>
+      <strong>{% if stars|length <= 1 %}Keep trying{% else %}Great work{% endif %}</strong>
+      <span>{% if stars|length <= 1 %}Koaly believes you can earn more stars next time.{% else %}Koaly is proud of your stars.{% endif %}</span>
+    </div>
+  </div>
+
+  <div class="star-row">{% for star in stars %}&#9733;{% endfor %}</div>
+
+  <p class="total-score-line">
+    You scored <strong>{{ total_score }}</strong> out of <strong>{{ total_possible }}</strong>
+    &nbsp;({{ percentage }}%)
+  </p>
+
+  <!-- Best 2 / Worst 2 highlights -->
+  {% if best_activities or worst_activities %}
+  <div class="g4-highlights">
+    {% if best_activities %}
+    <div class="g4-highlight-group">
+      <h3 class="g4-group-label g4-best-label">🏆 Best activities</h3>
+      {% for act in best_activities %}
+      <div class="g4-highlight-card g4-best">
+        <span class="g4-hl-name">{{ act.label }}</span>
+        <span class="g4-hl-pct">{{ act.pct }}%</span>
+      </div>
+      {% endfor %}
+    </div>
+    {% endif %}
+    {% if worst_activities %}
+    <div class="g4-highlight-group">
+      <h3 class="g4-group-label g4-focus-label">↑ Keep practising</h3>
+      {% for act in worst_activities %}
+      <div class="g4-highlight-card g4-focus">
+        <span class="g4-hl-name">{{ act.label }}</span>
+        <span class="g4-hl-pct">{{ act.pct }}%</span>
+      </div>
+      {% endfor %}
+    </div>
+    {% endif %}
+  </div>
+  {% endif %}
+
+  <!-- Full activity breakdown -->
+  {% if breakdown %}
+  <div class="g4-breakdown">
+    <h2>Your activity scores</h2>
+    <ul class="breakdown-list">
+      {% for item in breakdown %}
+      <li class="breakdown-item">
+        <span class="breakdown-label">{{ item.label }}</span>
+        <span class="breakdown-bar-wrap">
+          <span class="breakdown-bar"
+            style="width: {% if item.total > 0 %}{% widthratio item.score item.total 100 %}%{% else %}0%{% endif %}">
+          </span>
+        </span>
+        <span class="breakdown-fraction
+          {% if item.score == item.total %}all-correct
+          {% elif item.score == 0 %}none-correct
+          {% else %}some-correct{% endif %}">
+          {{ item.score }}/{{ item.total }}
+        </span>
+      </li>
+      {% endfor %}
+    </ul>
+  </div>
+  {% endif %}
+
+  <div class="action-row center">
+    <a href="/grade/{{ lesson.grade }}" class="btn btn-primary">Next lesson</a>
+    <a href="/dashboard/{{ child.id }}" class="btn btn-light">View progress</a>
+  </div>
+</section>
+
+<style>
+.total-score-line {
+  font-size: 1.1rem;
+  margin: 0.5rem 0 1.5rem;
+  color: var(--text, #111);
+}
+
+/* Highlights: best 2 / worst 2 */
+.g4-highlights {
+  display: flex;
+  gap: 1rem;
+  flex-wrap: wrap;
+  justify-content: center;
+  margin: 0 auto 1.5rem;
+  max-width: 520px;
+}
+.g4-highlight-group {
+  flex: 1;
+  min-width: 210px;
+}
+.g4-group-label {
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin: 0 0 0.5rem;
+}
+.g4-best-label  { color: #16a34a; }
+.g4-focus-label { color: #ea580c; }
+
+.g4-highlight-card {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-radius: 10px;
+  padding: 0.55rem 0.85rem;
+  margin-bottom: 0.4rem;
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+.g4-best  { background: #dcfce7; color: #166534; }
+.g4-focus { background: #fff3e0; color: #9a3412; }
+.g4-hl-name { flex: 1; }
+.g4-hl-pct  { font-size: 1rem; font-weight: 700; }
+
+/* Breakdown bars */
+.g4-breakdown {
+  background: var(--surface, #fff);
+  border-radius: 16px;
+  padding: 1.2rem 1.4rem;
+  margin: 1rem auto 1.5rem;
+  max-width: 500px;
+  box-shadow: 0 2px 12px rgba(0,0,0,0.07);
+}
+.g4-breakdown h2 {
+  font-size: 1rem;
+  font-weight: 700;
+  margin: 0 0 1rem;
+  color: var(--text-muted, #555);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.breakdown-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+}
+.breakdown-item {
+  display: grid;
+  grid-template-columns: 130px 1fr 48px;
+  align-items: center;
+  gap: 0.6rem;
+}
+.breakdown-label {
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: var(--text, #111);
+  white-space: nowrap;
+}
+.breakdown-bar-wrap {
+  background: var(--border, #e5e7eb);
+  border-radius: 999px;
+  height: 10px;
+  overflow: hidden;
+}
+.breakdown-bar {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: var(--primary, #6c63ff);
+  transition: width 0.6s ease;
+}
+.breakdown-fraction {
+  font-size: 0.82rem;
+  font-weight: 700;
+  text-align: right;
+}
+.breakdown-fraction.all-correct  { color: #22c55e; }
+.breakdown-fraction.none-correct { color: #ef4444; }
+.breakdown-fraction.some-correct { color: #f59e0b; }
+</style>
+{% endblock %}

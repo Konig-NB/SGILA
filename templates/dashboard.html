@@ -1,0 +1,161 @@
+{% extends 'base.html' %}
+{% block title %}{{ child.name }}'s Report - SGILA{% endblock %}
+{% block content %}
+<section class="parent-report-page result-two-only single-learner-report">
+  <header class="parent-dashboard-toolbar">
+    <div>
+      <p class="eyebrow">
+        {% if request.session.account_role == 'teacher' %}
+          Teacher dashboard
+        {% elif request.session.account_role == 'learner' %}
+          Learner dashboard
+        {% else %}
+          Parent dashboard
+        {% endif %}
+      </p>
+      <h1>Learner progress reports</h1>
+    </div>
+    {% if request.session.account_role == 'parent' %}
+      <a href="/parent/add-child" class="btn btn-primary parent-add-action">Add another child</a>
+    {% endif %}
+  </header>
+
+  <article class="parent-report-card tone-sky">
+    <aside class="parent-report-rail">
+      <span class="rail-label">Learner report</span>
+      <div class="rail-avatar {% if child.photo %}has-photo{% endif %}">
+        {% if child.photo %}
+          <img src="{{ child.photo.url }}" alt="{{ child.name }} photo">
+        {% else %}
+          {{ child.name|slice:":1" }}{{ child.name|slice:"1:2" }}
+        {% endif %}
+      </div>
+      <h2>{{ child.name }}</h2>
+      <p>Grade {{ child.grade }}{% if child.school_name %} - {{ child.school_name }}{% endif %}</p>
+
+      <div class="rail-score-ring" style="--score: {{ avg_score }}%;">
+        <strong>{{ avg_score }}%</strong>
+        <span>Overall score</span>
+      </div>
+
+      {% if needs_focus %}
+        <div class="rail-focus-card">
+          <strong>Focus</strong>
+          <span>{{ needs_focus }}</span>
+          {% if needs_focus_tip %}
+            <small>{{ needs_focus_tip }}</small>
+          {% endif %}
+        </div>
+      {% endif %}
+    </aside>
+
+    <div class="parent-report-main">
+      <div class="parent-report-heading">
+        <div>
+          <h2>{{ child.name }}'s Progress</h2>
+          <p>Clear cards over the original background.</p>
+        </div>
+        <a href="#lesson-history" class="parent-open-report">View report</a>
+      </div>
+
+      <section class="parent-score-grid" aria-label="Learner score cards">
+        <article class="score-tile score-gold">
+          <i>T</i>
+          <span>Overall</span>
+          <strong>{{ avg_score }}%</strong>
+        </article>
+        {% if is_grade4 %}
+          {% if g4_best2 %}
+            {% for act in g4_best2 %}
+            <article class="score-tile score-green">
+              <i>★</i>
+              <span>Best: {{ act.label }}</span>
+              <strong>{{ act.pct }}%</strong>
+            </article>
+            {% endfor %}
+          {% endif %}
+          {% if g4_worst2 %}
+            {% for act in g4_worst2 %}
+            <article class="score-tile score-orange">
+              <i>↑</i>
+              <span>Focus: {{ act.label }}</span>
+              <strong>{{ act.pct }}%</strong>
+            </article>
+            {% endfor %}
+          {% endif %}
+        {% else %}
+        <article class="score-tile score-purple">
+          <i>R</i>
+          <span>Reading</span>
+          <strong>{{ avg_comprehension }}</strong>
+        </article>
+        <article class="score-tile score-blue">
+          <i>V</i>
+          <span>Visual</span>
+          <strong>{{ avg_visual }}</strong>
+        </article>
+        <article class="score-tile score-green">
+          <i>S</i>
+          <span>Spelling</span>
+          <strong>{{ avg_spelling }}</strong>
+        </article>
+        {% endif %}
+      </section>
+
+      <section class="parent-mini-grid">
+        <article><span>Lesson</span><strong>{{ total_lessons }}</strong></article>
+        <article><span>Stars</span><strong>{{ total_stars }}</strong></article>
+        <article><span>Best</span><strong>{% if best_lesson %}{{ best_lesson.percentage }}%{% else %}0%{% endif %}</strong></article>
+      </section>
+
+      <section class="parent-activity-bars" aria-label="Average scores by activity">
+        <h3>Activity scores</h3>
+        {% if is_grade4 %}
+          {% if g4_best2 %}
+            <p class="activity-group-label" style="font-size:0.8rem;font-weight:700;text-transform:uppercase;color:var(--text-muted,#555);margin:0 0 0.3rem;">🏆 Best</p>
+            {% for act in g4_best2 %}
+            <div class="parent-bar reading"><em>★</em><span>{{ act.label }}</span><b style="--progress: {{ act.pct }}%;"></b><strong>{{ act.pct }}%</strong></div>
+            {% endfor %}
+          {% endif %}
+          {% if g4_worst2 %}
+            <p class="activity-group-label" style="font-size:0.8rem;font-weight:700;text-transform:uppercase;color:var(--text-muted,#555);margin:0.8rem 0 0.3rem;">↑ Needs work</p>
+            {% for act in g4_worst2 %}
+            <div class="parent-bar spelling"><em>↑</em><span>{{ act.label }}</span><b style="--progress: {{ act.pct }}%;"></b><strong>{{ act.pct }}%</strong></div>
+            {% endfor %}
+          {% endif %}
+          {% if not g4_best2 and not g4_worst2 %}
+            <p style="color:var(--text-muted,#888);font-size:0.9rem;">Complete lessons to see activity scores.</p>
+          {% endif %}
+        {% else %}
+        <div class="parent-bar reading"><em>R</em><span>Reading</span><b style="--progress: {{ avg_comprehension }}%;"></b><strong>{{ avg_comprehension }}</strong></div>
+        <div class="parent-bar visual"><em>V</em><span>Visual</span><b style="--progress: {{ avg_visual }}%;"></b><strong>{{ avg_visual }}</strong></div>
+        <div class="parent-bar spelling"><em>S</em><span>Spelling</span><b style="--progress: {{ avg_spelling }}%;"></b><strong>{{ avg_spelling }}</strong></div>
+        {% endif %}
+      </section>
+
+      <section class="parent-history" id="lesson-history">
+        <h3>Lesson history</h3>
+        {% if records %}
+          {% for record in records %}
+            <div class="parent-history-row">
+              <span class="history-dot"></span>
+              <strong>{{ record.lesson.title }}</strong>
+              <b>{{ record.percentage }}%</b>
+              <span>{{ record.stars_earned }} stars</span>
+              <time>{{ record.completed_on|date:"d M" }}</time>
+            </div>
+          {% endfor %}
+        {% else %}
+          <div class="parent-history-row muted">
+            <span class="history-dot"></span>
+            <strong>No lessons completed yet</strong>
+            <b>0%</b>
+            <span>0 stars</span>
+            <time>Start now</time>
+          </div>
+        {% endif %}
+      </section>
+    </div>
+  </article>
+</section>
+{% endblock %}

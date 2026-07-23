@@ -1,0 +1,95 @@
+{% extends 'base.html' %}
+{% load static %}
+{% block title %}Feelings - {{ lesson.title }}{% endblock %}
+{% block content %}
+<section class="activity-shell">
+  <div class="activity-top">
+    <a href="/lessons/{{ lesson.id }}/inference" class="back-link">Back</a>
+    <span class="step-pill">Feelings</span>
+  </div>
+  <h1>How did they feel?</h1>
+  <div id="mascot-reaction" class="mascot"><img src="{% static 'img/koaly_cutout.png' %}" alt=""><span>Koaly</span></div>
+  <div id="message-area" class="message-area hidden"></div>
+  <div id="question-area">
+    <p id="question-text" class="question-text"></p>
+    <div id="options-area" class="options-grid"></div>
+  </div>
+  <div class="center">
+    <button id="next-btn" class="btn btn-primary hidden" type="button">Next question</button>
+  </div>
+  <div id="results-area" class="center hidden">
+    <p>You understand feelings really well!</p>
+    <a href="/lessons/{{ lesson.id }}/cause-effect" class="btn btn-primary">Next activity</a>
+  </div>
+</section>
+<script>
+const lessonId = {{ lesson.id }};
+const KOALY = {
+  ready: "{% static 'img/koaly_cutout.png' %}",
+  happy: "{% static 'img/koaly_happy.png' %}",
+  sad:   "{% static 'img/koaly_sad.png' %}",
+};
+let questions = [], current = 0;
+
+function setMascot(state, label) {
+  const m = document.getElementById('mascot-reaction');
+  m.querySelector('img').src = KOALY[state] || KOALY.ready;
+  m.querySelector('span').textContent = label;
+}
+
+async function load() {
+  const res = await fetch(`/api/lessons/${lessonId}/feelings`);
+  const data = await res.json();
+  questions = data.questions;
+  show();
+}
+
+function show() {
+  if (current >= questions.length) {
+    document.getElementById('question-area').classList.add('hidden');
+    document.getElementById('next-btn').classList.add('hidden');
+    document.getElementById('results-area').classList.remove('hidden');
+    setMascot('happy', 'Wonderful!');
+    return;
+  }
+  const q = questions[current];
+  document.getElementById('question-text').textContent = `Q${current + 1}: ${q.question}`;
+  document.getElementById('message-area').className = 'message-area hidden';
+  document.getElementById('next-btn').classList.add('hidden');
+  setMascot('ready', 'Koaly');
+  const area = document.getElementById('options-area');
+  area.innerHTML = '';
+  q.options.forEach(opt => {
+    const btn = document.createElement('button');
+    btn.className = 'btn btn-option';
+    btn.textContent = opt;
+    btn.onclick = () => checkAnswer(q.id, opt);
+    area.appendChild(btn);
+  });
+}
+
+async function checkAnswer(qId, selected) {
+  document.querySelectorAll('#options-area button').forEach(b => b.disabled = true);
+  const res = await fetch('/api/check-feelings-answer', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({question_id: qId, selected_option: selected}),
+  });
+  const data = await res.json();
+  document.querySelectorAll('#options-area button').forEach(b => {
+    if (b.textContent === selected) b.classList.add(data.correct ? 'choice-correct' : 'choice-wrong');
+    if (!data.correct && b.textContent === data.correct_answer) b.classList.add('choice-correct');
+  });
+  const msg = document.getElementById('message-area');
+  msg.className = `message-area ${data.correct ? 'correct' : 'wrong'}`;
+  msg.textContent = data.message;
+  setMascot(data.correct ? 'happy' : 'sad', data.correct ? 'Correct!' : 'Keep going!');
+  const btn = document.getElementById('next-btn');
+  btn.textContent = current === questions.length - 1 ? 'Finish feelings' : 'Next question';
+  btn.classList.remove('hidden');
+}
+
+document.getElementById('next-btn').addEventListener('click', () => { current++; show(); });
+load();
+</script>
+{% endblock %}

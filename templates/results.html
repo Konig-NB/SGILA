@@ -1,0 +1,30 @@
+{% extends 'base.html' %}
+{% load static %}
+{% block title %}Lesson Results - SGILA{% endblock %}
+{% block content %}
+<section class="result-screen">
+  <p class="eyebrow">Lesson complete</p>
+  <h1>{{ reaction }}, {{ child.name }}!</h1>
+  <div class="result-koaly-reaction {% if stars|length <= 1 %}is-sad{% else %}is-happy{% endif %}" aria-live="polite">
+    <img
+      src="{% if stars|length <= 1 %}{% static 'img/koaly_sad.png' %}{% else %}{% static 'img/koaly_happy.png' %}{% endif %}"
+      alt="{% if stars|length <= 1 %}Sad Koaly{% else %}Happy Koaly{% endif %}">
+    <div>
+      <strong>{% if stars|length <= 1 %}Keep trying{% else %}Great work{% endif %}</strong>
+      <span>{% if stars|length <= 1 %}Koaly believes you can earn more stars next time.{% else %}Koaly is proud of your stars.{% endif %}</span>
+    </div>
+  </div>
+  <div class="star-row">{% for star in stars %}&#9733;{% endfor %}</div>
+  <p>You scored {{ total_score }} out of {{ total_possible }} ({{ percentage }}%).</p>
+
+  <div class="result-grid">
+    <div><strong>{{ comprehension_score }}/{{ comprehension_total }}</strong><span>Comprehension</span></div>
+    <div><strong>{{ visual_score }}/{{ visual_total }}</strong><span>Visual matching</span></div>
+    <div><strong>{{ spelling_score }}/{{ spelling_total }}</strong><span>Spelling</span></div>
+  </div>
+
+  <div class="action-row center">
+    <a href="/grade/{{ lesson.grade }}" class="btn btn-primary">Next lesson</a>
+  </div>
+</section>
+{% endblock %}

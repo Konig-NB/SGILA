@@ -1,0 +1,99 @@
+{% extends 'base.html' %}
+{% load static %}
+{% block title %}Sequencing - {{ lesson.title }}{% endblock %}
+{% block content %}
+<section class="activity-shell">
+  <div class="activity-top">
+    <a href="/lessons/{{ lesson.id }}/questions" class="back-link">Back</a>
+    <span class="step-pill">Sequencing</span>
+  </div>
+  <h1>Put the events in the correct order</h1>
+  <div id="mascot-reaction" class="mascot"><img src="{% static 'img/koaly_cutout.png' %}" alt=""><span>Koaly</span></div>
+  <div id="message-area" class="message-area hidden"></div>
+  <p class="instruction-text">Drag the events into the correct order, then press Check.</p>
+  <ul id="event-list" class="sequence-list"></ul>
+  <div class="center" style="margin-top:1.2rem">
+    <button id="check-btn" class="btn btn-primary" type="button">Check my order</button>
+  </div>
+  <div id="results-area" class="center hidden" style="margin-top:1.2rem">
+    <a href="/lessons/{{ lesson.id }}/inference" class="btn btn-primary">Next activity</a>
+  </div>
+</section>
+<style>
+.sequence-list { list-style:none; padding:0; margin:1rem 0; }
+.sequence-list li {
+  background: var(--surface, #fff);
+  border: 2px solid var(--border, #ddd);
+  border-radius: 10px;
+  padding: 0.75rem 1rem;
+  margin-bottom: 0.6rem;
+  cursor: grab;
+  font-size: 1rem;
+  user-select: none;
+}
+.sequence-list li.drag-over { border-color: var(--primary, #6c63ff); background: var(--primary-light, #f0eeff); }
+.seq-correct { border-color: #22c55e !important; background: #f0fdf4 !important; }
+.seq-wrong   { border-color: #ef4444 !important; background: #fef2f2 !important; }
+</style>
+<script>
+const lessonId = {{ lesson.id }};
+const KOALY = {
+  ready: "{% static 'img/koaly_cutout.png' %}",
+  happy: "{% static 'img/koaly_happy.png' %}",
+  sad:   "{% static 'img/koaly_sad.png' %}",
+};
+let activityId = null;
+let dragSrc = null;
+
+function setMascot(state, label) {
+  const m = document.getElementById('mascot-reaction');
+  m.querySelector('img').src = KOALY[state] || KOALY.ready;
+  m.querySelector('span').textContent = label;
+}
+
+async function load() {
+  const res = await fetch(`/api/lessons/${lessonId}/sequencing`);
+  const data = await res.json();
+  activityId = data.id;
+  const list = document.getElementById('event-list');
+  list.innerHTML = '';
+  data.events.forEach(evt => {
+    const li = document.createElement('li');
+    li.textContent = evt;
+    li.draggable = true;
+    li.addEventListener('dragstart', e => { dragSrc = li; li.style.opacity = '0.5'; });
+    li.addEventListener('dragend', () => li.style.opacity = '1');
+    li.addEventListener('dragover', e => { e.preventDefault(); li.classList.add('drag-over'); });
+    li.addEventListener('dragleave', () => li.classList.remove('drag-over'));
+    li.addEventListener('drop', e => {
+      e.preventDefault();
+      li.classList.remove('drag-over');
+      if (dragSrc !== li) list.insertBefore(dragSrc, li);
+    });
+    list.appendChild(li);
+  });
+}
+
+document.getElementById('check-btn').addEventListener('click', async () => {
+  const items = [...document.querySelectorAll('#event-list li')].map(li => li.textContent);
+  const res = await fetch('/api/check-sequencing-answer', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({activity_id: activityId, submitted_order: items}),
+  });
+  const data = await res.json();
+  const msg = document.getElementById('message-area');
+  msg.className = `message-area ${data.correct ? 'correct' : 'wrong'}`;
+  msg.textContent = data.message;
+  setMascot(data.correct ? 'happy' : 'sad', data.correct ? 'Perfect!' : 'Check below');
+  document.querySelectorAll('#event-list li').forEach((li, i) => {
+    li.classList.add(li.textContent === data.correct_order[i] ? 'seq-correct' : 'seq-wrong');
+    li.draggable = false;
+  });
+  document.getElementById('check-btn').disabled = true;
+  document.getElementById('results-area').classList.remove('hidden');
+});
+
+load();
+</script>
+{% endblock %}

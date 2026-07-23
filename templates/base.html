@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{% block title %}SGILA{% endblock %}</title>
+  {% load static %}
+  <link rel="stylesheet" href="{% static 'css/sgila.css' %}?v=results-koaly-reaction">
+  <link rel="stylesheet" href="{% static 'css/sgila_web.css' %}?v=desktop-20260518-koaly-peek-6">
+</head>
+<body class="{% block body_class %}{% endblock %}">
+  <nav class="navbar app-navbar">
+    <a class="nav-brand" href="/">
+      <span class="brand-mark"><img src="{% static 'img/koaly_cutout.png' %}" alt="Koaly logo"></span>
+      <span>SGILA</span>
+    </a>
+    <div class="nav-links">
+      {% if request.session.account_role == 'learner' %}
+        <span>{{ request.session.child_name }}</span>
+        <a href="/grade/{{ request.session.child_grade }}">Lessons</a>
+        <a href="/logout">Logout</a>
+      {% elif request.session.account_role == 'parent' %}
+        <span>{{ request.session.account_name }}</span>
+        <a href="/parent/dashboard">Dashboard</a>
+        <a href="/conversations">Messages</a>
+        <a href="/parent/add-child">Add child</a>
+        <a href="/logout">Logout</a>
+      {% elif request.session.account_role == 'teacher' %}
+        <span>{{ request.session.account_name }}</span>
+        <a href="/teacher/dashboard">Dashboard</a>
+        <a href="/conversations">Messages</a>
+        <a href="/logout">Logout</a>
+      {% else %}
+        <a href="/login">Sign in</a>
+        <a class="nav-cta" href="/register">Join</a>
+      {% endif %}
+    </div>
+  </nav>
+  <main class="main-content">
+    {% if messages %}
+      <div class="alerts">
+        {% for msg in messages %}
+          {% if msg.message != 'Please sign in as a parent first.' %}
+            <div class="alert alert-{{ msg.tags }}">{{ msg }}</div>
+          {% endif %}
+        {% endfor %}
+      </div>
+    {% endif %}
+    {% block content %}{% endblock %}
+  </main>
+</body>
+</html>

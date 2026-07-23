@@ -1,0 +1,253 @@
+{% extends 'base.html' %}
+{% load static %}
+{% block title %}{{ lesson.title }} - SGILA{% endblock %}
+{% block content %}
+<section class="activity-shell">
+  <div class="activity-top">
+    <a href="/grade/{{ lesson.grade }}" class="back-link">Back to lessons</a>
+    <span class="step-pill">Story</span>
+  </div>
+  <h1>{{ lesson.title }}</h1>
+
+  <div id="story-koaly" class="reactive-koaly koaly-ready">
+    <img src="{% static 'img/koaly_cutout.png' %}" alt="Koaly mascot">
+    <div>
+      <strong>Koaly is ready</strong>
+      <span>Press play to hear the playful story voice and follow the highlighted words.</span>
+    </div>
+  </div>
+
+  <div id="page-display" class="story-book">
+    {% for page in pages %}
+      <article class="story-page {% if not forloop.first %}hidden{% endif %}" data-audio="{{ page.audio_url }}" data-page="{{ page.page_number }}">
+        <div class="story-image">
+          {% if page.image_url %}
+            <img src="{{ page.image_url }}" alt="Story illustration for page {{ page.page_number }}">
+          {% else %}
+            <span>Story image</span>
+          {% endif %}
+        </div>
+        <p class="story-text" data-words="{{ page.highlighted_words|join:',' }}">{{ page.text }}</p>
+        <div class="audio-bar">
+          <button type="button" class="btn btn-mint play-voiceover">Play story voice</button>
+          <span>Highlighted words: {{ page.highlighted_words|join:", " }}</span>
+        </div>
+      </article>
+    {% empty %}
+      <article class="story-page">
+        <div class="story-image"><span>Story image</span></div>
+        <p class="story-text" data-words="">No story pages have been added yet.</p>
+      </article>
+    {% endfor %}
+  </div>
+
+  <div class="story-nav">
+    <button id="prev-btn" class="btn btn-light" disabled>Previous</button>
+    <span id="page-counter">{% if pages %}Page 1 of {{ pages|length }}{% else %}No pages yet{% endif %}</span>
+    <button id="next-btn" class="btn btn-primary {% if not pages %}hidden{% endif %}">Next</button>
+  </div>
+  <div id="story-done" class="center {% if pages %}hidden{% endif %}">
+    <a href="/lessons/{{ lesson.id }}/questions" class="btn btn-primary btn-large">Answer questions</a>
+  </div>
+</section>
+<script>
+const pages = document.querySelectorAll('.story-page');
+let current = 0;
+let activeUtterance = null;
+let activeTimer = null;
+const prevBtn = document.getElementById('prev-btn');
+const nextBtn = document.getElementById('next-btn');
+const counter = document.getElementById('page-counter');
+const doneDiv = document.getElementById('story-done');
+const koaly = document.getElementById('story-koaly');
+const KOALY_IMAGES = {
+  ready: "{% static 'img/koaly_cutout.png' %}",
+  listening: "{% static 'img/koaly_cutout.png' %}",
+  happy: "{% static 'img/koaly_happy.png' %}",
+  sad: "{% static 'img/koaly_sad.png' %}",
+};
+
+let availableVoices = [];
+function loadVoices() {
+  availableVoices = window.speechSynthesis.getVoices();
+}
+if ('speechSynthesis' in window) {
+  loadVoices();
+  window.speechSynthesis.onvoiceschanged = loadVoices;
+}
+
+function cleanWord(word) {
+  return word.toLowerCase().replace(/[^a-z']/g, '');
+}
+
+function setKoaly(state, title, detail) {
+  koaly.className = `reactive-koaly koaly-${state}`;
+  koaly.querySelector('img').src = KOALY_IMAGES[state] || KOALY_IMAGES.ready;
+  koaly.querySelector('strong').textContent = title;
+  koaly.querySelector('span').textContent = detail;
+}
+
+function stopVoiceover() {
+  if (activeTimer) {
+    clearInterval(activeTimer);
+    activeTimer = null;
+  }
+  if ('speechSynthesis' in window) {
+    window.speechSynthesis.cancel();
+  }
+  activeUtterance = null;
+}
+
+function getFemaleVoice(lang = 'en') {
+  if (!('speechSynthesis' in window)) return null;
+
+  const voices = window.speechSynthesis.getVoices();
+  const langPrefix = lang.split('-')[0].toLowerCase();
+
+  const femaleKeywords = [
+    'zira', 'jenny', 'aria', 'samantha', 'sonia', 'fiona',
+    'victoria', 'karen', 'moira', 'tessa', 'serena', 'hazel',
+    'susan', 'linda', 'amy', 'emma', 'female',
+    'google uk english female', 'google us english female'
+  ];
+
+  const maleKeywords = ['david', 'mark', 'james', 'daniel', 'george',
+    'richard', 'thomas', 'male', 'guy', 'fred', 'alex'];
+
+  function isFemale(voice) {
+    const name = voice.name.toLowerCase();
+    const hasFemaleKeyword = femaleKeywords.some((kw) => name.includes(kw));
+    const hasMaleKeyword = maleKeywords.some((kw) => name.includes(kw));
+    return hasFemaleKeyword && !hasMaleKeyword;
+  }
+
+  const match1 = voices.find((v) =>
+    v.lang.toLowerCase().startsWith(langPrefix) && isFemale(v)
+  );
+  if (match1) return match1;
+
+  const match2 = voices.find((v) =>
+    v.lang.toLowerCase().startsWith('en') && isFemale(v)
+  );
+  if (match2) return match2;
+
+  const match3 = voices.find((v) => isFemale(v));
+  if (match3) return match3;
+
+ 
+  return null;
+}
+
+function applyKidFriendlySpeechSettings(utterance, lang = 'en-ZA') {
+  utterance.lang = lang;
+  utterance.rate = 0.84;
+  utterance.pitch = 1.35;
+  utterance.volume = 1;
+  const femaleVoice = getFemaleVoice(lang);
+  if (femaleVoice) {
+    utterance.voice = femaleVoice;
+  }
+}
+
+function prepareStoryWords() {
+  pages.forEach((page) => {
+    const textEl = page.querySelector('.story-text');
+    const rawText = textEl.textContent.trim();
+    const focusWords = textEl.dataset.words.split(',').map((w) => cleanWord(w.trim())).filter(Boolean);
+    textEl.dataset.rawText = rawText;
+    textEl.innerHTML = '';
+    rawText.split(/(\s+)/).forEach((token) => {
+      if (/^\s+$/.test(token)) {
+        textEl.appendChild(document.createTextNode(token));
+        return;
+      }
+      const span = document.createElement('span');
+      span.className = 'story-word';
+      span.textContent = token;
+      if (focusWords.includes(cleanWord(token))) {
+        span.classList.add('focus-word');
+      }
+      textEl.appendChild(span);
+    });
+  });
+}
+
+function clearWordHighlights(page) {
+  page.querySelectorAll('.story-word').forEach((word) => word.classList.remove('spoken-word', 'current-word'));
+}
+
+function highlightWord(page, index) {
+  const words = [...page.querySelectorAll('.story-word')];
+  words.forEach((word) => word.classList.remove('current-word'));
+  if (!words[index]) return;
+  words[index].classList.add('spoken-word', 'current-word');
+}
+
+function playPage(page) {
+  stopVoiceover();
+  clearWordHighlights(page);
+  const textEl = page.querySelector('.story-text');
+  const words = [...page.querySelectorAll('.story-word')];
+  const rawText = textEl.dataset.rawText || textEl.textContent.trim();
+  const playButton = page.querySelector('.play-voiceover');
+
+  setKoaly('listening', 'Koaly is reading', 'Listen and follow each highlighted word.');
+  playButton.textContent = 'Reading...';
+
+  activeUtterance = new SpeechSynthesisUtterance(rawText);
+  applyKidFriendlySpeechSettings(activeUtterance);
+
+  activeUtterance.onboundary = (event) => {
+    if (event.name !== 'word') return;
+    const charIndex = event.charIndex;
+    let wordIndex = 0;
+    let charCount = 0;
+    rawText.split(/(\s+)/).forEach((token) => {
+      if (/^\s+$/.test(token)) {
+        charCount += token.length;
+        return;
+      }
+      if (charCount <= charIndex && charIndex < charCount + token.length) {
+        words.forEach((w) => w.classList.remove('current-word'));
+        if (words[wordIndex]) {
+          words[wordIndex].classList.add('spoken-word', 'current-word');
+        }
+      }
+      charCount += token.length;
+      wordIndex++;
+    });
+  };
+  activeUtterance.onend = () => {
+    words.forEach((word) => word.classList.remove('current-word'));
+    setKoaly('happy', 'Great listening', 'Now try the next page when you are ready.');
+    playButton.textContent = 'Replay story voice';
+  };
+  activeUtterance.onerror = () => {
+    setKoaly('sad', 'Keep reading', 'Voiceover is not available, but the words can still guide you.');
+    playButton.textContent = 'Replay story voice';
+  };
+  window.speechSynthesis.speak(activeUtterance);
+}
+
+function showPage(n) {
+  if (!pages[n]) return;
+  stopVoiceover();
+  pages.forEach((p) => p.classList.add('hidden'));
+  pages[n].classList.remove('hidden');
+  clearWordHighlights(pages[n]);
+  prevBtn.disabled = n === 0;
+  counter.textContent = `Page ${n + 1} of ${pages.length}`;
+  nextBtn.classList.toggle('hidden', n === pages.length - 1);
+  doneDiv.classList.toggle('hidden', n !== pages.length - 1);
+  pages[n].querySelector('.play-voiceover').textContent = 'Play story voice';
+  setKoaly('ready', 'Koaly is ready', 'Press play to hear the playful story voice and follow the highlighted words.');
+}
+
+nextBtn.addEventListener('click', () => { if (current < pages.length - 1) showPage(++current); });
+prevBtn.addEventListener('click', () => { if (current > 0) showPage(--current); });
+document.querySelectorAll('.play-voiceover').forEach((button) => {
+  button.addEventListener('click', () => playPage(button.closest('.story-page')));
+});
+prepareStoryWords();
+</script>
+{% endblock %}

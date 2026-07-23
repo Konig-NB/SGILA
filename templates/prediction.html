@@ -1,0 +1,87 @@
+{% extends 'base.html' %}
+{% load static %}
+{% block title %}Prediction - {{ lesson.title }}{% endblock %}
+{% block content %}
+<section class="activity-shell">
+  <div class="activity-top">
+    <a href="/lessons/{{ lesson.id }}/inference" class="back-link">Back</a>
+    <span class="step-pill">Prediction</span>
+  </div>
+  <h1>What happens next?</h1>
+  <div id="mascot-reaction" class="mascot"><img src="{% static 'img/koaly_cutout.png' %}" alt=""><span>Koaly</span></div>
+  <div id="message-area" class="message-area hidden"></div>
+  <div id="question-area">
+    <div id="stop-point-box" class="stop-point-box"></div>
+    <p id="question-text" class="question-text"></p>
+    <div id="options-area" class="options-grid"></div>
+  </div>
+  <div id="results-area" class="center hidden" style="margin-top:1rem">
+    <a href="/lessons/{{ lesson.id }}/feelings" class="btn btn-primary">Next activity</a>
+  </div>
+</section>
+<style>
+.stop-point-box {
+  background: var(--surface, #f8f8ff);
+  border-left: 4px solid var(--primary, #6c63ff);
+  border-radius: 8px;
+  padding: 0.85rem 1.1rem;
+  margin-bottom: 1.1rem;
+  font-style: italic;
+  color: var(--text-muted, #555);
+  font-size: 0.97rem;
+}
+</style>
+<script>
+const lessonId = {{ lesson.id }};
+const KOALY = {
+  ready: "{% static 'img/koaly_cutout.png' %}",
+  happy: "{% static 'img/koaly_happy.png' %}",
+  sad:   "{% static 'img/koaly_sad.png' %}",
+};
+let questionId = null;
+
+function setMascot(state, label) {
+  const m = document.getElementById('mascot-reaction');
+  m.querySelector('img').src = KOALY[state] || KOALY.ready;
+  m.querySelector('span').textContent = label;
+}
+
+async function load() {
+  const res = await fetch(`/api/lessons/${lessonId}/prediction`);
+  const data = await res.json();
+  questionId = data.id;
+  document.getElementById('stop-point-box').textContent = `Story stop: "${data.stop_point_text}"`;
+  document.getElementById('question-text').textContent = data.question;
+  const area = document.getElementById('options-area');
+  area.innerHTML = '';
+  data.options.forEach(opt => {
+    const btn = document.createElement('button');
+    btn.className = 'btn btn-option';
+    btn.textContent = opt;
+    btn.onclick = () => checkAnswer(opt);
+    area.appendChild(btn);
+  });
+}
+
+async function checkAnswer(selected) {
+  document.querySelectorAll('#options-area button').forEach(b => b.disabled = true);
+  const res = await fetch('/api/check-prediction-answer', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({question_id: questionId, selected_option: selected}),
+  });
+  const data = await res.json();
+  document.querySelectorAll('#options-area button').forEach(b => {
+    if (b.textContent === selected) b.classList.add(data.correct ? 'choice-correct' : 'choice-wrong');
+    if (!data.correct && b.textContent === data.correct_answer) b.classList.add('choice-correct');
+  });
+  const msg = document.getElementById('message-area');
+  msg.className = `message-area ${data.correct ? 'correct' : 'wrong'}`;
+  msg.textContent = data.message;
+  setMascot(data.correct ? 'happy' : 'sad', data.correct ? 'Well done!' : 'Good try!');
+  document.getElementById('results-area').classList.remove('hidden');
+}
+
+load();
+</script>
+{% endblock %}

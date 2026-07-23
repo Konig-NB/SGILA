@@ -1,0 +1,253 @@
+{% extends 'base.html' %}
+{% block title %}Chat about {{ child.name }} - SGILA{% endblock %}
+{% block content %}
+<section class="chat-page">
+
+  <div class="chat-topbar">
+    <a href="/conversations" class="chat-back">&#8592; Back</a>
+    <div class="chat-topbar-info">
+      <strong>{{ other_party_name }}</strong>
+      <span>About <em>{{ child.name }}</em> &nbsp;·&nbsp; Grade {{ child.grade }}</span>
+    </div>
+  </div>
+
+  <div class="chat-learner-banner">
+    <div class="chat-learner-avatar">{{ child.name|slice:":1"|upper }}</div>
+    <div>
+      <div class="chat-learner-name">{{ child.name }} &nbsp;·&nbsp; Grade {{ child.grade }}</div>
+      <div class="chat-learner-stats">
+        ⭐ {{ stars_total }} star{{ stars_total|pluralize }}
+        &nbsp;·&nbsp;
+        {{ lessons_completed }} lesson{{ lessons_completed|pluralize }} completed
+      </div>
+    </div>
+    <a href="/dashboard/{{ child.id }}" class="chat-view-report">View report</a>
+  </div>
+
+  <div class="chat-messages" id="chat-messages">
+    {% if messages_list %}
+      {% for msg in messages_list %}
+        <div class="chat-bubble-wrap {% if msg.sender_role == role %}mine{% else %}theirs{% endif %}">
+          {% if msg.sender_role != role %}
+            <div class="chat-bubble-avatar">{{ msg.sender_name|slice:":1"|upper }}</div>
+          {% endif %}
+          <div class="chat-bubble-col">
+            <div class="chat-bubble {% if msg.sender_role == role %}chat-bubble--mine{% else %}chat-bubble--theirs{% endif %}">
+              {{ msg.body }}
+            </div>
+            <div class="chat-bubble-time {% if msg.sender_role == role %}chat-bubble-time--right{% endif %}">
+              {{ msg.sent_at_display }}
+            </div>
+          </div>
+        </div>
+      {% endfor %}
+    {% else %}
+      <div class="chat-empty">No messages yet — start the conversation below.</div>
+    {% endif %}
+  </div>
+
+  <form class="chat-input-bar" id="chat-form">
+    {% csrf_token %}
+    <textarea
+      id="chat-input"
+      class="chat-input"
+      placeholder="Type a message about {{ child.name }}'s progress…"
+      rows="1"
+      maxlength="2000"
+    ></textarea>
+    <button type="submit" class="chat-send-btn" aria-label="Send">&#10148;</button>
+  </form>
+
+</section>
+
+<style>
+.chat-page {
+  max-width: 720px; margin: 0 auto;
+  display: flex; flex-direction: column;
+  height: calc(100vh - 80px);
+}
+
+.chat-topbar {
+  display: flex; align-items: center; gap: 14px;
+  padding: 12px 16px; border-bottom: 1px solid #e5e7eb; background: #fff;
+}
+.chat-back { color: #6c3ed4; text-decoration: none; font-weight: 700; font-size: .9rem; white-space: nowrap; }
+.chat-back:hover { text-decoration: underline; }
+.chat-topbar-info { display: flex; flex-direction: column; }
+.chat-topbar-info strong { font-size: .95rem; }
+.chat-topbar-info span { font-size: .78rem; color: #6b7280; }
+
+.chat-learner-banner {
+  display: flex; align-items: center; gap: 12px;
+  padding: 10px 16px; background: #f5f0ff; border-bottom: 1px solid #ddd6fe;
+}
+.chat-learner-avatar {
+  width: 36px; height: 36px; border-radius: 50%; flex-shrink: 0;
+  background: #ede9fe; color: #5b21b6;
+  display: flex; align-items: center; justify-content: center; font-weight: 700;
+}
+.chat-learner-name { font-size: .88rem; font-weight: 700; color: #3c3489; }
+.chat-learner-stats { font-size: .75rem; color: #6d28d9; }
+.chat-view-report {
+  margin-left: auto; font-size: .78rem; color: #6c3ed4;
+  text-decoration: none; border: 1px solid #c4b5fd; border-radius: 8px;
+  padding: 4px 10px; white-space: nowrap;
+}
+.chat-view-report:hover { background: #ede9fe; }
+
+.chat-messages {
+  flex: 1; overflow-y: auto;
+  padding: 16px; display: flex; flex-direction: column; gap: 12px;
+  background: #f9fafb;
+}
+.chat-empty { text-align: center; color: #9ca3af; font-size: .88rem; margin: auto; }
+
+.chat-bubble-wrap { display: flex; gap: 8px; align-items: flex-end; }
+.chat-bubble-wrap.mine { flex-direction: row-reverse; }
+
+.chat-bubble-avatar {
+  width: 30px; height: 30px; border-radius: 50%; flex-shrink: 0;
+  background: #e0e7ff; color: #3730a3;
+  display: flex; align-items: center; justify-content: center;
+  font-size: .75rem; font-weight: 700;
+}
+.chat-bubble-col { display: flex; flex-direction: column; max-width: 75%; }
+.chat-bubble {
+  padding: 10px 14px; border-radius: 16px;
+  font-size: .9rem; line-height: 1.5; word-break: break-word;
+}
+.chat-bubble--theirs { background: #fff; border: 1px solid #e5e7eb; border-bottom-left-radius: 4px; }
+.chat-bubble--mine { background: #6c3ed4; color: #fff; border-bottom-right-radius: 4px; }
+.chat-bubble-time { font-size: .68rem; color: #9ca3af; margin-top: 3px; padding: 0 4px; }
+.chat-bubble-time--right { text-align: right; }
+
+.chat-input-bar {
+  display: flex; gap: 10px; align-items: flex-end;
+  padding: 12px 16px; border-top: 1px solid #e5e7eb; background: #fff;
+}
+.chat-input {
+  flex: 1; border: 1px solid #d1d5db; border-radius: 12px;
+  padding: 10px 14px; font-size: .9rem; resize: none; font-family: inherit;
+  line-height: 1.4; max-height: 120px; overflow-y: auto;
+  transition: border-color .15s;
+}
+.chat-input:focus { outline: none; border-color: #6c3ed4; }
+.chat-send-btn {
+  width: 42px; height: 42px; border-radius: 50%; flex-shrink: 0;
+  background: #6c3ed4; color: #fff; border: none; font-size: 1.1rem;
+  cursor: pointer; display: flex; align-items: center; justify-content: center;
+  transition: background .15s, transform .1s;
+}
+.chat-send-btn:hover { background: #5b21b6; }
+.chat-send-btn:active { transform: scale(0.94); }
+.chat-send-btn:disabled { background: #d1d5db; cursor: not-allowed; }
+</style>
+
+<script>
+const CHILD_ID = {{ child.id }};
+const MY_ROLE  = "{{ role }}";
+
+const msgArea = document.getElementById('chat-messages');
+msgArea.scrollTop = msgArea.scrollHeight;
+
+const input = document.getElementById('chat-input');
+input.addEventListener('input', () => {
+  input.style.height = 'auto';
+  input.style.height = Math.min(input.scrollHeight, 120) + 'px';
+});
+input.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && !e.shiftKey) {
+    e.preventDefault();
+    document.getElementById('chat-form').requestSubmit();
+  }
+});
+
+function getCsrf() {
+  const val = `; ${document.cookie}`;
+  const parts = val.split('; csrftoken=');
+  if (parts.length === 2) return parts.pop().split(';').shift();
+  return document.querySelector('[name=csrfmiddlewaretoken]').value;
+}
+
+document.getElementById('chat-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const body = input.value.trim();
+  if (!body) return;
+
+  const btn = document.querySelector('.chat-send-btn');
+  btn.disabled = true;
+
+  try {
+    const res = await fetch(`/api/messages/${CHILD_ID}/send`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCsrf() },
+      credentials: 'same-origin',
+      body: JSON.stringify({ body }),
+    });
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || `Error ${res.status}`);
+    }
+    const msg = await res.json();
+
+    appendBubble(msg.sender_name, msg.body, 'mine', formatTime(msg.sent_at));
+    input.value = '';
+    input.style.height = 'auto';
+    msgArea.scrollTop = msgArea.scrollHeight;
+    document.querySelector('.chat-empty')?.remove();
+
+  } catch (err) {
+    console.error('Send error:', err);
+    alert('Could not send message: ' + err.message);
+  } finally {
+    btn.disabled = false;
+    input.focus();
+  }
+});
+
+function appendBubble(senderName, body, side, timeStr) {
+  const wrap = document.createElement('div');
+  wrap.className = `chat-bubble-wrap ${side}`;
+  const avatarHtml = side === 'theirs'
+    ? `<div class="chat-bubble-avatar">${senderName[0].toUpperCase()}</div>` : '';
+  wrap.innerHTML = `
+    ${avatarHtml}
+    <div class="chat-bubble-col">
+      <div class="chat-bubble chat-bubble--${side}">${escHtml(body)}</div>
+      <div class="chat-bubble-time ${side === 'mine' ? 'chat-bubble-time--right' : ''}">${timeStr}</div>
+    </div>`;
+  msgArea.appendChild(wrap);
+}
+
+function escHtml(s) {
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\n/g,'<br>');
+}
+
+function formatTime(iso) {
+  return new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+}
+
+// Poll for new messages every 15 seconds
+let lastCount = {{ messages_list|length }};
+setInterval(async () => {
+  try {
+    const res = await fetch(`/api/messages/${CHILD_ID}`, {
+      credentials: 'same-origin',
+      headers: { 'X-CSRFToken': getCsrf() },
+    });
+    if (!res.ok) return;
+    const data = await res.json();
+    if (data.messages.length > lastCount) {
+      data.messages.slice(lastCount).forEach(msg => {
+        appendBubble(msg.sender_name, msg.body,
+          msg.sender_role === MY_ROLE ? 'mine' : 'theirs',
+          formatTime(msg.sent_at));
+      });
+      lastCount = data.messages.length;
+      msgArea.scrollTop = msgArea.scrollHeight;
+    }
+  } catch (_) {}
+}, 15000);
+</script>
+{% endblock %}

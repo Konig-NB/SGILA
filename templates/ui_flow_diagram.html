@@ -1,0 +1,318 @@
+{% extends 'base.html' %}
+{% load static %}
+{% block title %}UI Flow Diagram - SGILA{% endblock %}
+{% block body_class %}diagram-body{% endblock %}
+{% block content %}
+<section class="diagram-page">
+  <div class="diagram-header">
+    <div>
+      <p class="eyebrow">Project diagram</p>
+      <h1>Editable Figma UI Flow</h1>
+      <p>Android Large frames for the learner, teacher, and parent SGILA app journeys.</p>
+    </div>
+    <div class="action-row">
+      <a class="btn btn-primary" href="#figma-editable-flow">Editable board</a>
+      <a class="btn btn-light" href="{% url 'download-ui-flow-pdf' %}">Download readable PDF</a>
+      <a class="btn btn-light" href="{% static 'diagrams/sgila_figma_pdf_style_board.png' %}" target="_blank">Flat backup</a>
+    </div>
+  </div>
+
+  <div class="diagram-frame editable-flow-frame">
+    <div id="figma-editable-flow" class="editable-flow-board android-flow-board">
+      <img class="android-bg android-bg-clouds" src="{% static 'img/welcome_back/page01_img01.png' %}" alt="">
+      <img class="android-bg android-bg-doodles" src="{% static 'img/welcome_back/page05_img01.png' %}" alt="">
+
+      <header class="android-flow-header">
+        <div class="android-brand-mark">S</div>
+        <div>
+          <p>Mobile application flow</p>
+          <h2>SGILA Android Large Role Journeys</h2>
+          <p class="android-subtitle">Every screen is drawn as an Android Large frame: 360 x 800. Learner, teacher, and parent paths are separated with clear arrows and role-specific screens.</p>
+        </div>
+        <img class="android-header-koaly" src="{% static 'img/koaly_cutout.png' %}" alt="Koaly mascot">
+      </header>
+
+      <div class="android-rainbow">
+        <span></span><span></span><span></span><span></span><span></span><span></span><span></span>
+      </div>
+
+      <section class="android-lane learner-android-lane">
+        <div class="android-lane-intro learner-intro">
+          <p>01</p>
+          <h3>Learner Path</h3>
+          <span>Mobile learner journey: sign in, home, lesson, story, practice, then multiplier results.</span>
+        </div>
+
+        <article class="android-frame learner-phone">
+          <div class="android-size-tag">Android Large 360 x 800</div>
+          <div class="phone-status"><span>9:41</span><b></b><i></i></div>
+          <div class="phone-tabs"><span class="active learner-tab">Learner</span><span>Teacher</span><span>Parent</span></div>
+          <main class="phone-body cloud-phone">
+            <h4>Welcome Back!</h4>
+            <p>Sign in or create a learner account.</p>
+            <div class="phone-input">Email address</div>
+            <div class="phone-input">Password</div>
+            <div class="phone-input">Grade 1</div>
+            <button class="phone-button yellow-btn">Continue</button>
+            <img class="phone-koaly" src="{% static 'img/koaly_cutout.png' %}" alt="">
+          </main>
+          <div class="phone-nav"><span>D</span><span>L</span><span>A</span><span>P</span></div>
+        </article>
+
+        <div class="android-arrow yellow-line"><span>role route</span><svg viewBox="0 0 110 80"><line x1="4" y1="40" x2="72" y2="40"></line><polygon points="72,15 108,40 72,65"></polygon></svg></div>
+
+        <article class="android-frame learner-phone">
+          <div class="android-size-tag">Android Large 360 x 800</div>
+          <div class="phone-status"><span>9:41</span><b></b><i></i></div>
+          <div class="phone-tabs"><span class="active learner-tab">Learner</span><span>Teacher</span><span>Parent</span></div>
+          <main class="phone-body balloon-phone">
+            <h4>Hey, Iyaphilisa!</h4>
+            <p>Learner home screen with lessons and rewards.</p>
+            <div class="phone-metric-row"><strong>10 Lessons</strong><strong>0 Stars</strong></div>
+            <div class="mobile-reward-row"><span>1x</span><span>2x</span><span>3x</span></div>
+            <button class="phone-button cyan-btn">Start learning</button>
+            <img class="phone-koaly lower" src="{% static 'img/koaly_cutout.png' %}" alt="">
+          </main>
+          <div class="phone-nav"><span>D</span><span>L</span><span>A</span><span>P</span></div>
+        </article>
+
+        <div class="android-arrow green-line"><span>select lesson</span><svg viewBox="0 0 110 80"><line x1="4" y1="40" x2="72" y2="40"></line><polygon points="72,15 108,40 72,65"></polygon></svg></div>
+
+        <article class="android-frame learner-phone">
+          <div class="android-size-tag">Android Large 360 x 800</div>
+          <div class="phone-status"><span>9:41</span><b></b><i></i></div>
+          <div class="phone-tabs"><span class="active learner-tab">Learner</span><span>Teacher</span><span>Parent</span></div>
+          <main class="phone-body doodle-phone">
+            <h4>Your Lessons</h4>
+            <p>Choose a story for today.</p>
+            <img class="mobile-lesson-covers" src="{% static 'img/welcome_back/page08_img03.png' %}" alt="">
+            <div class="mobile-story-card"><b>Lerato's Fruit Basket</b><span>New story</span></div>
+            <button class="phone-button orange-btn">Open story</button>
+          </main>
+          <div class="phone-nav"><span>D</span><span>L</span><span>A</span><span>P</span></div>
+        </article>
+
+        <div class="android-arrow blue-line"><span>read story</span><svg viewBox="0 0 110 80"><line x1="4" y1="40" x2="72" y2="40"></line><polygon points="72,15 108,40 72,65"></polygon></svg></div>
+
+        <article class="android-frame learner-phone">
+          <div class="android-size-tag">Android Large 360 x 800</div>
+          <div class="phone-status"><span>9:41</span><b></b><i></i></div>
+          <div class="phone-tabs"><span class="active learner-tab">Learner</span><span>Teacher</span><span>Parent</span></div>
+          <main class="phone-body cloud-phone">
+            <h4>Story Reader</h4>
+            <p>Read, listen, and follow highlighted words.</p>
+            <div class="reader-card">Lerato has <mark>red</mark>, <mark>yellow</mark>, and <mark>green</mark> fruit.</div>
+            <button class="phone-button blue-btn">Play audio</button>
+            <button class="phone-button purple-btn second-mobile-button">Next page</button>
+          </main>
+          <div class="phone-nav"><span>D</span><span>L</span><span>A</span><span>P</span></div>
+        </article>
+
+        <div class="android-arrow purple-line"><span>practice</span><svg viewBox="0 0 110 80"><line x1="4" y1="40" x2="72" y2="40"></line><polygon points="72,15 108,40 72,65"></polygon></svg></div>
+
+        <article class="android-frame learner-phone">
+          <div class="android-size-tag">Android Large 360 x 800</div>
+          <div class="phone-status"><span>9:41</span><b></b><i></i></div>
+          <div class="phone-tabs"><span class="active learner-tab">Learner</span><span>Teacher</span><span>Parent</span></div>
+          <main class="phone-body balloon-phone">
+            <h4>Reward Multiplier</h4>
+            <p>Correct answers unlock mascot feedback, stars, and score boosts.</p>
+            <div class="mobile-multiplier"><strong>2x</strong><span>Stars earned</span><b>Score saved</b></div>
+            <button class="phone-button pink-btn">See rewards</button>
+            <img class="phone-koaly lower" src="{% static 'img/koaly_cutout.png' %}" alt="">
+          </main>
+          <div class="phone-nav"><span>D</span><span>L</span><span>A</span><span>P</span></div>
+        </article>
+      </section>
+
+      <section class="android-lane teacher-android-lane">
+        <div class="android-lane-intro teacher-intro">
+          <p>02</p>
+          <h3>Teacher Path</h3>
+          <span>Mobile teacher journey: sign in, dashboard, learner list, report, notes, export.</span>
+        </div>
+
+        <article class="android-frame teacher-phone">
+          <div class="android-size-tag">Android Large 360 x 800</div>
+          <div class="phone-status"><span>9:41</span><b></b><i></i></div>
+          <div class="phone-tabs"><span>Learner</span><span class="active teacher-tab">Teacher</span><span>Parent</span></div>
+          <main class="phone-body doodle-phone">
+            <h4>Welcome, Miss Hlengwa</h4>
+            <p>Teacher signs in to the class workspace.</p>
+            <div class="phone-input">School email</div>
+            <div class="phone-input">Password</div>
+            <button class="phone-button cyan-btn">Continue</button>
+          </main>
+          <div class="phone-nav"><span>D</span><span>L</span><span>A</span><span>P</span></div>
+        </article>
+
+        <div class="android-arrow cyan-line"><span>role route</span><svg viewBox="0 0 110 80"><line x1="4" y1="40" x2="72" y2="40"></line><polygon points="72,15 108,40 72,65"></polygon></svg></div>
+
+        <article class="android-frame teacher-phone">
+          <div class="android-size-tag">Android Large 360 x 800</div>
+          <div class="phone-status"><span>9:41</span><b></b><i></i></div>
+          <div class="phone-tabs"><span>Learner</span><span class="active teacher-tab">Teacher</span><span>Parent</span></div>
+          <main class="phone-body cloud-phone">
+            <h4>Class Dashboard</h4>
+            <p>Shows learner progress, class average, and alerts.</p>
+            <div class="phone-metric-row"><strong>15 Learners</strong><strong>72% Avg</strong></div>
+            <div class="mobile-alert">4 learners need support</div>
+            <button class="phone-button blue-btn">View learners</button>
+          </main>
+          <div class="phone-nav"><span>D</span><span>L</span><span>A</span><span>P</span></div>
+        </article>
+
+        <div class="android-arrow blue-line"><span>monitor</span><svg viewBox="0 0 110 80"><line x1="4" y1="40" x2="72" y2="40"></line><polygon points="72,15 108,40 72,65"></polygon></svg></div>
+
+        <article class="android-frame teacher-phone">
+          <div class="android-size-tag">Android Large 360 x 800</div>
+          <div class="phone-status"><span>9:41</span><b></b><i></i></div>
+          <div class="phone-tabs"><span>Learner</span><span class="active teacher-tab">Teacher</span><span>Parent</span></div>
+          <main class="phone-body balloon-phone">
+            <h4>Learner List</h4>
+            <p>Select a learner to review.</p>
+            <div class="phone-row">Iyaphilisa Mkhabela <b>0/10</b></div>
+            <div class="phone-row">Lethu Mokoena <b>2/10</b></div>
+            <div class="phone-row">Kamogelo Sishi <b>3/10</b></div>
+          </main>
+          <div class="phone-nav"><span>D</span><span>L</span><span>A</span><span>P</span></div>
+        </article>
+
+        <div class="android-arrow purple-line"><span>open report</span><svg viewBox="0 0 110 80"><line x1="4" y1="40" x2="72" y2="40"></line><polygon points="72,15 108,40 72,65"></polygon></svg></div>
+
+        <article class="android-frame teacher-phone">
+          <div class="android-size-tag">Android Large 360 x 800</div>
+          <div class="phone-status"><span>9:41</span><b></b><i></i></div>
+          <div class="phone-tabs"><span>Learner</span><span class="active teacher-tab">Teacher</span><span>Parent</span></div>
+          <main class="phone-body doodle-phone">
+            <h4>Detailed Report</h4>
+            <p>Scores by activity and recommended focus area.</p>
+            <img class="mobile-chart" src="{% static 'img/welcome_back/page10_img03.png' %}" alt="">
+            <div class="phone-row">Writing: practise vowels</div>
+            <div class="phone-row">Audio: replay words</div>
+          </main>
+          <div class="phone-nav"><span>D</span><span>L</span><span>A</span><span>P</span></div>
+        </article>
+
+        <div class="android-arrow pink-line"><span>share</span><svg viewBox="0 0 110 80"><line x1="4" y1="40" x2="72" y2="40"></line><polygon points="72,15 108,40 72,65"></polygon></svg></div>
+
+        <article class="android-frame teacher-phone">
+          <div class="android-size-tag">Android Large 360 x 800</div>
+          <div class="phone-status"><span>9:41</span><b></b><i></i></div>
+          <div class="phone-tabs"><span>Learner</span><span class="active teacher-tab">Teacher</span><span>Parent</span></div>
+          <main class="phone-body cloud-phone">
+            <h4>Comments &amp; Export</h4>
+            <p>Send teacher notes and download progress reports.</p>
+            <div class="phone-input">Add parent comment</div>
+            <button class="phone-button orange-btn">Send note</button>
+            <button class="phone-button purple-btn second-mobile-button">Download PDF</button>
+          </main>
+          <div class="phone-nav"><span>D</span><span>L</span><span>A</span><span>P</span></div>
+        </article>
+      </section>
+
+      <section class="android-lane parent-android-lane">
+        <div class="android-lane-intro parent-intro">
+          <p>03</p>
+          <h3>Parent Path</h3>
+          <span>Mobile parent journey: sign in, dashboard, child profile, progress, comments.</span>
+        </div>
+
+        <article class="android-frame parent-phone">
+          <div class="android-size-tag">Android Large 360 x 800</div>
+          <div class="phone-status"><span>9:41</span><b></b><i></i></div>
+          <div class="phone-tabs"><span>Learner</span><span>Teacher</span><span class="active parent-tab">Parent</span></div>
+          <main class="phone-body balloon-phone">
+            <h4>Welcome, Mommy!</h4>
+            <p>Parent signs in to view linked learners.</p>
+            <div class="phone-input">Email address</div>
+            <div class="phone-input">Password</div>
+            <button class="phone-button purple-btn">Continue</button>
+            <img class="mobile-parent-face" src="{% static 'img/welcome_back/page09_img03.png' %}" alt="">
+          </main>
+          <div class="phone-nav"><span>D</span><span>L</span><span>A</span><span>P</span></div>
+        </article>
+
+        <div class="android-arrow purple-line"><span>role route</span><svg viewBox="0 0 110 80"><line x1="4" y1="40" x2="72" y2="40"></line><polygon points="72,15 108,40 72,65"></polygon></svg></div>
+
+        <article class="android-frame parent-phone">
+          <div class="android-size-tag">Android Large 360 x 800</div>
+          <div class="phone-status"><span>9:41</span><b></b><i></i></div>
+          <div class="phone-tabs"><span>Learner</span><span>Teacher</span><span class="active parent-tab">Parent</span></div>
+          <main class="phone-body doodle-phone">
+            <h4>Parent Dashboard</h4>
+            <p>Child progress and teacher alerts at a glance.</p>
+            <div class="phone-metric-row"><strong>1 Child</strong><strong>3 Alerts</strong></div>
+            <div class="mobile-alert purple-alert">Teacher comment waiting</div>
+            <button class="phone-button pink-btn">View child</button>
+          </main>
+          <div class="phone-nav"><span>D</span><span>L</span><span>A</span><span>P</span></div>
+        </article>
+
+        <div class="android-arrow pink-line"><span>choose child</span><svg viewBox="0 0 110 80"><line x1="4" y1="40" x2="72" y2="40"></line><polygon points="72,15 108,40 72,65"></polygon></svg></div>
+
+        <article class="android-frame parent-phone">
+          <div class="android-size-tag">Android Large 360 x 800</div>
+          <div class="phone-status"><span>9:41</span><b></b><i></i></div>
+          <div class="phone-tabs"><span>Learner</span><span>Teacher</span><span class="active parent-tab">Parent</span></div>
+          <main class="phone-body cloud-phone">
+            <h4>Your Children</h4>
+            <p>Select a learner profile.</p>
+            <div class="phone-row">Iyaphilisa Mkhabela <b>Grade 1</b></div>
+            <div class="mobile-progress"><span style="width: 42%"></span></div>
+            <button class="phone-button blue-btn">Open profile</button>
+          </main>
+          <div class="phone-nav"><span>D</span><span>L</span><span>A</span><span>P</span></div>
+        </article>
+
+        <div class="android-arrow blue-line"><span>review</span><svg viewBox="0 0 110 80"><line x1="4" y1="40" x2="72" y2="40"></line><polygon points="72,15 108,40 72,65"></polygon></svg></div>
+
+        <article class="android-frame parent-phone">
+          <div class="android-size-tag">Android Large 360 x 800</div>
+          <div class="phone-status"><span>9:41</span><b></b><i></i></div>
+          <div class="phone-tabs"><span>Learner</span><span>Teacher</span><span class="active parent-tab">Parent</span></div>
+          <main class="phone-body balloon-phone">
+            <h4>Progress Report</h4>
+            <p>Scores and recommended focus areas.</p>
+            <div class="phone-row">Writing &amp; spelling</div>
+            <div class="phone-row">Audio pronunciation</div>
+            <div class="phone-row">Comprehension</div>
+            <img class="mobile-chart lower-chart" src="{% static 'img/welcome_back/page10_img03.png' %}" alt="">
+          </main>
+          <div class="phone-nav"><span>D</span><span>L</span><span>A</span><span>P</span></div>
+        </article>
+
+        <div class="android-arrow green-line"><span>support</span><svg viewBox="0 0 110 80"><line x1="4" y1="40" x2="72" y2="40"></line><polygon points="72,15 108,40 72,65"></polygon></svg></div>
+
+        <article class="android-frame parent-phone">
+          <div class="android-size-tag">Android Large 360 x 800</div>
+          <div class="phone-status"><span>9:41</span><b></b><i></i></div>
+          <div class="phone-tabs"><span>Learner</span><span>Teacher</span><span class="active parent-tab">Parent</span></div>
+          <main class="phone-body doodle-phone">
+            <h4>Comments</h4>
+            <p>Read teacher notes and download the progress report.</p>
+            <div class="phone-input">Practise vowels this week</div>
+            <button class="phone-button orange-btn">Download report</button>
+            <img class="phone-koaly lower" src="{% static 'img/koaly_cutout.png' %}" alt="">
+          </main>
+          <div class="phone-nav"><span>D</span><span>L</span><span>A</span><span>P</span></div>
+        </article>
+      </section>
+
+      <section class="android-services">
+        <div>
+          <p>Shared SGILA services</p>
+          <h3>One learning record powers mobile rewards plus parent and teacher dashboards.</h3>
+        </div>
+        <span>Session auth</span>
+        <span>Role routing</span>
+        <span>Lessons</span>
+        <span>Scores &amp; stars</span>
+        <span>Reports</span>
+        <span>Comments</span>
+      </section>
+    </div>
+  </div>
+  <script src="https://mcp.figma.com/mcp/html-to-design/capture.js" async></script>
+</section>
+{% endblock %}

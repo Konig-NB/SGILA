@@ -1,0 +1,37 @@
+{% extends 'base.html' %}
+{% load static %}
+{% block title %}Sign in - SGILA{% endblock %}
+{% block content %}
+<section class="auth-layout auth-compact role-{{ role }}">
+  <aside class="auth-intro">
+    <img class="auth-koaly-peek" src="{% static 'img/koaly_cutout.png' %}" alt="" aria-hidden="true">
+    <p class="eyebrow">Welcome back</p>
+    <h1>Sign in</h1>
+    <p>Continue with the right dashboard for your role.</p>
+    <div class="tabs">
+      <a class="{% if role == 'learner' %}active{% endif %}" href="/login?role=learner">Learner</a>
+      <a class="{% if role == 'parent' %}active{% endif %}" href="/login?role=parent">Parent</a>
+      <a class="{% if role == 'teacher' %}active{% endif %}" href="/login?role=teacher">Teacher</a>
+    </div>
+  </aside>
+
+  <form class="form-card auth-card-blue" method="POST" action="/login">
+    {% csrf_token %}
+    <input type="hidden" name="role" value="{{ role }}">
+    <h2>{{ role|title }} login</h2>
+    {% if role == 'learner' %}
+      <label>Username<input type="text" name="email" autocomplete="username" placeholder="e.g. fefe" required></label>
+    {% else %}
+      <label>Email<input type="email" name="email" autocomplete="email" required></label>
+    {% endif %}
+    <label>Password<input type="password" name="password" required></label>
+    {% if role != 'learner' %}
+    <p class="form-note" style="text-align:right; margin-top:-.5rem;">
+      <a href="/forgot-password?role={{ role }}">Forgot password?</a>
+    </p>
+    {% endif %}
+    <button class="btn btn-primary btn-full" type="submit">Sign in</button>
+    <p class="form-note">New here? <a href="/register?role={{ role }}">Create account</a></p>
+  </form>
+</section>
+{% endblock %}

@@ -1,0 +1,65 @@
+{% extends 'base.html' %}
+{% load static %}
+{% block title %}Register - SGILA{% endblock %}
+{% block content %}
+<section class="auth-layout role-{{ role }}">
+  <aside class="auth-intro">
+    <img class="auth-koaly-peek" src="{% static 'img/koaly_cutout.png' %}" alt="" aria-hidden="true">
+    <p class="eyebrow">Create account</p>
+    <h1>Join SGILA</h1>
+    <p>Choose the account type that matches your role.</p>
+    <div class="tabs register-tabs">
+      <a class="{% if role == 'parent' %}active{% endif %}" href="/register?role=parent">Parent</a>
+      <a class="{% if role == 'teacher' %}active{% endif %}" href="/register?role=teacher">Teacher</a>
+    </div>
+  </aside>
+
+  <form class="form-card auth-card-blue" method="POST" action="/register">
+    {% csrf_token %}
+    <input type="hidden" name="role" value="{{ role }}">
+
+    {% if role == 'parent' %}
+      <h2>Parent registration</h2>
+      <label>Full name<input type="text" name="full_name" required></label>
+      <label>Email<input type="email" name="email" required></label>
+      <label>Phone<input type="text" name="phone"></label>
+      <label>Password<input type="password" name="password" required></label>
+      <input type="hidden" name="accepted_popia" value="true">
+      <p class="terms-notice">By clicking create account you agree to Sgila's <a href="/terms" class="terms-link" target="_blank">Terms &amp; Conditions</a></p>
+      <button class="btn btn-primary btn-full" type="submit">Create parent account</button>
+    {% else %}
+      <h2>Teacher registration</h2>
+      <label>Full name<input type="text" name="full_name" required></label>
+      <label>Work email<input type="email" name="email" required></label>
+      <label>School name<input type="text" name="school_name" required></label>
+      <label>Grades taught<input type="text" name="grades_taught" placeholder="e.g. 1, 2"></label>
+      <label>Password<input type="password" name="password" required></label>
+      <input type="hidden" name="accepted_popia" value="true">
+      <p class="terms-notice">By clicking create account you agree to Sgila's <a href="/terms" class="terms-link" target="_blank">Terms &amp; Conditions</a></p>
+      <button class="btn btn-mint btn-full" type="submit">Create teacher account</button>
+    {% endif %}
+    <p class="form-note">Already have an account? <a href="/login?role={{ role }}">Sign in</a></p>
+  </form>
+</section>
+
+<style>
+  .terms-notice {
+    font-size: 0.82rem;
+    color: #6b7280;
+    margin: 0.25rem 0 0.75rem;
+    text-align: center;
+    line-height: 1.5;
+  }
+  .terms-link {
+    color: #3b82f6;
+    font-weight: 600;
+    text-decoration: underline;
+    text-underline-offset: 2px;
+    cursor: pointer;
+    transition: color 0.15s ease;
+  }
+  .terms-link:hover {
+    color: #1d4ed8;
+  }
+</style>
+{% endblock %}

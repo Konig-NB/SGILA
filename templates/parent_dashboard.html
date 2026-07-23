@@ -1,0 +1,77 @@
+{% extends 'base.html' %}
+{% block title %}Parent Dashboard - SGILA{% endblock %}
+{% block content %}
+<section class="parent-picker-page">
+  <header class="pd-hero">
+    <div>
+      <p class="eyebrow">Parent dashboard</p>
+      <h1>Hello, {{ parent.full_name }}!</h1>
+      <p>Choose a child to open their learner progress report.</p>
+    </div>
+    <a href="/parent/add-child" class="pd-add-child">Add child</a>
+  </header>
+
+  <section class="pd-summary-strip" aria-label="Parent dashboard summary">
+    <article><span>Children</span><strong>{{ cards|length }}</strong></article>
+    <article><span>Lessons done</span><strong>{{ total_lessons_done }}</strong></article>
+    <article><span>Total stars</span><strong>{{ total_stars }}</strong></article>
+    <article><span>Average</span><strong>{{ overall_average }}%</strong></article>
+  </section>
+
+  {% if cards %}
+    <div class="pd-section-hdr">Your children</div>
+    <div class="lr-rows">
+      {% for card in cards %}
+        <article class="lr-row {% cycle 'c0' 'c1' 'c2' 'c3' 'c4' %}">
+          <div class="lr-avatar {% if card.child.photo %}has-photo{% endif %}">
+            {% if card.child.photo %}
+              <img src="{{ card.child.photo.url }}" alt="{{ card.child.name }} photo">
+            {% else %}
+              {{ card.child.name|slice:":1" }}
+            {% endif %}
+          </div>
+
+          <div class="lr-info">
+            <div class="lr-name">{{ card.child.name }}</div>
+            <div class="lr-username">@{{ card.child.username|title|default:card.child.parent_email }}</div>
+            <div class="lr-sub">Grade {{ card.child.grade }} - {{ card.lessons_done }}/{{ card.total_lessons }} lessons done</div>
+            {% if card.teacher_class %}
+              <div class="lr-class-tag">{{ card.teacher_class.name }} - {{ card.teacher.full_name }}</div>
+            {% elif card.teacher %}
+              <div class="lr-class-tag">{{ card.teacher.full_name }}'s class</div>
+            {% else %}
+              <div class="lr-class-tag muted">No class linked yet</div>
+            {% endif %}
+          </div>
+
+          <div class="lr-prog">
+            <div class="lr-bar-top"><span>Lessons</span><span>{{ card.lessons_done }}/{{ card.total_lessons }}</span></div>
+            <div class="lr-bar-track">
+              <div class="lr-bar-fill {% if card.average >= 70 %}green{% elif card.average >= 50 %}amber{% else %}red{% endif %}"
+                   style="width: {{ card.progress_percent }}%;"></div>
+            </div>
+          </div>
+
+          <div class="lr-stars" aria-label="{{ card.stars }} stars">
+            {% for i in "123" %}{% if forloop.counter <= card.stars %}&#9733;{% else %}&#9734;{% endif %}{% endfor %}
+          </div>
+
+          <div class="lr-actions">
+            <a href="/dashboard/{{ card.child.id }}" class="lr-btn">Report</a>
+            <form action="/parent/delete-child/{{ card.child.id }}" method="post" class="lr-delete-form" onsubmit="return confirm('Delete this learner profile permanently? This cannot be undone.');">
+              {% csrf_token %}
+              <button type="submit" class="lr-btn lr-btn-danger">Delete</button>
+            </form>
+          </div>
+        </article>
+      {% endfor %}
+    </div>
+  {% else %}
+    <section class="parent-empty-card">
+      <strong>No child profiles yet</strong>
+      <p>Add your first child to begin tracking learning progress.</p>
+      <a href="/parent/add-child" class="btn btn-primary">Add child</a>
+    </section>
+  {% endif %}
+</section>
+{% endblock %}

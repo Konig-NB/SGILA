@@ -1,0 +1,163 @@
+{% extends 'base.html' %}
+{% load static %}
+{% block title %}Questions - SGILA{% endblock %}
+{% block content %}
+<section class="activity-shell">
+  <div class="activity-top">
+    <a href="/lessons/{{ lesson_id }}/story" class="back-link">Back to story</a>
+    <span class="step-pill">Comprehension</span>
+  </div>
+  <h1>Comprehension questions</h1>
+  <div id="mascot-reaction" class="mascot"><img src="{% static 'img/koaly_cutout.png' %}" alt=""> <span>Koaly</span></div>
+  <div id="message-area" class="message-area hidden"></div>
+  <div class="center">
+    <button id="next-question-btn" class="btn btn-primary hidden" type="button">Next question</button>
+  </div>
+  <div id="question-area">
+    <p id="question-text" class="question-text"></p>
+    <div id="options-area" class="options-grid"></div>
+  </div>
+  <div id="results-area" class="center hidden">
+    <p>Well done. Your answers are saved for this lesson.</p>
+    {% if lesson.grade == 4 %}
+      <a href="/lessons/{{ lesson_id }}/sequencing" class="btn btn-primary">Next activity</a>
+    {% else %}
+      <a href="/lessons/{{ lesson_id }}/visual-activity" class="btn btn-primary">Next activity</a>
+    {% endif %}
+  </div>
+</section>
+<script>
+const childId = {{ child_id }};
+const lessonId = {{ lesson_id }};
+const totalQuestions = {{ total_questions }};
+const storageKey = `sgila_lesson_${lessonId}`;
+let questions = [];
+let current = 0;
+let score = 0;
+const nextQuestionBtn = document.getElementById('next-question-btn');
+const mascot = document.getElementById('mascot-reaction');
+const msgArea = document.getElementById('message-area');
+const KOALY_IMAGES = {
+  ready: "{% static 'img/koaly_cutout.png' %}",
+  happy: "{% static 'img/koaly_happy.png' %}",
+  sad: "{% static 'img/koaly_sad.png' %}",
+};
+let answerAudioContext = null;
+
+function setMascot(reaction, label) {
+  mascot.className = `mascot reactive-koaly koaly-${reaction}`;
+  mascot.querySelector('img').src = KOALY_IMAGES[reaction] || KOALY_IMAGES.ready;
+  mascot.querySelector('span').textContent = label;
+}
+
+function primeAnswerAudio() {
+  const AudioContext = window.AudioContext || window.webkitAudioContext;
+  if (!AudioContext) return null;
+  if (!answerAudioContext) answerAudioContext = new AudioContext();
+  if (answerAudioContext.state === 'suspended') answerAudioContext.resume();
+  return answerAudioContext;
+}
+
+function playTone(ctx, start, frequency, duration, type, volume) {
+  const oscillator = ctx.createOscillator();
+  const gain = ctx.createGain();
+  oscillator.type = type;
+  oscillator.frequency.setValueAtTime(frequency, start);
+  gain.gain.setValueAtTime(0.0001, start);
+  gain.gain.exponentialRampToValueAtTime(volume, start + 0.025);
+  gain.gain.exponentialRampToValueAtTime(0.0001, start + duration);
+  oscillator.connect(gain);
+  gain.connect(ctx.destination);
+  oscillator.start(start);
+  oscillator.stop(start + duration + 0.02);
+}
+
+function playAnswerSound(correct) {
+  const ctx = primeAnswerAudio();
+  if (!ctx) return;
+  const now = ctx.currentTime + 0.02;
+  if (correct) {
+    playTone(ctx, now, 523.25, 0.12, 'sine', 0.12);
+    playTone(ctx, now + 0.1, 659.25, 0.13, 'sine', 0.12);
+    playTone(ctx, now + 0.21, 783.99, 0.18, 'triangle', 0.10);
+  } else {
+    playTone(ctx, now, 220, 0.16, 'triangle', 0.10);
+    playTone(ctx, now + 0.15, 164.81, 0.22, 'sine', 0.08);
+  }
+}
+
+function saveScore() {
+  const existing = JSON.parse(sessionStorage.getItem(storageKey) || '{}');
+  existing.comprehension_score = score;
+  existing.comprehension_total = totalQuestions;
+  sessionStorage.setItem(storageKey, JSON.stringify(existing));
+}
+
+async function loadQuestions() {
+  const res = await fetch(`/api/lessons/${lessonId}/questions`);
+  questions = await res.json();
+  showQuestion();
+}
+
+function showQuestion() {
+  if (current >= questions.length) {
+    saveScore();
+    document.getElementById('question-area').classList.add('hidden');
+    document.getElementById('results-area').classList.remove('hidden');
+    nextQuestionBtn.classList.add('hidden');
+    msgArea.classList.add('hidden');
+    setMascot('happy', 'Great work!');
+    return;
+  }
+  setMascot('ready', 'Koaly');
+  msgArea.classList.add('hidden');
+  nextQuestionBtn.classList.add('hidden');
+  const q = questions[current];
+  document.getElementById('question-text').textContent = `Q${current + 1}: ${q.question}`;
+  const area = document.getElementById('options-area');
+  area.innerHTML = '';
+  q.options.forEach((opt) => {
+    const btn = document.createElement('button');
+    btn.className = 'btn btn-option';
+    btn.textContent = opt;
+    btn.onclick = () => checkAnswer(q.question_id, opt);
+    area.appendChild(btn);
+  });
+}
+
+async function checkAnswer(questionId, answer) {
+  primeAnswerAudio();
+  const optionButtons = document.querySelectorAll('#options-area button');
+  optionButtons.forEach((button) => button.disabled = true);
+  const res = await fetch('/api/check-answer', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({child_id: childId, lesson_id: lessonId, question_id: questionId, child_answer: answer})
+  });
+  const data = await res.json();
+  optionButtons.forEach((button) => {
+    const optionText = button.textContent.trim();
+    if (optionText === answer) {
+      button.classList.add(data.correct ? 'choice-correct' : 'choice-wrong');
+    }
+    if (!data.correct && optionText === data.correct_answer) {
+      button.classList.add('choice-correct');
+    }
+  });
+  msgArea.className = `message-area ${data.correct ? 'correct' : 'wrong'}`;
+  msgArea.textContent = data.message;
+  setMascot(data.correct ? 'happy' : 'sad', data.correct ? 'Great!' : 'Try again');
+  playAnswerSound(data.correct);
+  if (data.correct) score++;
+  nextQuestionBtn.textContent = current === questions.length - 1 ? 'Finish questions' : 'Next question';
+  nextQuestionBtn.classList.remove('hidden');
+}
+
+nextQuestionBtn.addEventListener('click', () => {
+  current++;
+  showQuestion();
+});
+
+loadQuestions();
+</script>
+{% endblock %}

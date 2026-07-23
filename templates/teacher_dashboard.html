@@ -1,0 +1,88 @@
+{% extends 'base.html' %}
+{% block title %}Teacher Dashboard - SGILA{% endblock %}
+{% block content %}
+<section class="portal-dashboard teacher-portal">
+  <header class="portal-hero">
+    <div>
+      <p class="eyebrow">Teacher dashboard</p>
+      <h1>Hello, {{ teacher.full_name }}</h1>
+      <p>{{ teacher.school_name }}{% if teacher.grades_taught %} - Grades {{ teacher.grades_taught }}{% endif %}</p>
+    </div>
+  </header>
+
+  <section class="portal-metrics" aria-label="Teacher dashboard summary">
+    <article><span>Learners</span><strong>{{ total_learners }}</strong></article>
+    <article><span>Class average</span><strong>{{ class_average }}%</strong></article>
+    <article><span>Need support</span><strong>{{ needs_help_count }}</strong></article>
+    <article><span>Lessons done</span><strong>{{ total_lessons_done }}</strong></article>
+  </section>
+
+  <section class="class-code-panel">
+    <div>
+      <p class="eyebrow">Teacher code</p>
+      <h2>Share this with parents</h2>
+      <p>Parents can enter a code when adding a child, and the learner will appear on this dashboard.</p>
+    </div>
+    <div class="class-code-list">
+      <article>
+        <span>Teacher code</span>
+        <strong>{{ teacher.class_code }}</strong>
+      </article>
+    </div>
+  </section>
+
+  {% if total_learners == 0 %}
+    <div class="portal-empty">
+      <strong>No learners found yet.</strong>
+      <p>Learners will appear here when their school and grade match this teacher profile.</p>
+    </div>
+  {% endif %}
+
+  {% for section in grade_sections %}
+    <section class="portal-section">
+      <div class="portal-section-header">
+        <div>
+          <p class="eyebrow">Grade {{ section.grade }}</p>
+          <h2>Class progress</h2>
+        </div>
+        <div class="section-summary">
+          <span>{{ section.rows|length }} learners</span>
+          <span>{{ section.class_average }}% average</span>
+          {% if section.needs_help_count %}
+            <span class="needs-help-text">{{ section.needs_help_count }} need support</span>
+          {% endif %}
+        </div>
+      </div>
+
+      <div class="portal-row-list">
+        {% for row in section.rows %}
+          <article class="portal-row {% cycle 'tone-sun' 'tone-mint' 'tone-blue' 'tone-pink' 'tone-violet' %} {% if row.needs_help %}needs-help{% endif %}">
+            <div class="portal-avatar">{{ row.learner.name|slice:":1" }}</div>
+            <div class="portal-learner-copy">
+              <h3>{{ row.learner.name }}</h3>
+              <p>Grade {{ row.learner.grade }}{% if row.learner.school_name %} - {{ row.learner.school_name }}{% endif %}</p>
+              {% if row.latest %}
+                <small>Latest: {{ row.latest.lesson.title }} on {{ row.latest.completed_on|date:"d M Y" }}</small>
+              {% else %}
+                <small>No lessons completed yet</small>
+              {% endif %}
+            </div>
+            <div class="portal-progress-block">
+              <div class="portal-progress-top">
+                <span>Progress</span>
+                <strong>{{ row.lessons_done }}/{{ row.total_lessons }}</strong>
+              </div>
+              <div class="portal-progress-track" aria-hidden="true">
+                <span style="--progress: {{ row.progress_percent }}%;"></span>
+              </div>
+            </div>
+            <div class="portal-stat"><strong>{{ row.average }}%</strong><span>Average</span></div>
+            <div class="portal-stat"><strong>{{ row.stars }}</strong><span>Stars</span></div>
+            <a href="/dashboard/{{ row.learner.id }}" class="btn btn-light portal-row-action">Report</a>
+          </article>
+        {% endfor %}
+      </div>
+    </section>
+  {% endfor %}
+</section>
+{% endblock %}

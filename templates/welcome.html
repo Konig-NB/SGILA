@@ -1,0 +1,80 @@
+{% extends 'base.html' %}
+{% load static %}
+{% block title %}SGILA Reading App{% endblock %}
+{% block content %}
+<section class="hero">
+  <div class="hero-copy" >
+    <p class="eyebrow">Bringing meaning to every story!</p>
+    <h1>SGILA</h1>
+    <p>A fun, interactive reading app designed for foundation <br> phase learners</p>
+    <section class="quick-roles">
+      <a href="/login?role=learner" class="role-tile" style="background-color: #ffd22e; border-color: #ffe68a;border-width: thick; width:20rem ;">
+
+        <strong>Learner</strong>
+
+      </a>
+      <a href="/register?role=parent" class="role-tile" style="background-color:#83a8f6;border-color: #9cbbff;border-width: thick; width:20rem;">
+
+        <strong>Parent</strong>
+
+      </a>
+      <a href="/register?role=teacher" class="role-tile" style="background-color: #5bdad4; border-color: #94fef5; border-width: thick; width:20rem;">
+        <strong>Teacher</strong>
+      </a>
+    </section>
+  </div>
+  <div class="hero-mascot hero-web-preview" id="home-koaly-zone">
+    <div class="web-preview-panel reactive-koaly koaly-ready" id="home-koaly-card" aria-live="polite">
+      <div class="web-preview-copy">
+        <span class="status-chip" id="home-koaly-label">Hi there I'm Koaly!</span>
+        <h2>Welcome</h2>
+        <p>Open your dashboard, continue Lerato's Fruit Basket, listen to voiceover, and earn stars.</p>
+        <div class="desktop-progress-row">
+          <span class="rainbow-dot red"></span>
+          <span class="rainbow-dot orange"></span>
+          <span class="rainbow-dot yellow"></span>
+          <span class="rainbow-dot green"></span>
+          <span class="rainbow-dot blue"></span>
+          <span class="rainbow-dot violet"></span>
+        </div>
+      </div>
+      <div class="web-preview-visual">
+        <img src="{% static 'img/koaly_cutout.png' %}" alt="Koaly reading mascot">
+        <span id="home-koaly-state">Move over Koaly or click for a reaction.</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+
+<script>
+  (() => {
+    const card = document.getElementById('home-koaly-card');
+    const label = document.getElementById('home-koaly-label');
+    const state = document.getElementById('home-koaly-state');
+    if (!card || !label || !state) return;
+    const koalyImage = card.querySelector('img');
+    const koalyImages = {
+      'koaly-ready': "{% static 'img/koaly_cutout.png' %}",
+      'koaly-listening': "{% static 'img/koaly_cutout.png' %}",
+      'koaly-happy': "{% static 'img/koaly_happy.png' %}",
+      'koaly-sad': "{% static 'img/koaly_sad.png' %}",
+    };
+
+    const setMood = (mood, text) => {
+      card.classList.remove('koaly-ready', 'koaly-listening', 'koaly-happy', 'koaly-sad', 'koaly-celebrating', 'koaly-encouraging');
+      card.classList.add(mood);
+      if (koalyImage) koalyImage.src = koalyImages[mood] || koalyImages['koaly-ready'];
+      label.textContent = text;
+      state.textContent = text;
+    };
+
+    card.addEventListener('mouseenter', () => setMood('koaly-listening', 'Nice to meet you:)'));
+    card.addEventListener('mouseleave', () => setMood('koaly-ready', 'Hi there! I\'m Koaly!'));
+    card.addEventListener('click', () => {
+      setMood('koaly-happy', 'I cannot wait to read with you:)!');
+      window.setTimeout(() => setMood('koaly-ready', 'Hi there! I\'m Koaly!'), 1600);
+    });
+  })();
+</script>
+{% endblock %}

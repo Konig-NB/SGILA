@@ -1,0 +1,96 @@
+{% extends 'base.html' %}
+{% load static %}
+{% block title %}Vocabulary - {{ lesson.title }}{% endblock %}
+{% block content %}
+<section class="activity-shell">
+  <div class="activity-top">
+    <a href="/lessons/{{ lesson.id }}/story" class="back-link">Back to story</a>
+    <span class="step-pill">Vocabulary</span>
+  </div>
+  <h1>Match the word to its meaning</h1>
+  <div id="mascot-reaction" class="mascot"><img src="{% static 'img/koaly_cutout.png' %}" alt=""><span>Koaly</span></div>
+  <div id="message-area" class="message-area hidden"></div>
+  <div id="question-area">
+    <p id="word-display" class="question-text"></p>
+    <div id="options-area" class="options-grid"></div>
+  </div>
+  <div class="center">
+    <button id="next-btn" class="btn btn-primary hidden" type="button">Next word</button>
+  </div>
+  <div id="results-area" class="center hidden">
+    <p>Well done! You matched all the words.</p>
+    <a href="/lessons/{{ lesson.id }}/sequencing" class="btn btn-primary">Next activity</a>
+  </div>
+</section>
+<script>
+const lessonId = {{ lesson.id }};
+const KOALY = {
+  ready: "{% static 'img/koaly_cutout.png' %}",
+  happy: "{% static 'img/koaly_happy.png' %}",
+  sad:   "{% static 'img/koaly_sad.png' %}",
+};
+let items = [], current = 0, score = 0;
+
+function setMascot(state, label) {
+  const m = document.getElementById('mascot-reaction');
+  m.querySelector('img').src = KOALY[state] || KOALY.ready;
+  m.querySelector('span').textContent = label;
+}
+
+async function load() {
+  const res = await fetch(`/api/lessons/${lessonId}/vocabulary`);
+  const data = await res.json();
+  items = data.items;
+  show();
+}
+
+function show() {
+  if (current >= items.length) {
+    document.getElementById('question-area').classList.add('hidden');
+    document.getElementById('next-btn').classList.add('hidden');
+    document.getElementById('results-area').classList.remove('hidden');
+    setMascot('happy', 'Amazing!');
+    return;
+  }
+  const item = items[current];
+  document.getElementById('word-display').textContent = `What does "${item.word}" mean?`;
+  document.getElementById('message-area').className = 'message-area hidden';
+  document.getElementById('next-btn').classList.add('hidden');
+  setMascot('ready', 'Koaly');
+  const area = document.getElementById('options-area');
+  area.innerHTML = '';
+  item.options.forEach(opt => {
+    const btn = document.createElement('button');
+    btn.className = 'btn btn-option';
+    btn.textContent = opt;
+    btn.onclick = () => checkAnswer(item.id, opt);
+    area.appendChild(btn);
+  });
+}
+
+async function checkAnswer(itemId, selected) {
+  document.querySelectorAll('#options-area button').forEach(b => b.disabled = true);
+  const res = await fetch('/api/check-vocabulary-answer', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({item_id: itemId, selected_option: selected}),
+  });
+  const data = await res.json();
+  document.querySelectorAll('#options-area button').forEach(b => {
+    if (b.textContent === selected) b.classList.add(data.correct ? 'choice-correct' : 'choice-wrong');
+    if (!data.correct && b.textContent === data.correct_answer) b.classList.add('choice-correct');
+  });
+  const msg = document.getElementById('message-area');
+  msg.className = `message-area ${data.correct ? 'correct' : 'wrong'}`;
+  msg.textContent = data.message;
+  setMascot(data.correct ? 'happy' : 'sad', data.correct ? 'Great!' : 'Keep trying!');
+  if (data.correct) score++;
+  const btn = document.getElementById('next-btn');
+  btn.textContent = current === items.length - 1 ? 'Finish vocabulary' : 'Next word';
+  btn.classList.remove('hidden');
+}
+
+document.getElementById('next-btn').addEventListener('click', () => { current++; show(); });
+load();
+</script>
+{% endblock %}

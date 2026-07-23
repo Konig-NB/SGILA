@@ -1,0 +1,58 @@
+{% extends 'base.html' %}
+{% load static %}
+{% block title %}Written Response - {{ lesson.title }}{% endblock %}
+{% block content %}
+<section class="activity-shell">
+  <div class="activity-top">
+    <a href="/lessons/{{ lesson.id }}/theme" class="back-link">Back</a>
+    <span class="step-pill">Written Response</span>
+  </div>
+  <h1>Write your answer</h1>
+
+  <div class="mascot">
+    <img src="{% static 'img/koaly_cutout.png' %}" alt="Koaly">
+    <span>Koaly</span>
+  </div>
+
+  {% if prompt %}
+  <p class="question-text">{{ prompt.prompt }}</p>
+  <p class="instruction-text" style="color:var(--text-muted,#666);font-size:0.9rem;margin-bottom:0.8rem;">
+    {{ prompt.guidance }}
+  </p>
+  {% endif %}
+
+  <form method="POST" action="/lessons/{{ lesson.id }}/written-response">
+    {% csrf_token %}
+    <textarea
+      name="response_text"
+      class="writing-textarea"
+      rows="6"
+      placeholder="Write your answer here..."
+      required
+    ></textarea>
+    <div class="center" style="margin-top:1.2rem">
+      <button type="submit" class="btn btn-primary btn-large">Submit and see my results</button>
+    </div>
+  </form>
+</section>
+
+<style>
+.writing-textarea {
+  width: 100%;
+  border: 2px solid var(--border, #ddd);
+  border-radius: 10px;
+  padding: 0.85rem 1rem;
+  font-size: 1rem;
+  font-family: inherit;
+  resize: vertical;
+  box-sizing: border-box;
+  background: var(--surface, #fff);
+  color: var(--text, #111);
+  margin-top: 0.5rem;
+}
+.writing-textarea:focus {
+  outline: none;
+  border-color: var(--primary, #6c63ff);
+}
+</style>
+{% endblock %}

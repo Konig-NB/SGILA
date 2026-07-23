@@ -1,0 +1,151 @@
+{% extends 'base.html' %}
+{% block title %}Visual Matching - SGILA{% endblock %}
+{% block content %}
+<section class="activity-shell">
+  <div class="activity-top">
+    <a href="/lessons/{{ lesson.id }}/questions" class="back-link">Back</a>
+    <span class="step-pill">Visual matching</span>
+  </div>
+  <h1>Match each picture to a word</h1>
+  <p id="visual-feedback" class="message-area hidden" aria-live="polite"></p>
+  <div id="visual-grid" class="activity-grid">
+    {% for item in items %}
+      <article class="activity-card" data-item-id="{{ item.id }}">
+        <div class="picture-placeholder">
+          {% if item.image_url %}
+            <img src="{{ item.image_url }}" alt="Visual matching picture">
+          {% else %}
+            <span>Picture</span>
+          {% endif %}
+        </div>
+        <div class="word-options">
+          {% for option in item.get_word_options %}
+            <button type="button" class="btn btn-option small-option">{{ option }}</button>
+          {% endfor %}
+        </div>
+      </article>
+    {% empty %}
+      <p class="empty">No visual matching cards have been added yet.</p>
+    {% endfor %}
+  </div>
+  <div class="center">
+    <a id="next-link" href="/lessons/{{ lesson.id }}/pronunciation" class="btn btn-primary {% if items %}disabled-link{% endif %}">Continue</a>
+  </div>
+</section>
+<script>
+const lessonId = {{ lesson.id }};
+const childId = {{ child.id }};
+const storageKey = `sgila_lesson_${lessonId}`;
+const cards = document.querySelectorAll('.activity-card');
+let answered = 0;
+let score = 0;
+let answerAudioContext = null;
+
+if (cards.length === 0) {
+  const existing = JSON.parse(sessionStorage.getItem(storageKey) || '{}');
+  existing.visual_score = 0;
+  existing.visual_total = 0;
+  sessionStorage.setItem(storageKey, JSON.stringify(existing));
+  const feedback = document.getElementById('visual-feedback');
+  feedback.className = 'message-area correct';
+  feedback.textContent = 'No visual matching cards yet. You can continue.';
+}
+
+function primeAnswerAudio() {
+  const AudioContext = window.AudioContext || window.webkitAudioContext;
+  if (!AudioContext) return null;
+  if (!answerAudioContext) answerAudioContext = new AudioContext();
+  if (answerAudioContext.state === 'suspended') answerAudioContext.resume();
+  return answerAudioContext;
+}
+
+function playTone(ctx, start, frequency, duration, type, volume) {
+  const oscillator = ctx.createOscillator();
+  const gain = ctx.createGain();
+  oscillator.type = type;
+  oscillator.frequency.setValueAtTime(frequency, start);
+  gain.gain.setValueAtTime(0.0001, start);
+  gain.gain.exponentialRampToValueAtTime(volume, start + 0.025);
+  gain.gain.exponentialRampToValueAtTime(0.0001, start + duration);
+  oscillator.connect(gain);
+  gain.connect(ctx.destination);
+  oscillator.start(start);
+  oscillator.stop(start + duration + 0.02);
+}
+
+function playAnswerSound(correct) {
+  const ctx = primeAnswerAudio();
+  if (!ctx) return;
+  const now = ctx.currentTime + 0.02;
+  if (correct) {
+    playTone(ctx, now, 523.25, 0.12, 'sine', 0.12);
+    playTone(ctx, now + 0.1, 659.25, 0.13, 'sine', 0.12);
+    playTone(ctx, now + 0.21, 783.99, 0.18, 'triangle', 0.10);
+  } else {
+    playTone(ctx, now, 220, 0.16, 'triangle', 0.10);
+    playTone(ctx, now + 0.15, 164.81, 0.22, 'sine', 0.08);
+  }
+}
+
+cards.forEach((card) => {
+  card.querySelectorAll('button').forEach((button) => {
+    button.addEventListener('click', async () => {
+      primeAnswerAudio();
+      if (card.dataset.done) return;
+      card.dataset.done = 'true';
+      card.querySelectorAll('button').forEach((choice) => choice.disabled = true);
+      const selectedWord = button.textContent.trim();
+      let data;
+      try {
+        const response = await fetch('/api/check-visual-answer', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({
+            child_id: childId,
+            lesson_id: lessonId,
+            item_id: card.dataset.itemId,
+            selected_word: selectedWord,
+          }),
+        });
+        data = await response.json();
+        if (!response.ok) throw new Error(data.error || 'Unable to check this answer.');
+      } catch (error) {
+        card.dataset.done = '';
+        card.querySelectorAll('button').forEach((choice) => choice.disabled = false);
+        const feedback = document.getElementById('visual-feedback');
+        feedback.className = 'message-area wrong';
+        feedback.textContent = error.message;
+        return;
+      }
+
+      answered = data.answered_count;
+      score = data.visual_score;
+      const correct = data.correct;
+      playAnswerSound(correct);
+      button.classList.add(correct ? 'choice-correct' : 'choice-wrong');
+      if (!correct) {
+        card.querySelectorAll('button').forEach((choice) => {
+          if (choice.textContent.trim() === data.correct_word) {
+            choice.classList.add('choice-correct');
+          }
+        });
+      }
+      const feedback = document.getElementById('visual-feedback');
+      feedback.className = `message-area ${correct ? 'correct' : 'wrong'}`;
+      feedback.textContent = correct
+        ? `Correct! ${data.correct_word} matches this picture.`
+        : `Not quite. This picture shows ${data.correct_word}.`;
+      if (data.completed) {
+        const existing = JSON.parse(sessionStorage.getItem(storageKey) || '{}');
+        existing.visual_score = score;
+        existing.visual_total = data.visual_total;
+        sessionStorage.setItem(storageKey, JSON.stringify(existing));
+        feedback.className = 'message-area correct';
+        feedback.textContent = `Finished! You matched ${score} of ${data.visual_total}.`;
+        document.getElementById('next-link').classList.remove('disabled-link');
+      }
+    });
+  });
+});
+</script>
+{% endblock %}

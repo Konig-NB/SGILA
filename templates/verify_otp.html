@@ -1,0 +1,189 @@
+{% extends 'base.html' %}
+{% block title %}Verify your email - SGILA{% endblock %}
+{% block content %}
+<section class="auth-layout auth-compact">
+
+  <!-- Left intro panel (same pattern as login/register) -->
+  <aside class="auth-intro">
+    <p class="eyebrow">Almost there</p>
+    <h1>Check your email</h1>
+    <p>
+      We sent a 6-digit code to<br>
+      <strong>{{ masked_email }}</strong>
+    </p>
+    <p style="margin-top:1rem;">
+      The code expires in <strong>10 minutes</strong>. Check your spam folder if you don't see it.
+    </p>
+  </aside>
+
+  <!-- Right form card -->
+  <div class="form-card">
+    <h2>Enter your code</h2>
+    <p class="form-note" style="margin-bottom:1.5rem; font-size:.95rem;">
+      Type the 6-digit code sent to {{ masked_email }}
+    </p>
+
+    <!-- OTP digit inputs -->
+    <form id="otp-form" method="POST" action="/verify-otp?session={{ otp_session }}">
+      {% csrf_token %}
+      <input type="hidden" name="otp_session" value="{{ otp_session }}">
+      <input type="hidden" name="action" value="verify">
+
+      <!-- Hidden combined input submitted with the form -->
+      <input type="hidden" name="code" id="otp-combined">
+
+      <!-- Six individual digit boxes -->
+      <div class="otp-boxes" aria-label="Enter your 6-digit code">
+        <input class="otp-digit" type="text" inputmode="numeric" maxlength="1" pattern="[0-9]" autocomplete="one-time-code" aria-label="Digit 1">
+        <input class="otp-digit" type="text" inputmode="numeric" maxlength="1" pattern="[0-9]" aria-label="Digit 2">
+        <input class="otp-digit" type="text" inputmode="numeric" maxlength="1" pattern="[0-9]" aria-label="Digit 3">
+        <input class="otp-digit" type="text" inputmode="numeric" maxlength="1" pattern="[0-9]" aria-label="Digit 4">
+        <input class="otp-digit" type="text" inputmode="numeric" maxlength="1" pattern="[0-9]" aria-label="Digit 5">
+        <input class="otp-digit" type="text" inputmode="numeric" maxlength="1" pattern="[0-9]" aria-label="Digit 6">
+      </div>
+
+      <button class="btn btn-primary btn-full" type="submit" id="verify-btn" style="margin-top:1.5rem;" disabled>
+        Verify &amp; continue
+      </button>
+    </form>
+
+    <!-- Resend form -->
+    <form method="POST" action="/verify-otp?session={{ otp_session }}" style="margin-top:1rem; text-align:center;">
+      {% csrf_token %}
+      <input type="hidden" name="otp_session" value="{{ otp_session }}">
+      <input type="hidden" name="action" value="resend">
+      <p class="form-note">
+        Didn't receive the code?
+        <button type="submit" class="link-btn" id="resend-btn">Resend code</button>
+        <span id="resend-timer" style="display:none; color:var(--muted); font-size:.85rem;"> (wait <span id="countdown">60</span>s)</span>
+      </p>
+    </form>
+
+    <p class="form-note" style="margin-top:1rem; text-align:center;">
+      Wrong email? <a href="/register?role={{ role }}">Start over</a>
+    </p>
+  </div>
+</section>
+
+<style>
+/* ── OTP digit boxes ────────────────────────────────────────── */
+.otp-boxes {
+  display: flex;
+  gap: 10px;
+  justify-content: center;
+}
+
+.otp-digit {
+  width: 52px;
+  height: 62px;
+  text-align: center;
+  font-size: 1.6rem;
+  font-weight: 900;
+  color: var(--ink);
+  background: var(--white);
+  border: 2px solid var(--line);
+  border-radius: var(--radius);
+  outline: none;
+  transition: border-color .18s ease, box-shadow .18s ease;
+  caret-color: var(--sun);
+}
+
+.otp-digit:focus {
+  border-color: var(--sun);
+  box-shadow: 0 0 0 3px rgba(248, 200, 75, .25);
+}
+
+.otp-digit.filled {
+  border-color: var(--mint);
+  background: var(--mint-soft);
+}
+
+/* Link-style button for resend */
+.link-btn {
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--success);
+  font-weight: 700;
+  cursor: pointer;
+  font-size: inherit;
+  text-decoration: underline;
+}
+.link-btn:disabled { color: var(--muted); text-decoration: none; cursor: default; }
+
+@media (max-width: 600px) {
+  .otp-digit { width: 42px; height: 52px; font-size: 1.3rem; }
+  .otp-boxes { gap: 7px; }
+}
+</style>
+
+<script>
+(function () {
+  const digits = Array.from(document.querySelectorAll('.otp-digit'));
+  const combined = document.getElementById('otp-combined');
+  const verifyBtn = document.getElementById('verify-btn');
+  const resendBtn = document.getElementById('resend-btn');
+  const timerEl  = document.getElementById('resend-timer');
+  const countEl  = document.getElementById('countdown');
+
+  // ── Auto-advance between boxes ────────────────────────────
+  digits.forEach((input, i) => {
+    input.addEventListener('input', (e) => {
+      const val = e.target.value.replace(/\D/g, '').slice(-1);
+      input.value = val;
+      input.classList.toggle('filled', val !== '');
+      if (val && i < digits.length - 1) digits[i + 1].focus();
+      syncCombined();
+    });
+
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Backspace' && !input.value && i > 0) {
+        digits[i - 1].value = '';
+        digits[i - 1].classList.remove('filled');
+        digits[i - 1].focus();
+        syncCombined();
+      }
+      // Allow paste on any digit
+    });
+
+    input.addEventListener('paste', (e) => {
+      e.preventDefault();
+      const text = (e.clipboardData || window.clipboardData).getData('text').replace(/\D/g, '');
+      text.split('').forEach((ch, j) => {
+        if (digits[i + j]) {
+          digits[i + j].value = ch;
+          digits[i + j].classList.add('filled');
+        }
+      });
+      const nextEmpty = digits.findIndex(d => !d.value);
+      (nextEmpty !== -1 ? digits[nextEmpty] : digits[digits.length - 1]).focus();
+      syncCombined();
+    });
+  });
+
+  function syncCombined() {
+    const code = digits.map(d => d.value).join('');
+    combined.value = code;
+    verifyBtn.disabled = code.length < 6;
+  }
+
+  // ── Resend countdown ──────────────────────────────────────
+  let seconds = 60;
+  resendBtn.disabled = true;
+  timerEl.style.display = 'inline';
+
+  const timer = setInterval(() => {
+    seconds--;
+    countEl.textContent = seconds;
+    if (seconds <= 0) {
+      clearInterval(timer);
+      resendBtn.disabled = false;
+      timerEl.style.display = 'none';
+    }
+  }, 1000);
+
+  // Focus first box on load
+  digits[0].focus();
+})();
+</script>
+{% endblock %}
