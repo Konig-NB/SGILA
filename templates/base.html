@@ -24,11 +24,13 @@
         <a href="/parent/dashboard">Dashboard</a>
         <a href="/conversations" class="nav-messages-link">Messages<span id="nav-unread-badge" class="nav-unread-badge" {% if not unread_messages_count %}style="display:none;"{% endif %}>{{ unread_messages_count }}</span></a>
         <a href="/parent/add-child">Add child</a>
+        <a href="/subscription">Plan</a>
         <a href="/logout">Logout</a>
       {% elif request.session.account_role == 'teacher' %}
         <span>{{ request.session.account_name }}</span>
         <a href="/teacher/dashboard">Dashboard</a>
         <a href="/conversations" class="nav-messages-link">Messages<span id="nav-unread-badge" class="nav-unread-badge" {% if not unread_messages_count %}style="display:none;"{% endif %}>{{ unread_messages_count }}</span></a>
+        <a href="/subscription">Plan</a>
         <a href="/logout">Logout</a>
       {% else %}
         <a href="/login">Sign in</a>

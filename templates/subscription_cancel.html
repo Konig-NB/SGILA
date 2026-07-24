@@ -1,0 +1,29 @@
+{% extends 'base.html' %}
+{% load static %}
+{% block title %}Cancel subscription - SGILA{% endblock %}
+{% block content %}
+<section class="auth-layout auth-compact">
+  <aside class="auth-intro">
+    <img class="auth-koaly-peek" src="{% static 'img/koaly_cutout.png' %}" alt="" aria-hidden="true">
+    <p class="eyebrow">Manage subscription</p>
+    <h1>Cancel your subscription</h1>
+    <p>If you cancel, your account will lose access to the paid features at the end of the current billing period.</p>
+  </aside>
+
+  <div class="form-card">
+    <h2>Current plan</h2>
+    <p style="font-weight:800;">{{ subscription.get_plan_type_display }} — {{ subscription.get_status_display }}</p>
+
+    <p style="margin-top: 1rem; color:var(--muted);">If you're sure, click the button below to cancel. You can reactivate at any time from the Plan page.</p>
+
+    <form method="POST">
+      {% csrf_token %}
+      <button class="btn btn-danger btn-full" type="submit" style="margin-top:1.2rem; background:#d64545; color:#fff; border:none; box-shadow:0 8px 20px rgba(214,69,69,.22);">Yes — cancel my subscription</button>
+    </form>
+
+    <p class="form-note" style="margin-top:.8rem;">
+      <a href="/subscription">← Back to plan selection</a>
+    </p>
+  </div>
+</section>
+{% endblock %}

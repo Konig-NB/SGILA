@@ -392,6 +392,98 @@ class WrittenResponsePrompt(models.Model):
         return f"{self.lesson.title} — written prompt"
 
 
+class PackageCode(models.Model):
+    """
+    A redemption code issued to a government/district after they buy a
+    school package. Sgila staff create these (via admin); a school then
+    redeems one on the enterprise plan screen with just their school name
+    and this code — no card, no per-family payment.
+    """
+    code = models.CharField(max_length=32, unique=True)
+    label = models.CharField(max_length=160, blank=True)  # e.g. "KZN Rural Schools Batch — 2026"
+    max_redemptions = models.PositiveIntegerField(default=1)
+    redemptions_count = models.PositiveIntegerField(default=0)
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"{self.code} ({self.redemptions_count}/{self.max_redemptions})"
+
+    @property
+    def is_redeemable(self):
+        return self.is_active and self.redemptions_count < self.max_redemptions
+
+
+class Subscription(models.Model):
+    """
+    Tracks the subscription for a parent (individual/family plan) or a
+    school (enterprise plan, redeemed with a government-issued package
+    code rather than paid card-by-card).
+    """
+    PLAN_CHOICES = [
+        ('individual', 'Individual (Parent)'),
+        ('family', 'Family (Parent)'),
+        ('enterprise', 'Enterprise (School)'),
+    ]
+    BILLING_CYCLE_CHOICES = [
+        ('monthly', 'Monthly'),
+        ('annual', 'Annual'),
+    ]
+    STATUS_CHOICES = [
+        ('trial', 'Free trial'),
+        ('pending', 'Pending — awaiting payment/approval'),
+        ('active', 'Active'),
+        ('cancelled', 'Cancelled'),
+    ]
+
+    parent = models.OneToOneField(
+        Parent, on_delete=models.CASCADE, null=True, blank=True, related_name='subscription',
+    )
+    teacher = models.OneToOneField(
+        Teacher, on_delete=models.CASCADE, null=True, blank=True, related_name='subscription',
+    )
+
+    plan_type = models.CharField(max_length=20, choices=PLAN_CHOICES)
+    billing_cycle = models.CharField(max_length=10, choices=BILLING_CYCLE_CHOICES, blank=True)
+    status = models.CharField(max_length=12, choices=STATUS_CHOICES, default='trial')
+
+    # Enterprise / government-package redemption.
+    school_name = models.CharField(max_length=200, blank=True)
+    package_code = models.ForeignKey(
+        PackageCode, on_delete=models.SET_NULL, null=True, blank=True, related_name='subscriptions',
+    )
+    district_or_province = models.CharField(max_length=160, blank=True)
+    estimated_learners = models.IntegerField(null=True, blank=True)
+    contact_name = models.CharField(max_length=120, blank=True)
+    contact_phone = models.CharField(max_length=30, blank=True)
+    funding_source = models.CharField(max_length=160, blank=True)  # e.g. "Dept of Basic Education - KZN"
+    notes = models.TextField(blank=True)
+
+    # --- Payment summary (individual plan) --------------------------------
+    # IMPORTANT: only ever store a non-sensitive SUMMARY here — never a full
+    # card/account number, CVV, or expiry-with-CVV combo. Full card/bank
+    # details must go straight to a PCI-compliant gateway (e.g. PayFast),
+    # not through this database. See subscription_payment_page in views.py.
+    PAYMENT_METHOD_CHOICES = [
+        ('card', 'Debit/Credit card'),
+        ('debit_order', 'Bank debit order'),
+    ]
+    payment_method = models.CharField(max_length=20, choices=PAYMENT_METHOD_CHOICES, blank=True)
+    payer_name = models.CharField(max_length=120, blank=True)
+    card_last4 = models.CharField(max_length=4, blank=True)
+    card_expiry = models.CharField(max_length=7, blank=True)  # "MM/YYYY", no CVV ever stored
+    bank_name = models.CharField(max_length=80, blank=True)
+    account_last4 = models.CharField(max_length=4, blank=True)
+    branch_code = models.CharField(max_length=10, blank=True)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        owner = self.parent or self.teacher
+        return f"{self.get_plan_type_display()} — {owner} ({self.status})"
+
+
 class OTPToken(models.Model):
     """Stores a one-time password for email verification after registration."""
     ROLE_CHOICES = [('parent', 'Parent'), ('teacher', 'Teacher')]
