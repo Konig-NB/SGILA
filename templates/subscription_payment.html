@@ -1,0 +1,108 @@
+{% extends 'base.html' %}
+{% load static %}
+{% block title %}Payment details - SGILA{% endblock %}
+{% block content %}
+<section class="auth-layout auth-compact">
+
+  <aside class="auth-intro">
+    <img class="auth-koaly-peek" src="{% static 'img/koaly_cutout.png' %}" alt="" aria-hidden="true">
+    <p class="eyebrow">Last step</p>
+    <h1>Add your payment details</h1>
+    <p>
+      You chose the <strong>{{ subscription.get_plan_type_display }}</strong> plan.
+      Once this is saved you'll go straight to your dashboard to add your child.
+    </p>
+    <p style="margin-top:1rem; font-size:.9rem; color:var(--muted);">
+      🔒 Your card/account number is never stored in full — we only keep the
+      last 4 digits so you can recognise your payment method later.
+    </p>
+  </aside>
+
+  <div class="form-card">
+    <div class="tabs" id="payment-tabs" style="margin-bottom: 1.2rem;">
+      <a href="#" data-method="card" class="active">Card</a>
+      <a href="#" data-method="debit_order">Bank debit order</a>
+    </div>
+
+    <form method="POST" id="payment-form">
+      {% csrf_token %}
+      <input type="hidden" name="payment_method" id="payment-method-input" value="card">
+
+      <div id="card-fields">
+        <h2>Card details</h2>
+        <label>Name on card
+          <input type="text" name="name_on_card" autocomplete="cc-name">
+        </label>
+        <label>Card number
+          <input type="text" name="card_number" inputmode="numeric" maxlength="19"
+                 placeholder="1234 5678 9012 3456" autocomplete="cc-number">
+        </label>
+        <div class="two-col">
+          <label>Expiry (MM/YYYY)
+            <input type="text" name="expiry" placeholder="08/2028" autocomplete="cc-exp">
+          </label>
+          <label>CVV
+            <input type="text" name="cvv" inputmode="numeric" maxlength="4"
+                   placeholder="123" autocomplete="cc-csc">
+          </label>
+        </div>
+      </div>
+
+      <div id="debit-fields" style="display:none;">
+        <h2>Bank debit order details</h2>
+        <label>Account holder name
+          <input type="text" name="account_holder">
+        </label>
+        <label>Bank name
+          <input type="text" name="bank_name" placeholder="e.g. Standard Bank">
+        </label>
+        <div class="two-col">
+          <label>Account number
+            <input type="text" name="account_number" inputmode="numeric">
+          </label>
+          <label>Branch code
+            <input type="text" name="branch_code" inputmode="numeric">
+          </label>
+        </div>
+      </div>
+
+      <button class="btn btn-primary btn-full" type="submit" style="margin-top:1.2rem;">
+        Confirm and go to my dashboard
+      </button>
+      <p class="form-note" style="margin-top:.8rem;">
+        <a href="/subscription">← Back to plan selection</a>
+      </p>
+    </form>
+  </div>
+</section>
+
+<script>
+(function () {
+  const tabs = document.querySelectorAll('#payment-tabs a');
+  const methodInput = document.getElementById('payment-method-input');
+  const cardFields = document.getElementById('card-fields');
+  const debitFields = document.getElementById('debit-fields');
+
+  tabs.forEach((tab) => {
+    tab.addEventListener('click', (e) => {
+      e.preventDefault();
+      tabs.forEach((t) => t.classList.remove('active'));
+      tab.classList.add('active');
+      const method = tab.dataset.method;
+      methodInput.value = method;
+      cardFields.style.display = method === 'card' ? '' : 'none';
+      debitFields.style.display = method === 'debit_order' ? '' : 'none';
+    });
+  });
+
+  // Light formatting so the card number is easier to read as it's typed.
+  const cardNumberInput = document.querySelector('input[name="card_number"]');
+  if (cardNumberInput) {
+    cardNumberInput.addEventListener('input', () => {
+      const digits = cardNumberInput.value.replace(/\D/g, '').slice(0, 19);
+      cardNumberInput.value = digits.replace(/(.{4})/g, '$1 ').trim();
+    });
+  }
+})();
+</script>
+{% endblock %}
