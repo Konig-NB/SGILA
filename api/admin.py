@@ -7,8 +7,35 @@ from django.contrib import admin
 from .models import (
     Parent, Teacher, Child, Lesson, StoryPage, ComprehensionQuestion,
     VisualActivityItem, PronunciationWord, SpellingActivity, Progress,
-    TeacherClass, Message,
+    TeacherClass, Message,Subscription, PackageCode,
 )
+
+@admin.register(PackageCode)
+class PackageCodeAdmin(admin.ModelAdmin):
+    list_display = ('code', 'label', 'redemptions_count', 'max_redemptions', 'is_active', 'created_at')
+    list_filter = ('is_active',)
+    search_fields = ('code', 'label')
+    readonly_fields = ('redemptions_count', 'created_at')
+
+    def save_model(self, request, obj, form, change):
+        if not obj.code:
+            obj.code = get_random_string(10).upper()
+        super().save_model(request, obj, form, change)
+
+
+@admin.register(Subscription)
+class SubscriptionAdmin(admin.ModelAdmin):
+    list_display = ('__str__', 'plan_type', 'status', 'billing_cycle', 'payment_summary', 'school_name', 'package_code', 'created_at')
+    list_filter = ('plan_type', 'status', 'billing_cycle', 'payment_method')
+    search_fields = ('parent__full_name', 'parent__email', 'teacher__full_name', 'school_name', 'district_or_province')
+
+    def payment_summary(self, obj):
+        if obj.payment_method == 'card' and obj.card_last4:
+            return f"Card •••• {obj.card_last4} ({obj.card_expiry})"
+        if obj.payment_method == 'debit_order' and obj.account_last4:
+            return f"{obj.bank_name} •••• {obj.account_last4}"
+        return "—"
+    payment_summary.short_description = 'Payment method'
 
 
 @admin.register(Lesson)

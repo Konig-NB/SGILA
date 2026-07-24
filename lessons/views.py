@@ -41,6 +41,8 @@ from api.models import (
     generate_class_code,
     OTPToken,
     PasswordResetToken,
+    Subscription,
+    PackageCode,
 )
 
 
@@ -1425,6 +1427,226 @@ def build_dashboard_row(child):
         'g4_worst2': g4_worst2,
     }
 
+def subscription_page(request):
+    """
+    Shown right after registration (and reachable any time from the
+    dashboard). Parents see individual/family/enterprise plan options; teachers/schools see
+    the enterprise plan, framed as a government/district-funded package
+    request rather than an instant card checkout.
+    """
+    role = request.session.get('account_role')
+    if role not in ('parent', 'teacher'):
+        messages.error(request, 'Please sign in first.')
+        return redirect('/login')
+
+    account_id = request.session['account_id']
+    if role == 'parent':
+        account = get_object_or_404(Parent, id=account_id)
+        subscription, _ = Subscription.objects.get_or_create(
+            parent=account, defaults={'plan_type': 'individual'}
+        )
+    else:
+        account = get_object_or_404(Teacher, id=account_id)
+        subscription, _ = Subscription.objects.get_or_create(
+            teacher=account, defaults={'plan_type': 'enterprise'}
+        )
+
+    if request.method == 'POST':
+        if role == 'parent':
+            plan = request.POST.get('plan', 'individual')
+            skip = request.POST.get('skip') == '1'
+
+            if skip:
+                subscription.status = 'trial'
+                subscription.save(update_fields=['status', 'updated_at'])
+                messages.success(request, "No problem — you're on a free trial. You can subscribe any time from your dashboard.")
+                return redirect('/parent/dashboard')
+
+            if plan == 'family':
+                subscription.plan_type = 'family'
+                subscription.billing_cycle = 'monthly'
+                # No live payment gateway is wired up yet — this marks the
+                # choice as pending until payment details are captured next.
+                subscription.status = 'pending'
+                subscription.save()
+                return redirect('/subscription/payment')
+
+            elif plan == 'enterprise':
+                # Parent is redeeming an enterprise/school package code —
+                # accept school name + package code and activate immediately
+                school_name = request.POST.get('school_name', '').strip() or account.school_name
+                code_value = request.POST.get('package_code', '').strip().upper()
+
+                if not school_name or not code_value:
+                    messages.error(request, 'Please enter both your school name and package code.')
+                    return render(request, 'subscription.html', {'role': role, 'account': account, 'subscription': subscription})
+
+                try:
+                    code_obj = PackageCode.objects.get(code=code_value)
+                except PackageCode.DoesNotExist:
+                    code_obj = None
+
+                if not code_obj or not code_obj.is_redeemable:
+                    messages.error(request, "That package code isn't valid or has already been fully used. Please check the code from your district/government contact.")
+                    return render(request, 'subscription.html', {'role': role, 'account': account, 'subscription': subscription})
+
+                subscription.plan_type = 'enterprise'
+                subscription.school_name = school_name
+                subscription.package_code = code_obj
+                subscription.status = 'active'
+                subscription.save()
+
+                code_obj.redemptions_count += 1
+                code_obj.save(update_fields=['redemptions_count'])
+
+                messages.success(request, f"Your school's package is active! {school_name} now has full SGILA access.")
+                return redirect('/parent/dashboard')
+
+            else:
+                subscription.plan_type = 'individual'
+                subscription.billing_cycle = 'monthly'
+                # No live payment gateway is wired up yet — this marks the
+                # choice as pending until payment details are captured next.
+                subscription.status = 'pending'
+                subscription.save()
+                return redirect('/subscription/payment')
+
+        else:  # teacher / school — redeem a government-issued package code
+            school_name = request.POST.get('school_name', '').strip() or account.school_name
+            code_value = request.POST.get('package_code', '').strip().upper()
+
+            if not school_name or not code_value:
+                messages.error(request, 'Please enter both your school name and package code.')
+                return render(request, 'subscription.html', {'role': role, 'account': account, 'subscription': subscription})
+
+            try:
+                code_obj = PackageCode.objects.get(code=code_value)
+            except PackageCode.DoesNotExist:
+                code_obj = None
+
+            if not code_obj or not code_obj.is_redeemable:
+                messages.error(request, "That package code isn't valid or has already been fully used. Please check the code from your district/government contact.")
+                return render(request, 'subscription.html', {'role': role, 'account': account, 'subscription': subscription})
+
+            subscription.plan_type = 'enterprise'
+            subscription.school_name = school_name
+            subscription.package_code = code_obj
+            subscription.status = 'active'
+            subscription.save()
+
+            code_obj.redemptions_count += 1
+            code_obj.save(update_fields=['redemptions_count'])
+
+            messages.success(request, f"Your school's package is active! {school_name} now has full SGILA access.")
+            return redirect('/teacher/dashboard')
+
+    return render(request, 'subscription.html', {
+        'role': role,
+        'account': account,
+        'subscription': subscription,
+    })
+
+
+def subscription_payment_page(request):
+    """
+    Payment-details step for the individual (parent) plan, shown right
+    after a plan is chosen on /subscription. Only parents with a pending
+    individual subscription land here.
+
+    SECURITY NOTE: this view intentionally does NOT persist a full card
+    number, CVV, or full bank account number anywhere — only a masked
+    summary (last 4 digits, expiry, name) is saved, purely so the parent
+    and support team can recognise which payment method is on file. A
+    production deployment must swap this out for a PCI-compliant gateway
+    (e.g. PayFast) using their hosted/tokenised checkout, so raw card data
+    is sent straight to the gateway and never touches this server at all.
+    """
+    if request.session.get('account_role') != 'parent':
+        messages.error(request, 'Please sign in as a parent first.')
+        return redirect('/login?role=parent')
+
+    parent = get_object_or_404(Parent, id=request.session['account_id'])
+    subscription, _ = Subscription.objects.get_or_create(
+        parent=parent, defaults={'plan_type': 'individual'}
+    )
+
+    # Only makes sense once a plan has actually been chosen.
+    if subscription.plan_type not in ('individual', 'family') or not subscription.billing_cycle:
+        return redirect('/subscription')
+
+    if request.method == 'POST':
+        method = request.POST.get('payment_method', 'card')
+        subscription.payment_method = method
+
+        if method == 'card':
+            name_on_card = request.POST.get('name_on_card', '').strip()
+            card_number = re.sub(r'\D', '', request.POST.get('card_number', ''))
+            expiry = request.POST.get('expiry', '').strip()
+
+            if not name_on_card or len(card_number) < 12 or not expiry:
+                messages.error(request, 'Please fill in all card details correctly.')
+                return render(request, 'subscription_payment.html', {'subscription': subscription})
+
+            subscription.payer_name = name_on_card
+            subscription.card_last4 = card_number[-4:]
+            subscription.card_expiry = expiry
+            # CVV and the full card number are deliberately discarded here —
+            # never written to the database.
+
+        else:  # debit_order
+            account_holder = request.POST.get('account_holder', '').strip()
+            bank_name = request.POST.get('bank_name', '').strip()
+            account_number = re.sub(r'\D', '', request.POST.get('account_number', ''))
+            branch_code = request.POST.get('branch_code', '').strip()
+
+            if not account_holder or not bank_name or len(account_number) < 6:
+                messages.error(request, 'Please fill in all bank details correctly.')
+                return render(request, 'subscription_payment.html', {'subscription': subscription})
+
+            subscription.payer_name = account_holder
+            subscription.bank_name = bank_name
+            subscription.account_last4 = account_number[-4:]
+            subscription.branch_code = branch_code
+
+        subscription.status = 'active'
+        subscription.save()
+        messages.success(request, "You're all set! Your SGILA subscription is active.")
+        return redirect('/parent/dashboard')
+
+    return render(request, 'subscription_payment.html', {'subscription': subscription})
+
+
+def subscription_cancel_page(request):
+    """
+    Page where a signed-in parent or teacher can cancel their current
+    subscription. POST will mark the subscription `status` as 'cancelled'
+    and redirect the user back to their dashboard.
+    """
+    role = request.session.get('account_role')
+    if role not in ('parent', 'teacher'):
+        messages.error(request, 'Please sign in first.')
+        return redirect('/login')
+
+    account_id = request.session.get('account_id')
+    if role == 'parent':
+        account = get_object_or_404(Parent, id=account_id)
+        subscription = get_object_or_404(Subscription, parent=account)
+    else:
+        account = get_object_or_404(Teacher, id=account_id)
+        subscription = get_object_or_404(Subscription, teacher=account)
+
+    if request.method == 'POST':
+        # Simple confirmation flow: a single POST will cancel.
+        subscription.status = 'cancelled'
+        subscription.save(update_fields=['status', 'updated_at'])
+        messages.success(request, 'Your subscription has been cancelled. You can reactivate any time from the Plan page.')
+        return redirect('/parent/dashboard' if role == 'parent' else '/teacher/dashboard')
+
+    return render(request, 'subscription_cancel.html', {
+        'subscription': subscription,
+        'role': role,
+        'account': account,
+    })
 
 def parent_dashboard(request):
     if request.session.get('account_role') != 'parent':
