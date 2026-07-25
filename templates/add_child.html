@@ -27,7 +27,7 @@
     </div>
 
     <div class="two-col">
-      <label>Age<input type="number" name="age" min="5" max="10" required></label>
+      <label>Date of birth<input type="date" name="date_of_birth" max="{% now 'Y-m-d' %}" required></label>
       <label>Grade
         <select name="grade" required>
           <option value="">-- select --</option>

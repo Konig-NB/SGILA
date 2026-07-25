@@ -23,6 +23,8 @@ from django.contrib.auth.hashers import check_password, make_password
 from django.db.models import Q
 from django.http import FileResponse, Http404, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
+from django.utils import timezone
+from django.utils.dateparse import parse_date
 from django.views.decorators.http import require_http_methods
 
 from api.models import (
@@ -78,7 +80,11 @@ def learner_required(request):
     if not child_id:
         messages.error(request, 'Please sign in as a learner first.')
         return None, redirect('/login?role=learner')
-    return get_object_or_404(Child, id=child_id), None
+    child = get_object_or_404(Child, id=child_id)
+    # Self-heals the stored age against date_of_birth on every learner page load,
+    # so it rolls over on the child's birthday without needing a scheduled task.
+    child.refresh_age_if_stale()
+    return child, None
 
 
 def parse_grades(grades_taught):
@@ -780,6 +786,14 @@ def parent_add_child(request):
         elif Child.objects.filter(username=username).exists():
             messages.error(request, 'That username is already taken. Please choose another one.')
         else:
+            date_of_birth = parse_date((request.POST.get('date_of_birth') or '').strip())
+            if not date_of_birth:
+                messages.error(request, 'Please enter a valid date of birth.')
+                return render(request, 'add_child.html', {'parent': parent})
+            if date_of_birth > timezone.localdate():
+                messages.error(request, 'Date of birth cannot be in the future.')
+                return render(request, 'add_child.html', {'parent': parent})
+
             first_name = request.POST.get('first_name', '').strip()
             last_name = request.POST.get('last_name', '').strip()
             child_name = f'{first_name} {last_name}'.strip() or request.POST.get('child_name', '').strip() or username
@@ -797,7 +811,7 @@ def parent_add_child(request):
                 first_name=first_name,
                 last_name=last_name,
                 name=child_name,
-                age=int(request.POST['age']),
+                date_of_birth=date_of_birth,  # age is calculated from this automatically — see Child.save()
                 grade=int(request.POST['grade']),
                 school_name=request.POST.get('school_name', '').strip() or (teacher.school_name if teacher else ''),
                 parent_email=parent.email,
@@ -2101,6 +2115,11 @@ def parent_dashboard(request):
         return redirect('/login?role=parent')
     parent = get_object_or_404(Parent, id=request.session['account_id'])
     children = Child.objects.filter(Q(parent=parent) | Q(parent_email__iexact=parent.email)).distinct().order_by('name')
+    for child in children:
+        # Self-heals the stored age against date_of_birth whenever a parent views
+        # their dashboard, so it rolls over on birthdays even if the child hasn't
+        # logged in themselves recently.
+        child.refresh_age_if_stale()
     cards = [build_dashboard_row(child) for child in children]
     active_cards = [card for card in cards if card['lessons_done']]
     overall_average = round(sum(card['average'] for card in active_cards) / len(active_cards)) if active_cards else 0
