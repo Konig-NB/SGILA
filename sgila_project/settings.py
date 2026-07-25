@@ -144,3 +144,13 @@ JWT_ACCESS_TOKEN_LIFETIME_HOURS = 8  # informational; enforced in api/jwt_utils.
 
 # Base URL used in password-reset emails
 SITE_URL = os.environ.get('SITE_URL', 'http://127.0.0.1:8000')
+
+# ─── AI story generation (Gemini text + Pollinations illustrations) ────────────
+# Leave GEMINI_API_KEY blank to keep the feature disabled — the "Explore more
+# stories" button will show a friendly "not configured yet" message instead
+# of failing. No SDK/pip dependency needed; both providers are called with
+# plain HTTPS requests (see lessons/views.py).
+GEMINI_API_KEY = os.environ.get('GEMINI_API_KEY', '')
+GEMINI_MODEL = os.environ.get('GEMINI_MODEL', 'gemini-2.5-flash')
+POLLINATIONS_MODEL = os.environ.get('POLLINATIONS_MODEL', 'flux')
+POLLINATIONS_API_KEY = os.environ.get('POLLINATIONS_API_KEY', '')
