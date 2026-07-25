@@ -1,5 +1,6 @@
 import random
 import string
+from datetime import date
 
 from django.db import models
 from django.utils import timezone
@@ -48,6 +49,12 @@ class Child(models.Model):
     first_name = models.CharField(max_length=80, blank=True)
     last_name = models.CharField(max_length=80, blank=True)
     name = models.CharField(max_length=100)
+    date_of_birth = models.DateField(null=True, blank=True)
+    # Kept as a stored column (rather than computed only on read) so it can be used
+    # directly in querysets/reports. It is always recalculated from date_of_birth
+    # in save() below, and opportunistically refreshed by refresh_age_if_stale()
+    # whenever the child is loaded in a view — so it keeps itself correct every
+    # birthday/new year without needing a scheduled task.
     age = models.IntegerField(null=True, blank=True)
     grade = models.IntegerField()          # 1 to 4
     school_name = models.CharField(max_length=160, blank=True)
@@ -58,6 +65,40 @@ class Child(models.Model):
 
     def __str__(self):
         return f"{self.name} (Grade {self.grade})"
+
+    def calculate_age(self):
+        """Return the child's current age worked out from date_of_birth as of today.
+
+        Falls back to the existing stored age if no date_of_birth is on file yet
+        (e.g. profiles created before this field existed).
+        """
+        if not self.date_of_birth:
+            return self.age
+        today = date.today()
+        years = today.year - self.date_of_birth.year
+        had_birthday_this_year = (today.month, today.day) >= (self.date_of_birth.month, self.date_of_birth.day)
+        if not had_birthday_this_year:
+            years -= 1
+        return years
+
+    def refresh_age_if_stale(self):
+        """Recalculate age from date_of_birth and persist it if it has drifted.
+
+        Call this whenever a child record is loaded in a view. It only writes to
+        the database when the stored age is actually out of date (e.g. a birthday
+        has passed since the last save), so it is cheap to call on every request.
+        """
+        if not self.date_of_birth:
+            return
+        current_age = self.calculate_age()
+        if current_age != self.age:
+            self.age = current_age
+            self.save(update_fields=['age'])
+
+    def save(self, *args, **kwargs):
+        if self.date_of_birth:
+            self.age = self.calculate_age()
+        super().save(*args, **kwargs)
 
 
 class TeacherClass(models.Model):
