@@ -7,7 +7,7 @@ from django.contrib import admin
 from .models import (
     Parent, Teacher, Child, Lesson, StoryPage, ComprehensionQuestion,
     VisualActivityItem, PronunciationWord, SpellingActivity, Progress,
-    TeacherClass, Message,Subscription, PackageCode,
+    TeacherClass, Message, Subscription, PackageCode, AIStoryJob,
 )
 
 @admin.register(PackageCode)
@@ -40,9 +40,17 @@ class SubscriptionAdmin(admin.ModelAdmin):
 
 @admin.register(Lesson)
 class LessonAdmin(admin.ModelAdmin):
-    list_display = ('title', 'grade', 'created_at')
-    list_filter = ('grade',)
+    list_display = ('title', 'grade', 'is_ai_generated', 'generated_for', 'created_at')
+    list_filter = ('grade', 'is_ai_generated')
     search_fields = ('title',)
+
+
+@admin.register(AIStoryJob)
+class AIStoryJobAdmin(admin.ModelAdmin):
+    list_display = ('child', 'grade', 'status', 'lesson', 'created_at', 'updated_at')
+    list_filter = ('status', 'grade')
+    search_fields = ('child__name',)
+    readonly_fields = ('created_at', 'updated_at')
 
 
 class StoryPageInline(admin.TabularInline):

@@ -80,6 +80,16 @@ class Lesson(models.Model):
     title = models.CharField(max_length=200)
     grade = models.IntegerField()
     thumbnail_image = models.CharField(max_length=300, blank=True)
+    curriculum_source = models.CharField(max_length=120, blank=True)
+    source_attribution = models.TextField(blank=True)
+    is_ai_generated = models.BooleanField(default=False)
+    # AI-generated stories belong to the learner who unlocked them. Workbook
+    # lessons (and any shared/reviewed AI stories) have no owner and remain
+    # available to every learner in the grade.
+    generated_for = models.ForeignKey(
+        Child, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='generated_lessons',
+    )
     created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):
@@ -561,3 +571,44 @@ class Message(models.Model):
     def __str__(self):
         sender = self.sender_parent or self.sender_teacher
         return f"Message about {self.child.name} from {self.sender_role} ({sender}) at {self.sent_at:%Y-%m-%d %H:%M}"
+
+
+# ───────────── AI story generation (background job tracking) ─────────────
+
+class AIStoryJob(models.Model):
+    """Tracks one background 'write me a new story' request for a learner.
+
+    Generation (Gemini text + Pollinations illustrations) happens in a
+    background thread so the HTTP request that kicks it off can return
+    immediately; the frontend polls this row's status instead of blocking
+    on the request. Coordination is via the database, not shared memory,
+    so this also works correctly across multiple web-server processes.
+    """
+
+    STATUS_PENDING = 'pending'
+    STATUS_RUNNING = 'running'
+    STATUS_DONE = 'done'
+    STATUS_ERROR = 'error'
+    STATUS_CHOICES = [
+        (STATUS_PENDING, 'Pending'),
+        (STATUS_RUNNING, 'Running'),
+        (STATUS_DONE, 'Done'),
+        (STATUS_ERROR, 'Error'),
+    ]
+
+    child = models.ForeignKey(Child, on_delete=models.CASCADE, related_name='ai_story_jobs')
+    grade = models.IntegerField()
+    status = models.CharField(max_length=10, choices=STATUS_CHOICES, default=STATUS_PENDING)
+    lesson = models.ForeignKey(
+        Lesson, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='ai_story_job',
+    )
+    error_message = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"AI story job for {self.child.name} (grade {self.grade}) — {self.status}"

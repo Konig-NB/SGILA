@@ -8,18 +8,25 @@ import hashlib
 import json
 import random
 import re
+import threading
+import time
+import urllib.parse
 from pathlib import Path
+from urllib.error import HTTPError, URLError
+from urllib.request import Request as UrlRequest, urlopen
+from uuid import uuid4
 
 from django.conf import settings
 from django.core.mail import send_mail
 from django.contrib import messages
 from django.contrib.auth.hashers import check_password, make_password
 from django.db.models import Q
-from django.http import FileResponse, Http404
+from django.http import FileResponse, Http404, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.http import require_http_methods
 
 from api.models import (
+    AIStoryJob,
     CauseEffectPair,
     Child,
     ComprehensionQuestion,
@@ -31,11 +38,14 @@ from api.models import (
     Parent,
     PredictionQuestion,
     Progress,
+    PronunciationWord,
     SequencingActivity,
     SpellingActivity,
+    StoryPage,
     Teacher,
     TeacherClass,
     ThemeQuestion,
+    VisualActivityItem,
     VocabularyQuestion,
     WrittenResponsePrompt,
     generate_class_code,
@@ -821,6 +831,402 @@ def parent_delete_child(request, child_id):
     return redirect('/parent/dashboard')
 
 
+# ───────────────────────── AI story generation ─────────────────────────
+#
+# A learner unlocks a fresh, personalised story once they've mastered every
+# workbook lesson for their grade (95%+) — see AI_STORY_PASS_THRESHOLD and
+# check_ai_story_eligibility below. Generation itself runs in a background
+# thread (see run_ai_story_job/start_ai_story_job) so the request that kicks
+# it off returns immediately; the frontend polls ai_story_job_status instead
+# of blocking on a single slow request. maybe_start_ai_story_job is also
+# called right after a learner finishes a lesson at pass-threshold or above,
+# so a new story is often already waiting by the time they go looking for it.
+
+AI_STORY_PASS_THRESHOLD = 95
+
+
+def lesson_passed(child, lesson):
+    """A lesson only counts as 'mastered' at 95%+, so comprehension has genuinely happened."""
+    record = Progress.objects.filter(child=child, lesson=lesson).first()
+    return bool(record and record.percentage >= AI_STORY_PASS_THRESHOLD)
+
+
+class GeminiStoryGenerationError(Exception):
+    """A learner-safe error raised when Gemini/Pollinations cannot create a story."""
+
+
+def generate_gemini_story(grade, recent_titles):
+    """Ask Gemini for a structured, CAPS-aligned practice story for one grade."""
+    api_key = settings.GEMINI_API_KEY
+    if not api_key:
+        raise GeminiStoryGenerationError('AI stories are not configured yet. Ask an adult to add the GEMINI_API_KEY setting.')
+    theme = random.choice([
+        'a school library discovery', 'a soccer practice', 'a family cooking day',
+        'a visit to a science centre', 'a beach clean-up', 'a neighbourhood music day',
+        'a bus trip to a museum', 'a lost-and-found kindness story', 'a rainy-day invention',
+        'a young reader helping at a community event',
+    ])
+    word_count = '25-45' if grade == 1 else ('30-55' if grade == 2 else ('35-65' if grade == 3 else '70-100'))
+    prompt = f'''Create one original English Home Language reading-practice story for a South African Grade {grade} learner.
+Use this fresh theme: {theme}.
+Avoid these recently used story titles and topics: {', '.join(recent_titles[-10:]) or 'none'}.
+Return ONLY valid JSON with this exact shape:
+{{"title":"short story title","character_description":"","pages":[{{"text":"","highlighted_words":["word"],"illustration_prompt":""}}],"questions":[{{"question":"","options":["","","",""],"answer":""}}],"visual_words":["","",""],"spelling":{{"display_text":"word with one missing vowel","answer":"complete word"}}}}
+Rules: exactly 2 pages; each page has {word_count} age-appropriate words; each illustration_prompt describes that page only; use an everyday South African setting; age-appropriate vocabulary; no unsafe, frightening, commercial, or copyrighted characters; 3 comprehension questions; exactly 4 options per question; the answer must exactly match one option; and all content must be CAPS-aligned Grade {grade} reading practice. visual_words must contain exactly three different, single-word, concrete nouns from the story (for example "train", "book", "apple") that can be shown alone in a picture. Never use actions, people, places, descriptions, or compound words there.
+character_description must be one concrete sentence describing the main character's appearance only — approximate age, hairstyle, one clothing colour/item, and skin tone — written so it can be pasted unchanged into an image-generation prompt every time that character appears, keeping them visually identical across illustrations.'''
+    model = settings.GEMINI_MODEL
+    payload = json.dumps({'contents': [{'parts': [{'text': prompt}]}], 'generationConfig': {'responseMimeType': 'application/json', 'temperature': 0.7}}).encode('utf-8')
+    api_request = UrlRequest(f'https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent', data=payload, headers={'Content-Type': 'application/json', 'x-goog-api-key': api_key}, method='POST')
+    try:
+        with urlopen(api_request, timeout=45) as response:
+            result = json.loads(response.read().decode('utf-8'))
+    except HTTPError as error:
+        try:
+            detail = json.loads(error.read().decode('utf-8')).get('error', {})
+            provider_message = detail.get('message', '')
+        except (UnicodeDecodeError, json.JSONDecodeError):
+            provider_message = ''
+        if error.code in (401, 403):
+            message = 'Gemini rejected the API key. Check that the key is active in Google AI Studio and restart SGILA.'
+        elif error.code == 404:
+            message = f'Gemini model "{model}" is not available for this API key. Check GEMINI_MODEL in .env.'
+        elif error.code == 429:
+            message = 'Gemini has reached its request limit. Wait a moment, then try again.'
+        elif error.code == 400:
+            message = 'Gemini could not accept the story request. Check the selected Gemini model and try again.'
+        else:
+            message = f'Gemini returned an error ({error.code}). Please try again later.'
+        if provider_message:
+            message = f'{message} Details: {provider_message[:180]}'
+        raise GeminiStoryGenerationError(message) from error
+    except URLError as error:
+        raise GeminiStoryGenerationError('SGILA could not reach Gemini. Check the internet connection and try again.') from error
+    try:
+        text = ''.join(part.get('text', '') for part in result['candidates'][0]['content']['parts'])
+        story = json.loads(text)
+        visual_words = story.get('visual_words', [])
+        if len(story['pages']) != 2 or len(story['questions']) != 3 or len(visual_words) != 3:
+            raise ValueError('Unexpected story shape')
+        if not str(story.get('character_description', '')).strip():
+            raise ValueError('Missing character_description')
+        for question in story['questions']:
+            if len(question['options']) != 4 or question['answer'] not in question['options']:
+                raise ValueError('Invalid question options')
+        if any(not re.fullmatch(r'[A-Za-z]+', str(word).strip()) for word in visual_words):
+            raise ValueError('Invalid visual word')
+    except (KeyError, IndexError, TypeError, ValueError, json.JSONDecodeError) as error:
+        raise GeminiStoryGenerationError('Gemini returned a story in an unexpected format. Please try again.') from error
+    return story
+
+
+# Fixed art-direction brief reused for every image across the whole app. Combined with a
+# locked seed and the story's own character_description, this is what keeps the images in
+# one story looking like they belong together, since Pollinations has no image-input/reference
+# mode — text (seed + wording) is the only consistency lever.
+STORY_STYLE_BRIEF = (
+    "children's picture-book illustration, soft warm gouache-and-watercolour style, rounded "
+    "friendly shapes, bright gentle colour palette, everyday South African setting, "
+    "no text, no letters, no logos, no watermarks"
+)
+
+
+def _build_pollinations_url(prompt_text, seed, width=1024, height=1024):
+    encoded_prompt = urllib.parse.quote(prompt_text[:1500])
+    url = (
+        f'https://image.pollinations.ai/prompt/{encoded_prompt}'
+        f'?width={width}&height={height}&seed={seed}&model={settings.POLLINATIONS_MODEL}&nologo=true'
+    )
+    if settings.POLLINATIONS_API_KEY:
+        url += f'&token={settings.POLLINATIONS_API_KEY}'
+    return url
+
+
+def _save_image_bytes(image_bytes, content_type):
+    suffix = '.png' if 'png' in content_type else '.jpg'
+    folder = Path(settings.MEDIA_ROOT) / 'generated_stories'
+    folder.mkdir(parents=True, exist_ok=True)
+    filename = f'{uuid4().hex}{suffix}'
+    (folder / filename).write_bytes(image_bytes)
+    return f'{settings.MEDIA_URL}generated_stories/{filename}'
+
+
+def _fetch_pollinations_image(url, max_attempts=3):
+    """GET an image from Pollinations with retry/backoff.
+
+    Pollinations' own docs flag 429 (rate limited) and 503 (overloaded) as expected,
+    recoverable states, and 502 as usually-transient upstream trouble — so these are
+    worth a short retry rather than failing the whole story generation immediately.
+    """
+    last_error = None
+    for attempt in range(1, max_attempts + 1):
+        image_request = UrlRequest(url, headers={'User-Agent': 'SGILA-App/1.0'}, method='GET')
+        try:
+            with urlopen(image_request, timeout=60) as response:
+                return response.read(), response.headers.get('Content-Type', '')
+        except HTTPError as error:
+            last_error = error
+            if error.code in (429, 502, 503) and attempt < max_attempts:
+                retry_after = error.headers.get('Retry-After') if error.headers else None
+                try:
+                    wait_seconds = float(retry_after) if retry_after else attempt * 2
+                except ValueError:
+                    wait_seconds = attempt * 2
+                time.sleep(min(wait_seconds, 10))
+                continue
+            break
+        except URLError as error:
+            last_error = error
+            if attempt < max_attempts:
+                time.sleep(attempt * 2)
+                continue
+            break
+    raise GeminiStoryGenerationError(
+        'Could not create the story illustrations right now (Pollinations is busy). Please try again shortly.'
+    ) from last_error
+
+
+def generate_illustration(prompt, character_description, seed):
+    """Generate and store one safe, story-specific illustration via Pollinations (free, unlimited).
+
+    character_description and seed are shared across every image in one story — that pairing,
+    not the model choice, is what makes the images look consistent instead of unrelated.
+    """
+    image_prompt = (
+        f'{STORY_STYLE_BRIEF}. If the main character appears in this scene, draw them exactly '
+        f'as: {character_description[:300]}. Scene to show: {str(prompt)[:600]}'
+    )
+    url = _build_pollinations_url(image_prompt, seed)
+    image_bytes, content_type = _fetch_pollinations_image(url)
+    return _save_image_bytes(image_bytes, content_type)
+
+
+def generate_vocab_image(word, seed):
+    """Generate one unmistakable object image for a visual-identification activity."""
+    prompt = (
+        f"{STORY_STYLE_BRIEF}. A single large, complete {word} centred in the frame. "
+        "Show only that one object on a plain, softly coloured background. No people, animals, "
+        "extra objects, scenery, labels, letters, numbers, logos, cropped object, or collage. "
+        "The object must be immediately recognisable to a young learner."
+    )
+    url = _build_pollinations_url(prompt, seed)
+    image_bytes, content_type = _fetch_pollinations_image(url)
+    return _save_image_bytes(image_bytes, content_type)
+
+
+def create_ai_story_for_grade(child):
+    """Create a fresh Gemini-generated practice story after workbook completion.
+
+    This is the actual generation work — it's slow (one Gemini call plus up to
+    five sequential image calls) and is meant to be run from a background
+    thread (see run_ai_story_job), never directly inside a request/response cycle.
+    """
+    recent_titles = list(Lesson.objects.filter(grade=child.grade, is_ai_generated=True).values_list('title', flat=True))
+    story = generate_gemini_story(child.grade, recent_titles)
+    character_description = story['character_description'].strip()
+    seed = random.randint(1, 999999)
+
+    illustrations = [
+        generate_illustration(page.get('illustration_prompt', page['text']), character_description, seed)
+        for page in story['pages']
+    ]
+
+    cover_image_url = illustrations[0]
+    lesson = Lesson.objects.create(
+        title=story['title'][:200],
+        grade=child.grade,
+        thumbnail_image=cover_image_url,
+        curriculum_source='AI story collection — CAPS aligned',
+        source_attribution=(
+            'AI-generated practice story. Google Gemini writes the story and activities '
+            f'to follow the Grade {child.grade} CAPS reading format; illustrations are AI-generated to match.'
+        ),
+        is_ai_generated=True,
+        generated_for=child,
+    )
+    for page_number, page in enumerate(story['pages'], start=1):
+        StoryPage.objects.create(
+            lesson=lesson, page_number=page_number, text=page['text'],
+            image_url=illustrations[page_number - 1],
+            audio_url=f'voiceover:ai-story-{lesson.id}-page-{page_number}',
+            highlighted_words=','.join(str(word) for word in page.get('highlighted_words', [])),
+        )
+
+    for item in story['questions']:
+        options = list(item['options'])
+        random.shuffle(options)
+        ComprehensionQuestion.objects.create(
+            lesson=lesson, question=item['question'], option_1=options[0], option_2=options[1],
+            option_3=options[2], option_4=options[3], correct_answer=item['answer'],
+        )
+
+    story_text = " ".join([page.get('text', '') for page in story['pages']])
+    # Grab words longer than 3 letters to use as trick options
+    story_words = list(set([w.strip('.,!?()"\'').title() for w in story_text.split() if len(w.strip('.,!?()"\'')) > 3]))
+    fallback_pool = ['Farm', 'School', 'Book', 'Tree', 'House', 'Car', 'Dog', 'Cat', 'Sun', 'Bird']
+    distractor_pool = list(set(story_words + fallback_pool))
+
+    for word_index, word in enumerate(story['visual_words']):
+        word = str(word).strip().title()[:100]
+        vocab_image_url = generate_vocab_image(word, seed + word_index + 1)
+        safe_pool = [w for w in distractor_pool if w.lower() != word.lower()]
+        wrong_options = random.sample(safe_pool, min(3, len(safe_pool)))
+        options = [word] + wrong_options
+        random.shuffle(options)
+        word_options_str = ','.join(options)
+        VisualActivityItem.objects.create(lesson=lesson, correct_word=word, word_options=word_options_str, image_url=vocab_image_url)
+        PronunciationWord.objects.create(lesson=lesson, word=word, english_audio=f'voiceover:ai-story-{word.lower()}')
+
+    spelling = story['spelling']
+    SpellingActivity.objects.create(
+        lesson=lesson, activity_type=SpellingActivity.FILL_VOWEL,
+        display_text=spelling['display_text'][:200], answer=spelling['answer'][:200],
+    )
+    return lesson
+
+
+def run_ai_story_job(job_id):
+    """Background-thread entry point: does the slow work, then records the outcome on the job row.
+
+    Coordination is entirely through the AIStoryJob row in the database — nothing is kept
+    in memory that the polling requests need — so this is safe even if the web server runs
+    multiple worker processes.
+    """
+    try:
+        job = AIStoryJob.objects.get(id=job_id)
+    except AIStoryJob.DoesNotExist:
+        return
+    job.status = AIStoryJob.STATUS_RUNNING
+    job.save(update_fields=['status', 'updated_at'])
+    try:
+        lesson = create_ai_story_for_grade(job.child)
+    except GeminiStoryGenerationError as error:
+        job.status = AIStoryJob.STATUS_ERROR
+        job.error_message = str(error)
+        job.save(update_fields=['status', 'error_message', 'updated_at'])
+    except Exception:  # noqa: BLE001 — a background thread must never crash silently
+        job.status = AIStoryJob.STATUS_ERROR
+        job.error_message = 'Something went wrong creating the story. Please try again.'
+        job.save(update_fields=['status', 'error_message', 'updated_at'])
+    else:
+        job.lesson = lesson
+        job.status = AIStoryJob.STATUS_DONE
+        job.save(update_fields=['lesson', 'status', 'updated_at'])
+
+
+def start_ai_story_job(child, grade):
+    """Create (or reuse) a pending/running AI story job and kick off its background thread."""
+    existing = AIStoryJob.objects.filter(
+        child=child, grade=grade, status__in=[AIStoryJob.STATUS_PENDING, AIStoryJob.STATUS_RUNNING],
+    ).order_by('-created_at').first()
+    if existing:
+        return existing
+    job = AIStoryJob.objects.create(child=child, grade=grade, status=AIStoryJob.STATUS_PENDING)
+    threading.Thread(target=run_ai_story_job, args=(job.id,), daemon=True).start()
+    return job
+
+
+def check_ai_story_eligibility(child, grade):
+    """Shared gate used by both the manual 'explore more stories' button and the
+    automatic post-lesson trigger.
+
+    Returns (eligible, error_message, redirect_hint) where redirect_hint is only set
+    when the learner should be sent somewhere specific (e.g. back to an unfinished story).
+    """
+    if grade not in (1, 2, 3, 4):
+        return False, 'AI practice stories are available for Grades 1 to 4.', f'/grade/{grade}'
+
+    all_lessons = Lesson.objects.filter(grade=grade)
+    required_lessons = list(all_lessons.filter(is_ai_generated=False)) + list(all_lessons.filter(
+        is_ai_generated=True, generated_for__isnull=True, curriculum_source='AI story collection — CAPS aligned',
+    ))
+    if not required_lessons or not all(lesson_passed(child, lesson) for lesson in required_lessons):
+        return (
+            False,
+            f'Score at least {AI_STORY_PASS_THRESHOLD}% on every workbook story before creating an AI story.',
+            f'/grade/{grade}',
+        )
+
+    current_ai_lesson = Lesson.objects.filter(
+        grade=grade, is_ai_generated=True, generated_for=child,
+    ).order_by('-created_at').first()
+    if current_ai_lesson and not lesson_passed(child, current_ai_lesson):
+        return (
+            False,
+            f'Finish your current story with at least {AI_STORY_PASS_THRESHOLD}% before unlocking a new one.',
+            f'/lessons/{current_ai_lesson.id}/story',
+        )
+
+    return True, None, None
+
+
+def maybe_start_ai_story_job(child, grade):
+    """Called right after a learner finishes a lesson at pass-threshold or above.
+
+    Silently starts generating their next AI story in the background — no button click
+    required — so it's often ready by the time they go looking for it. Safe to call on
+    every results-page render: check_ai_story_eligibility and start_ai_story_job both
+    no-op if a story isn't actually due yet or a job is already in flight.
+    """
+    if not settings.GEMINI_API_KEY:
+        return
+    try:
+        eligible, _, _ = check_ai_story_eligibility(child, grade)
+        if eligible:
+            start_ai_story_job(child, grade)
+    except Exception:  # noqa: BLE001 — this is a background nicety, never worth breaking results page over
+        pass
+
+
+@require_http_methods(['POST'])
+def generate_ai_story_ajax(request, grade):
+    """JSON endpoint for the 'Explore more stories' button.
+
+    Starts (or reuses) a background job and returns immediately — it never blocks on
+    Gemini/Pollinations itself. The frontend polls ai_story_job_status for progress.
+    """
+    child, response = learner_required(request)
+    if response:
+        return JsonResponse({'success': False, 'error': 'Please sign in as a learner first.'}, status=401)
+    if child.grade != grade:
+        return JsonResponse({'success': False, 'error': 'This story set belongs to a different grade.'}, status=403)
+
+    eligible, error_message, redirect_hint = check_ai_story_eligibility(child, grade)
+    if not eligible:
+        return JsonResponse({'success': False, 'error': error_message, 'redirect_url': redirect_hint}, status=400)
+
+    if not settings.GEMINI_API_KEY:
+        return JsonResponse({
+            'success': False,
+            'error': 'AI stories are not configured yet. Ask an adult to add the GEMINI_API_KEY setting.',
+        }, status=503)
+
+    job = start_ai_story_job(child, grade)
+    return JsonResponse({'success': True, 'job_id': job.id, 'status': job.status})
+
+
+@require_http_methods(['GET'])
+def ai_story_job_status(request, job_id):
+    """Polled by the frontend every couple seconds while a story is being created."""
+    child, response = learner_required(request)
+    if response:
+        return JsonResponse({'success': False, 'error': 'Please sign in as a learner first.'}, status=401)
+    job = get_object_or_404(AIStoryJob, id=job_id)
+    if job.child_id != child.id:
+        raise Http404('Job not found.')
+
+    data = {'success': True, 'status': job.status}
+    if job.status == AIStoryJob.STATUS_DONE and job.lesson_id:
+        data.update({
+            'lesson_id': job.lesson_id,
+            'title': job.lesson.title,
+            'thumbnail_image': job.lesson.thumbnail_image,
+            'redirect_url': f'/lessons/{job.lesson_id}/story',
+        })
+    elif job.status == AIStoryJob.STATUS_ERROR:
+        data['error'] = job.error_message or 'Could not create a story right now. Please try again.'
+    return JsonResponse(data)
+
+
 def grade_home(request, grade):
     child, response = learner_required(request)
     if response:
@@ -844,7 +1250,23 @@ def grade_home(request, grade):
         messages.success(request, 'Class code linked successfully. You can now continue your lessons.')
         return redirect(f'/grade/{grade}')
 
-    lessons = Lesson.objects.filter(grade=grade).order_by('id')
+    all_lessons = Lesson.objects.filter(grade=grade).order_by('id')
+    curated_lessons = list(all_lessons.filter(is_ai_generated=False))
+    # Reviewed/shared AI stories are visible to the whole grade. A story generated
+    # for one specific learner is private to them (see story_page's ownership check).
+    public_ai_stories = list(all_lessons.filter(
+        is_ai_generated=True,
+        generated_for__isnull=True,
+        curriculum_source='AI story collection — CAPS aligned',
+    ).order_by('id'))
+    # Only the most recent personal AI story is ever shown — once a new one is
+    # generated, the previous one quietly drops off this list (it's kept in the
+    # database for progress history, just not shown as a lesson card any more).
+    latest_ai_lesson = all_lessons.filter(
+        is_ai_generated=True, generated_for=child,
+    ).order_by('-created_at').first()
+    lessons = curated_lessons + public_ai_stories + ([latest_ai_lesson] if latest_ai_lesson else [])
+
     records = Progress.objects.filter(child=child)
     progress_by_lesson = {record.lesson_id: record for record in records}
     lesson_data = []
@@ -857,7 +1279,22 @@ def grade_home(request, grade):
             'thumbnail_image': lesson.thumbnail_image,
             'completed': bool(record),
             'stars': range(record.stars_earned) if record else range(0),
+            'is_current_ai_story': lesson.is_ai_generated and lesson.id == getattr(latest_ai_lesson, 'id', None),
         })
+
+    required_lessons = curated_lessons + public_ai_stories
+    workbook_complete = bool(required_lessons) and all(
+        lesson_passed(child, lesson) for lesson in required_lessons
+    )
+    # The "explore more stories" offer only opens once the workbook is mastered AND,
+    # if a personal AI story already exists, once that one is mastered too.
+    ai_story_available = workbook_complete and (
+        latest_ai_lesson is None or lesson_passed(child, latest_ai_lesson)
+    )
+    active_ai_job = AIStoryJob.objects.filter(
+        child=child, grade=grade, status__in=[AIStoryJob.STATUS_PENDING, AIStoryJob.STATUS_RUNNING],
+    ).order_by('-created_at').first()
+
     return render(request, 'grade_home.html', {
         'lessons': lesson_data,
         'grade': grade,
@@ -865,6 +1302,9 @@ def grade_home(request, grade):
         'child_name': child.name,
         'completed_count': records.count(),
         'total_stars': sum(r.stars_earned for r in records),
+        'ai_story_available': ai_story_available,
+        'ai_story_job_id': active_ai_job.id if active_ai_job else None,
+        'grades_with_ai': (1, 2, 3, 4),
     })
 
 
@@ -873,6 +1313,8 @@ def story_page(request, lesson_id):
     if response:
         return response
     lesson = get_object_or_404(Lesson, id=lesson_id)
+    if lesson.is_ai_generated and lesson.generated_for_id and lesson.generated_for_id != child.id:
+        raise Http404('This generated story belongs to another learner.')
     pages = [{
         'page_number': p.page_number,
         'text': p.text,
@@ -1086,6 +1528,9 @@ def results_page(request, lesson_id):
             },
         )
 
+        if percentage >= AI_STORY_PASS_THRESHOLD:
+            maybe_start_ai_story_job(child, lesson.grade)
+
         breakdown = [
             {'label': 'Comprehension',  'score': comp_score,  'total': comp_total},
             {'label': 'Sequencing',     'score': seq_score,   'total': seq_total},
@@ -1184,6 +1629,9 @@ def results_page(request, lesson_id):
             'stars_earned': stars,
         },
     )
+
+    if percentage >= AI_STORY_PASS_THRESHOLD:
+        maybe_start_ai_story_job(child, lesson.grade)
 
     for suffix in score_keys:
         request.session.pop(f'{prefix}_{suffix}', None)
