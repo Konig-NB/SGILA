@@ -90,12 +90,58 @@ class Command(BaseCommand):
             total_possible=12,
             stars_earned=3,
         )
+    #-------------------------------------GRADE 4 seeded_data-------------------------------------------------------------------------------------
+        
+        parent2 = Parent.objects.create(
+            full_name='Nancy Mabunda',
+            email='parent2@sgila.test',
+            phone='0710000012',
+            password=make_password('password123'),
+            accepted_popia=True,
+        )
+        teacher2 = Teacher.objects.create(
+            full_name='Miss Maluleke',
+            email='teacher2@sgila.test',
+            school_name='MK-Khambani Primary',
+            grades_taught='3,4',
+            phone='0720000032',
+            password=make_password('password123'),
+            accepted_popia=True,
+            class_code='SGILA2',
+        )
+        grade_four = TeacherClass.objects.create(
+            teacher=teacher2,
+            name='Grade 4',
+            grade=4,
+            class_code='RAINB4',
+        )
+        TeacherClass.objects.create(
+            teacher=teacher2,
+            name='Grade 3',
+            grade=3,
+            class_code='RAINB3',
+        )
+        child = Child.objects.create(
+            parent=parent2,
+            teacher=teacher2,
+            teacher_class=grade_four,
+            username='nhlulelo_m',
+            first_name='nhlulelo',
+            last_name='Mabunda',
+            name='Nhlulelo Mabunda',
+            age=10,
+            grade=4,
+            school_name='MK-Khambani Primary',
+            parent_email='learner2@sgila.test',
+            photo='child_photos/demo_child_photo.jpeg',
+            password=make_password('password123'),
+        )
 
         self.create_water_stopped_lesson()
         self.create_extra_lessons()
 
         self.stdout.write(self.style.SUCCESS(
-            "Demo data loaded. Logins: learner@sgila.test / parent@sgila.test / teacher@sgila.test, password password123. Class code RAINB1."
+            "Demo data loaded. Logins: sipho_d / parent@sgila.test / teacher@sgila.test, password password123. Class code RAINB1."
         ))
 
     def create_lerato_lesson(self):
@@ -186,6 +232,7 @@ class Command(BaseCommand):
         SpellingActivity.objects.create(lesson=lesson, activity_type=SpellingActivity.DRAG_LETTERS, display_text='R,A,N,O,G,E', answer='ORANGE')
         SpellingActivity.objects.create(lesson=lesson, activity_type=SpellingActivity.COPY_WRITING, display_text='I eat an apple.', answer='I eat an apple.')
         return lesson
+
     
     
     def create_water_stopped_lesson(self):
