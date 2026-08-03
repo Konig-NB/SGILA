@@ -1698,6 +1698,11 @@ def teacher_dashboard(request):
         })
 
     class_average = round(sum(row['average'] for row in active_rows) / len(active_rows)) if active_rows else 0
+    # Prepare up to 3 preview learners for the compact avatar stack
+    preview_learners = learner_rows[:3]
+    # Anchor target for ellipsis (jump to first grade section if present)
+    first_grade_anchor = f"grade-section-{grade_sections[0]['grade']}" if grade_sections else ''
+
     return render(request, 'teacher_dashboard.html', {
         'teacher': teacher,
         'learner_rows': learner_rows,
@@ -1707,6 +1712,8 @@ def teacher_dashboard(request):
         'total_lessons_done': sum(row['lessons_done'] for row in learner_rows),
         'total_stars': sum(row['stars'] for row in learner_rows),
         'needs_help_count': sum(1 for row in learner_rows if row['needs_help']),
+        'preview_learners': preview_learners,
+        'first_grade_anchor': first_grade_anchor,
         'teacher_classes': teacher_classes,
     })
 

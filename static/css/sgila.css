@@ -2865,7 +2865,7 @@ body:not(.diagram-body) .learner-hero img {
 
 body:not(.diagram-body) .metric-strip {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 0.5rem;
 }
 
