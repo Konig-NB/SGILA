@@ -50,7 +50,7 @@
 
       <label class="terms-checkbox-label">
         <input type="checkbox" name="accepted_popia" id="accepted_popia" value="true" required>
-        I agree to Sgila's <a href="/terms" class="terms-link" target="_blank">Terms &amp; Conditions</a>
+        I accept SGILA's <a href="/terms" class="terms-link" target="_blank">terms and conditions</a>.
       </label>
 
       <button class="btn btn-primary btn-full" type="submit" id="submit-btn-parent" disabled>Create parent account</button>
@@ -87,7 +87,7 @@
 
       <label class="terms-checkbox-label">
         <input type="checkbox" name="accepted_popia" id="accepted_popia" value="true" required>
-        I agree to Sgila's <a href="/terms" class="terms-link" target="_blank">Terms &amp; Conditions</a>
+        I accept SGILA's <a href="/terms" class="terms-link" target="_blank">terms and conditions</a>.
       </label>
 
       <button class="btn btn-mint btn-full" type="submit" id="submit-btn-teacher" disabled>Create teacher account</button>
@@ -107,18 +107,19 @@
 .password-requirements li.met { color: #16a34a; }
 .password-requirements li.met::before { content: "✓ "; }
 .password-suggestion { font-size: 0.82rem; color: #b45309; background: #fffbeb; border: 1px solid #fde68a; padding: 6px 8px; border-radius: 6px; margin: 6px 0; }
-.terms-checkbox-label {
-  display: flex;
+.form-card label.terms-checkbox-label {
+  display: inline-flex;
   flex-direction: row;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   align-items: center;
   gap: 6px;
   font-size: 0.9rem;
   margin: 14px 0;
   cursor: pointer;
   line-height: 1.3;
+  white-space: nowrap;
 }
-.terms-checkbox-label input[type="checkbox"] {
+.form-card label.terms-checkbox-label input[type="checkbox"] {
   appearance: auto;
   -webkit-appearance: checkbox;
   width: 16px;
@@ -131,8 +132,9 @@
   flex: 0 0 16px;
   cursor: pointer;
 }
-.terms-checkbox-label .terms-link {
+.form-card label.terms-checkbox-label .terms-link {
   display: inline;
+  white-space: nowrap;
 }
 button[disabled] { opacity: 0.55; cursor: not-allowed; }
 
