@@ -61,6 +61,37 @@
   }
   </style>
 
+  <script>
+  // Keep free-text form entries consistently capitalized, including pasted text.
+  // Identifiers, credentials, and numeric/payment fields retain their exact value.
+  (function () {
+    const excludedNames = /(?:email|password|token|code|otp|card_number|account_number|branch_code|expiry|cvv)/i;
+
+    function shouldCapitalize(field) {
+      if (field.dataset.preserveCase !== undefined || field.disabled || field.readOnly) return false;
+      if (field.tagName === 'TEXTAREA') return !excludedNames.test(field.name || '');
+      return field.tagName === 'INPUT' && field.type === 'text' && !excludedNames.test(field.name || '');
+    }
+
+    function capitalizeFirst(field) {
+      if (!shouldCapitalize(field) || !field.value) return;
+      if (/^(full_name|school_name|first_name|last_name|child_name)$/i.test(field.name || '')) {
+        field.value = field.value.replace(/[A-Za-z]+/g, word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase());
+        return;
+      }
+      const match = field.value.match(/^[^A-Za-z]*[A-Za-z]/);
+      if (!match) return;
+      const index = match[0].length - 1;
+      field.value = field.value.slice(0, index) + field.value[index].toUpperCase() + field.value.slice(index + 1);
+    }
+
+    document.addEventListener('input', event => capitalizeFirst(event.target));
+    document.addEventListener('submit', event => {
+      event.target.querySelectorAll('input, textarea').forEach(capitalizeFirst);
+    });
+  })();
+  </script>
+
   {% if request.session.account_role == 'parent' or request.session.account_role == 'teacher' %}
   <script>
   // Keeps the "Messages" nav badge live on every page, so a parent/teacher

@@ -29,6 +29,7 @@ from .models import (
     WrittenResponsePrompt,
     OTPToken, PasswordResetToken,
     Message,
+    title_case,
 )
 from .jwt_utils import create_access_token, token_from_request
 
@@ -218,7 +219,10 @@ def register(request):
         return JsonResponse({'error': 'Invalid role.'}, status=400)
 
     email = (data.get('email') or '').strip().lower()
-    full_name = (data.get('full_name') or '').strip()
+    full_name = title_case(data.get('full_name'))
+    data['full_name'] = full_name
+    if role == 'teacher':
+        data['school_name'] = title_case(data.get('school_name'))
     password = data.get('password', '')
 
     if not email or not full_name or not password:
