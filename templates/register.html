@@ -18,48 +18,389 @@
     {% csrf_token %}
     <input type="hidden" name="role" value="{{ role }}">
 
-    {% if role == 'parent' %}
+{% if role == 'parent' %}
       <h2>Parent registration</h2>
       <label>Full name<input type="text" name="full_name" required></label>
       <label>Email<input type="email" name="email" required></label>
       <label>Phone<input type="text" name="phone"></label>
-      <label>Password<input type="password" name="password" required></label>
-      <input type="hidden" name="accepted_popia" value="true">
-      <p class="terms-notice">By clicking create account you agree to Sgila's <a href="/terms" class="terms-link" target="_blank">Terms &amp; Conditions</a></p>
-      <button class="btn btn-primary btn-full" type="submit">Create parent account</button>
+      <label>Password
+        <div class="password-field-wrap">
+          <input type="password" name="password" id="password" required minlength="8"
+                 autocomplete="new-password"
+                 aria-describedby="password-strength password-requirements">
+          <button type="button" class="password-toggle-visibility" data-target="password" aria-label="Show password">Show</button>
+        </div>
+      </label>
+      <div class="password-actions">
+        <button type="button" class="generate-password-btn" data-target="password">Suggest a strong password</button>
+        <button type="button" class="copy-password-btn" data-target="password">Copy to clipboard</button>
+      </div>
+      <div id="password-strength" class="password-strength" aria-live="polite">
+        <div class="strength-bar"><div class="strength-bar-fill" id="strength-bar-fill"></div></div>
+        <span id="strength-label" class="strength-label"></span>
+      </div>
+      <ul id="password-requirements" class="password-requirements">
+        <li data-rule="length">At least 8 characters</li>
+        <li data-rule="uppercase">One uppercase letter</li>
+        <li data-rule="lowercase">One lowercase letter</li>
+        <li data-rule="number">One number</li>
+        <li data-rule="special">One special character (!@#$%^&* etc.)</li>
+      </ul>
+      <p id="password-suggestion" class="password-suggestion" hidden></p>
+
+      <label class="terms-checkbox-label">
+        <input type="checkbox" name="accepted_popia" id="accepted_popia" value="true" required>
+        I accept SGILA's <a href="/terms" class="terms-link" target="_blank">terms and conditions</a>.
+      </label>
+
+      <button class="btn btn-primary btn-full" type="submit" id="submit-btn-parent" disabled>Create parent account</button>
     {% else %}
       <h2>Teacher registration</h2>
       <label>Full name<input type="text" name="full_name" required></label>
       <label>Work email<input type="email" name="email" required></label>
       <label>School name<input type="text" name="school_name" required></label>
       <label>Grades taught<input type="text" name="grades_taught" placeholder="e.g. 1, 2"></label>
-      <label>Password<input type="password" name="password" required></label>
-      <input type="hidden" name="accepted_popia" value="true">
-      <p class="terms-notice">By clicking create account you agree to Sgila's <a href="/terms" class="terms-link" target="_blank">Terms &amp; Conditions</a></p>
-      <button class="btn btn-mint btn-full" type="submit">Create teacher account</button>
+      <label>Password
+        <div class="password-field-wrap">
+          <input type="password" name="password" id="password" required minlength="8"
+                 autocomplete="new-password"
+                 aria-describedby="password-strength password-requirements">
+          <button type="button" class="password-toggle-visibility" data-target="password" aria-label="Show password">Show</button>
+        </div>
+      </label>
+      <div class="password-actions">
+        <button type="button" class="generate-password-btn" data-target="password">Suggest a strong password</button>
+        <button type="button" class="copy-password-btn" data-target="password">Copy to clipboard</button>
+      </div>
+      <div id="password-strength" class="password-strength" aria-live="polite">
+        <div class="strength-bar"><div class="strength-bar-fill" id="strength-bar-fill"></div></div>
+        <span id="strength-label" class="strength-label"></span>
+      </div>
+      <ul id="password-requirements" class="password-requirements">
+        <li data-rule="length">At least 8 characters</li>
+        <li data-rule="uppercase">One uppercase letter</li>
+        <li data-rule="lowercase">One lowercase letter</li>
+        <li data-rule="number">One number</li>
+        <li data-rule="special">One special character (!@#$%^&* etc.)</li>
+      </ul>
+      <p id="password-suggestion" class="password-suggestion" hidden></p>
+
+      <label class="terms-checkbox-label">
+        <input type="checkbox" name="accepted_popia" id="accepted_popia" value="true" required>
+        I accept SGILA's <a href="/terms" class="terms-link" target="_blank">terms and conditions</a>.
+      </label>
+
+      <button class="btn btn-mint btn-full" type="submit" id="submit-btn-teacher" disabled>Create teacher account</button>
     {% endif %}
     <p class="form-note">Already have an account? <a href="/login?role={{ role }}">Sign in</a></p>
   </form>
 </section>
 
 <style>
-  .terms-notice {
-    font-size: 0.82rem;
-    color: #6b7280;
-    margin: 0.25rem 0 0.75rem;
-    text-align: center;
-    line-height: 1.5;
-  }
-  .terms-link {
-    color: #3b82f6;
-    font-weight: 600;
-    text-decoration: underline;
-    text-underline-offset: 2px;
-    cursor: pointer;
-    transition: color 0.15s ease;
-  }
-  .terms-link:hover {
-    color: #1d4ed8;
-  }
+.password-strength { margin: 6px 0; }
+.strength-bar { width: 100%; height: 6px; background: #e5e7eb; border-radius: 3px; overflow: hidden; }
+.strength-bar-fill { height: 100%; width: 0%; transition: width 0.2s ease, background-color 0.2s ease; background: #ef4444; }
+.strength-label { font-size: 0.85rem; font-weight: 600; display: inline-block; margin-top: 4px; }
+.password-requirements { list-style: none; padding: 0; margin: 6px 0 4px; font-size: 0.82rem; }
+.password-requirements li { color: #9ca3af; padding: 1px 0; }
+.password-requirements li::before { content: "✕ "; }
+.password-requirements li.met { color: #16a34a; }
+.password-requirements li.met::before { content: "✓ "; }
+.password-suggestion { font-size: 0.82rem; color: #b45309; background: #fffbeb; border: 1px solid #fde68a; padding: 6px 8px; border-radius: 6px; margin: 6px 0; }
+.form-card label.terms-checkbox-label {
+  display: inline-flex;
+  flex-direction: row;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.9rem;
+  margin: 14px 0;
+  cursor: pointer;
+  line-height: 1.3;
+  white-space: nowrap;
+}
+.form-card label.terms-checkbox-label input[type="checkbox"] {
+  appearance: auto;
+  -webkit-appearance: checkbox;
+  width: 16px;
+  height: 16px;
+  min-width: 16px;
+  min-height: 16px;
+  max-width: 16px;
+  max-height: 16px;
+  margin: 0;
+  flex: 0 0 16px;
+  cursor: pointer;
+}
+.form-card label.terms-checkbox-label .terms-link {
+  display: inline;
+  white-space: nowrap;
+}
+button[disabled] { opacity: 0.55; cursor: not-allowed; }
+
+.password-field-wrap { position: relative; display: flex; align-items: center; }
+.password-field-wrap input[type="password"],
+.password-field-wrap input[type="text"] { flex: 1; padding-right: 60px; }
+.password-toggle-visibility {
+  position: absolute;
+  right: 8px;
+  background: none;
+  border: none;
+  color: #2563eb;
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 4px 6px;
+}
+.generate-password-btn {
+  display: inline-block;
+  background: #eef2ff;
+  border: 1px solid #c7d2fe;
+  color: #4338ca;
+  font-size: 0.82rem;
+  font-weight: 600;
+  padding: 6px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.generate-password-btn:hover { background: #e0e7ff; }
+.generate-password-btn:active { transform: translateY(1px); }
+
+.password-actions { display: flex; flex-wrap: wrap; gap: 8px; margin: 6px 0 4px; }
+.copy-password-btn {
+  display: inline-block;
+  background: #f0fdf4;
+  border: 1px solid #bbf7d0;
+  color: #15803d;
+  font-size: 0.82rem;
+  font-weight: 600;
+  padding: 6px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.copy-password-btn:hover { background: #dcfce7; }
+.copy-password-btn:active { transform: translateY(1px); }
+.copy-password-btn.copied { background: #16a34a; border-color: #16a34a; color: #fff; }
 </style>
+
+<script>
+(function () {
+  const SPECIAL_RE = /[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?~`]/;
+
+  function evaluatePassword(pw) {
+    const rules = {
+      length: pw.length >= 8,
+      uppercase: /[A-Z]/.test(pw),
+      lowercase: /[a-z]/.test(pw),
+      number: /[0-9]/.test(pw),
+      special: SPECIAL_RE.test(pw)
+    };
+    const metCount = Object.values(rules).filter(Boolean).length;
+    const allMet = metCount === 5;
+
+    let score = 0;
+    if (rules.length) score++;
+    if (pw.length >= 12) score++;
+    if (rules.uppercase) score++;
+    if (rules.lowercase) score++;
+    if (rules.number) score++;
+    if (rules.special) score++;
+
+    let label, color, pct;
+    if (pw.length === 0) {
+      label = ''; color = '#e5e7eb'; pct = 0;
+    } else if (!allMet) {
+      label = 'Too weak'; color = '#ef4444'; pct = 25;
+    } else if (score <= 5) {
+      label = 'Okay'; color = '#f59e0b'; pct = 60;
+    } else if (score === 6) {
+      label = 'Strong'; color = '#16a34a'; pct = 85;
+    } else {
+      label = 'Very strong'; color = '#15803d'; pct = 100;
+    }
+
+    return { rules, allMet, label, color, pct };
+  }
+
+  function suggestionFor(pw, rules) {
+    const missing = [];
+    if (!rules.length) missing.push('at least 8 characters');
+    if (!rules.uppercase) missing.push('an uppercase letter');
+    if (!rules.lowercase) missing.push('a lowercase letter');
+    if (!rules.number) missing.push('a number');
+    if (!rules.special) missing.push('a special character');
+    if (missing.length === 0) {
+      return pw.length < 12 ? 'Tip: use 12+ characters for a stronger password.' : '';
+    }
+    return 'Add ' + missing.join(', ') + ' to strengthen your password.';
+  }
+
+  const UPPER = 'ABCDEFGHJKLMNPQRSTUVWXYZ';           // no I/O to avoid look-alikes
+  const LOWER = 'abcdefghijkmnopqrstuvwxyz';           // no l
+  const DIGITS = '23456789';                           // no 0/1
+  const SPECIAL = '!@#$%^&*()-_=+?';
+  const ALL_CHARS = UPPER + LOWER + DIGITS + SPECIAL;
+
+  function secureRandomInt(max) {
+    const arr = new Uint32Array(1);
+    crypto.getRandomValues(arr);
+    return arr[0] % max;
+  }
+
+  function pickChar(charset) {
+    return charset[secureRandomInt(charset.length)];
+  }
+
+  function shuffle(chars) {
+    const arr = chars.slice();
+    for (let i = arr.length - 1; i > 0; i--) {
+      const j = secureRandomInt(i + 1);
+      [arr[i], arr[j]] = [arr[j], arr[i]];
+    }
+    return arr;
+  }
+
+  function generateStrongPassword(length) {
+    length = length || 14;
+    // Guarantee at least one of each required character class first
+    const required = [
+      pickChar(UPPER),
+      pickChar(LOWER),
+      pickChar(DIGITS),
+      pickChar(SPECIAL)
+    ];
+    const remaining = [];
+    for (let i = 0; i < length - required.length; i++) {
+      remaining.push(pickChar(ALL_CHARS));
+    }
+    return shuffle(required.concat(remaining)).join('');
+  }
+
+  function wireForm(form) {
+    const pwInput = form.querySelector('#password');
+    const barFill = form.querySelector('#strength-bar-fill');
+    const label = form.querySelector('#strength-label');
+    const suggestion = form.querySelector('#password-suggestion');
+    const reqItems = form.querySelectorAll('.password-requirements li');
+    const checkbox = form.querySelector('#accepted_popia');
+    const submitBtn = form.querySelector('button[type="submit"]');
+    const generateBtn = form.querySelector('.generate-password-btn');
+    const toggleBtn = form.querySelector('.password-toggle-visibility');
+    const copyBtn = form.querySelector('.copy-password-btn');
+
+    if (!pwInput || !barFill || !label || !checkbox || !submitBtn) {
+      console.warn('[password-strength] Required elements missing in form — skipping wiring.', form);
+      return;
+    }
+
+    function updateSubmitState() {
+      const result = evaluatePassword(pwInput.value);
+      submitBtn.disabled = !(result.allMet && checkbox.checked);
+    }
+
+    pwInput.addEventListener('input', function () {
+      const pw = pwInput.value;
+      const result = evaluatePassword(pw);
+
+      barFill.style.width = result.pct + '%';
+      barFill.style.backgroundColor = result.color;
+      label.textContent = result.label;
+      label.style.color = result.color;
+
+      reqItems.forEach(li => {
+        const rule = li.getAttribute('data-rule');
+        li.classList.toggle('met', !!result.rules[rule]);
+      });
+
+      const tip = suggestionFor(pw, result.rules);
+      if (tip) {
+        suggestion.textContent = tip;
+        suggestion.hidden = false;
+      } else {
+        suggestion.hidden = true;
+      }
+
+      pwInput.setCustomValidity(result.allMet ? '' : 'Password does not meet the minimum strength requirements.');
+      updateSubmitState();
+    });
+
+    if (generateBtn) {
+      generateBtn.addEventListener('click', function () {
+        const newPassword = generateStrongPassword(14);
+        pwInput.type = 'text';
+        pwInput.value = newPassword;
+        if (toggleBtn) toggleBtn.textContent = 'Hide';
+        // Trigger the same input handler so the strength meter/checklist update
+        pwInput.dispatchEvent(new Event('input', { bubbles: true }));
+        pwInput.focus();
+      });
+    }
+
+    if (toggleBtn) {
+      toggleBtn.addEventListener('click', function () {
+        const isHidden = pwInput.type === 'password';
+        pwInput.type = isHidden ? 'text' : 'password';
+        toggleBtn.textContent = isHidden ? 'Hide' : 'Show';
+      });
+    }
+
+    if (copyBtn) {
+      copyBtn.addEventListener('click', function () {
+        if (!pwInput.value) return;
+
+        function showCopiedFeedback() {
+          const original = copyBtn.textContent;
+          copyBtn.textContent = 'Copied!';
+          copyBtn.classList.add('copied');
+          setTimeout(function () {
+            copyBtn.textContent = original;
+            copyBtn.classList.remove('copied');
+          }, 1500);
+        }
+
+        if (navigator.clipboard && window.isSecureContext) {
+          navigator.clipboard.writeText(pwInput.value).then(showCopiedFeedback).catch(function () {
+            fallbackCopy();
+          });
+        } else {
+          fallbackCopy();
+        }
+
+        function fallbackCopy() {
+          const wasType = pwInput.type;
+          pwInput.type = 'text';
+          pwInput.select();
+          pwInput.setSelectionRange(0, pwInput.value.length);
+          try {
+            document.execCommand('copy');
+            showCopiedFeedback();
+          } catch (err) {
+            // Copy failed silently — user can still select and copy manually
+          }
+          pwInput.type = wasType;
+        }
+      });
+    }
+
+    checkbox.addEventListener('change', updateSubmitState);
+
+    form.addEventListener('submit', function (e) {
+      const result = evaluatePassword(pwInput.value);
+      if (!result.allMet || !checkbox.checked) {
+        e.preventDefault();
+        pwInput.reportValidity();
+      }
+    });
+  }
+
+  document.querySelectorAll('#password').forEach(function (pwInput) {
+    const form = pwInput.closest('form');
+    if (!form) {
+      console.warn('[password-strength] #password input is not inside a <form> element — skipping.', pwInput);
+      return;
+    }
+    wireForm(form);
+  });
+})();
+</script>
 {% endblock %}
