@@ -49,7 +49,7 @@
       </label>
 
       <p class="epic-billed" style="margin-top:10px;">No payment details required here.</p>
-      <button class="epic-cta epic-cta-blue" type="submit" style="margin-top:12px;">Activate Enterprise Package</button>
+      <button class="epic-cta epic-cta-green" type="submit" style="margin-top:12px;">Activate Enterprise Package</button>
     </form>
 
   </div>
@@ -126,7 +126,7 @@
   <form method="POST" class="epic-card form-card" style="width: 380px;">
     {% csrf_token %}
     <span class="badge badge-done" style="margin-bottom: 8px;">Enterprise / Government-funded</span>
-    <h2 class="epic-plan-name" style="color: var(--lavender);">Activate your package</h2>
+    <h2 class="epic-plan-name" style="color: var(--success);">Activate your package</h2>
     <p class="epic-billed" style="margin-bottom: 22px;">Have a code? Redeem it here</p>
 
     <label style="width:100%; text-align:left;">School name
@@ -137,7 +137,7 @@
       <input type="text" name="package_code" required placeholder="Code from your district/government contact" style="text-transform: uppercase;">
     </label>
 
-    <button class="epic-cta epic-cta-blue" type="submit" style="margin-top: 20px;">Activate school package</button>
+    <button class="epic-cta epic-cta-green" type="submit" style="margin-top: 20px;">Activate school package</button>
   </form>
 </section>
 
@@ -156,7 +156,7 @@
   right: 50%;
   margin-left: -50vw;
   margin-right: -50vw;
-  background: linear-gradient(180deg, var(--mint), var(--mint-soft));
+  background: transparent;
   padding: 56px 24px 64px;
   text-align: center;
   overflow: visible;
@@ -271,6 +271,7 @@
 .epic-cta:hover { transform: translateY(-1px); }
 .epic-cta-pink { background: var(--sun); color: var(--ink); box-shadow: 0 10px 20px rgba(248, 200, 75, .35); }
 .epic-cta-blue { background: var(--lavender); color: #fff; box-shadow: 0 10px 20px rgba(169, 150, 238, .35); }
+.epic-cta-green { background: var(--success); color: #fff; box-shadow: 0 10px 20px rgba(48, 203, 127, .35); }
 
 .epic-skip { margin-top: 34px; }
 .epic-skip button {
