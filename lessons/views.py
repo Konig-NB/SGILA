@@ -55,6 +55,8 @@ from api.models import (
     PasswordResetToken,
     Subscription,
     PackageCode,
+    capitalize_first,
+    title_case,
 )
 
 
@@ -285,7 +287,7 @@ def register_learner(request):
 def register_parent(request):
     data = request.POST
     email = data['email'].strip().lower()
-    full_name = data.get('full_name', '').strip()
+    full_name = title_case(data.get('full_name'))
 
     if Parent.objects.filter(email=email).exists():
         messages.error(request, 'That parent email is already registered.')
@@ -333,7 +335,7 @@ def register_parent(request):
 def register_teacher(request):
     data = request.POST
     email = data['email'].strip().lower()
-    full_name = data.get('full_name', '').strip()
+    full_name = title_case(data.get('full_name'))
 
     if Teacher.objects.filter(email=email).exists():
         messages.error(request, 'That teacher email is already registered.')
@@ -347,7 +349,7 @@ def register_teacher(request):
         'role': 'teacher',
         'full_name': full_name,
         'email': email,
-        'school_name': data.get('school_name', '').strip(),
+        'school_name': title_case(data.get('school_name')),
         'grades_taught': ','.join(data.getlist('grades_taught')) or data.get('grades_taught', ''),
         'phone': data.get('phone', '').strip(),
         'password': data['password'],
@@ -2281,7 +2283,7 @@ def written_response_page(request, lesson_id):
     prompt = lesson.written_prompts.first()
 
     if request.method == 'POST':
-        text = request.POST.get('response_text', '').strip()
+        text = capitalize_first(request.POST.get('response_text', ''))
         # Written response counts as 1 mark for attempting it
         attempted = 1 if text else 0
         request.session[f'lesson_{lesson_id}_written_score'] = attempted
