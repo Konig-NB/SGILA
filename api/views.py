@@ -7,6 +7,8 @@ from django.http import JsonResponse
 from django.db.models import Q
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
+from .validators import password_strength_errors
+from .validators import password_strength_errors
 from django.contrib.auth.hashers import check_password, make_password
 import json
 import hashlib
@@ -228,6 +230,10 @@ def register(request):
     if not email or not full_name or not password:
         return JsonResponse({'error': 'full_name, email, and password are required.'}, status=400)
 
+    # accepted_popia must be explicitly true — don't let it default/fall through
+    if not data.get('accepted_popia') in (True, 'true', 'True'):
+        return JsonResponse({'error': 'You must accept the Terms & Conditions to register.'}, status=400)
+ 
     if role == 'parent' and Parent.objects.filter(email=email).exists():
         return JsonResponse({'error': 'That email is already registered.'}, status=400)
     if role == 'teacher' and Teacher.objects.filter(email=email).exists():
@@ -528,8 +534,9 @@ def reset_password(request):
         return JsonResponse({'error': 'token, role, and new_password are required.'}, status=400)
     if role not in ('parent', 'teacher'):
         return JsonResponse({'error': 'Invalid role.'}, status=400)
-    if len(new_password) < 6:
-        return JsonResponse({'error': 'Password must be at least 6 characters.'}, status=400)
+    pw_errors = password_strength_errors(new_password)
+    if pw_errors:
+        return JsonResponse({'error': ' '.join(pw_errors)}, status=400)
 
     try:
         reset_token = PasswordResetToken.objects.get(token=token_value, role=role, is_used=False)

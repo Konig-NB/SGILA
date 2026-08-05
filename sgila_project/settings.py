@@ -72,28 +72,26 @@ TEMPLATES = [
 
 WSGI_APPLICATION = 'sgila_project.wsgi.application'
 
-# SQLite is the local-development default and matches the checked-in db.sqlite3
-# file.  Set DB_ENGINE=django.db.backends.postgresql (and the DB_* values) when
-# deploying to PostgreSQL.  This avoids requiring psycopg just to run locally.
-DB_ENGINE = os.environ.get('DB_ENGINE', 'django.db.backends.sqlite3')
-if DB_ENGINE == 'django.db.backends.sqlite3':
-    DATABASES = {
-        'default': {
-            'ENGINE': DB_ENGINE,
-            'NAME': os.environ.get('SQLITE_DB_NAME', str(BASE_DIR / 'db.sqlite3')),
-        }
+
+DATABASES = {
+
+    'default': {
+
+        'ENGINE': 'django.db.backends.postgresql',
+
+        'NAME': os.environ.get('DB_NAME', 'sgila_db'),
+
+        'USER': os.environ.get('DB_USER', 'postgres'),
+
+        'PASSWORD': os.environ.get('DB_PASSWORD'),
+
+        'HOST': os.environ.get('DB_HOST'),
+
+        'PORT': os.environ.get('DB_PORT'),
+
     }
-else:
-    DATABASES = {
-        'default': {
-            'ENGINE': DB_ENGINE,
-            'NAME': os.environ.get('DB_NAME', 'sgila_db'),
-            'USER': os.environ.get('DB_USER', 'postgres'),
-            'PASSWORD': os.environ.get('DB_PASSWORD'),
-            'HOST': os.environ.get('DB_HOST'),
-            'PORT': os.environ.get('DB_PORT'),
-        }
-    }
+
+}
 
 # PostgreSQL on AWS RDS (uncomment and fill in .env when ready):
 # DATABASES = {
