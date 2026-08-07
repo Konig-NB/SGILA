@@ -72,15 +72,25 @@ TEMPLATES = [
 
 WSGI_APPLICATION = 'sgila_project.wsgi.application'
 
+
 DATABASES = {
+
     'default': {
+
         'ENGINE': 'django.db.backends.postgresql',
+
         'NAME': os.environ.get('DB_NAME', 'sgila_db'),
+
         'USER': os.environ.get('DB_USER', 'postgres'),
+
         'PASSWORD': os.environ.get('DB_PASSWORD'),
+
         'HOST': os.environ.get('DB_HOST'),
+
         'PORT': os.environ.get('DB_PORT'),
+
     }
+
 }
 
 # PostgreSQL on AWS RDS (uncomment and fill in .env when ready):
