@@ -178,6 +178,109 @@ class ComprehensionQuestion(models.Model):
         return f"{self.lesson.title} — {self.question[:50]}"
 
 
+class ReadingActivity(models.Model):
+    """A grade-calibrated comprehension activity for one story."""
+
+    MULTIPLE_CHOICE = 'multiple_choice'
+    TRUE_FALSE = 'true_false'
+    OPEN_ENDED = 'open_ended'
+    SEQUENCING = 'sequencing'
+    MATCHING = 'matching'
+    CLOZE = 'cloze'
+    ORAL_RESPONSE = 'oral_response'
+    PREDICTION = 'prediction'
+    REASONING = 'reasoning'
+    CROSSWORD = 'crossword'
+    WORD_SCRAMBLE = 'word_scramble'
+
+    ACTIVITY_TYPES = [
+        (MULTIPLE_CHOICE, 'Multiple choice'),
+        (TRUE_FALSE, 'True or false'),
+        (OPEN_ENDED, 'Open-ended response'),
+        (SEQUENCING, 'Sequencing'),
+        (MATCHING, 'Matching'),
+        (CLOZE, 'Fill in the blank'),
+        (ORAL_RESPONSE, 'Oral response'),
+        (PREDICTION, 'Prediction'),
+        (REASONING, 'Reasoning'),
+        (CROSSWORD, 'Crossword puzzle'),
+        (WORD_SCRAMBLE, 'Word scramble'),
+    ]
+
+    SKILL_CHOICES = [
+        ('literal_comprehension', 'Literal comprehension'),
+        ('sequencing', 'Sequencing'),
+        ('inference', 'Inference'),
+        ('vocabulary_in_context', 'Vocabulary in context'),
+        ('prediction', 'Prediction'),
+        ('summarising', 'Summarising'),
+        ('character_motivation', 'Character motivation'),
+        ('text_to_self', 'Text-to-self connection'),
+        ('fact_vs_opinion', 'Fact versus opinion'),
+        ('spelling', 'Spelling'),
+    ]
+
+    lesson = models.ForeignKey(Lesson, on_delete=models.CASCADE, related_name='reading_activities')
+    activity_type = models.CharField(max_length=30, choices=ACTIVITY_TYPES)
+    skill = models.CharField(max_length=40, choices=SKILL_CHOICES)
+    question = models.TextField()
+    options = models.JSONField(default=list, blank=True)
+    correct_answer = models.TextField(blank=True)
+    items_in_correct_order = models.JSONField(default=list, blank=True)
+    order = models.PositiveIntegerField(default=0)
+    group_number = models.PositiveSmallIntegerField(default=0)
+    group_title = models.CharField(max_length=120, blank=True)
+
+    class Meta:
+        ordering = ['order', 'id']
+
+    @property
+    def requires_review(self):
+        return self.activity_type in {
+            self.OPEN_ENDED,
+            self.ORAL_RESPONSE,
+            self.PREDICTION,
+            self.REASONING,
+        }
+
+    def get_options(self):
+        if self.activity_type == self.TRUE_FALSE and not self.options:
+            return ['True', 'False']
+        if isinstance(self.options, dict):
+            return dict(self.options)
+        return list(self.options or [])
+
+    def __str__(self):
+        return f"{self.lesson.title} - {self.get_activity_type_display()}: {self.question[:50]}"
+
+
+class ReadingActivityResponse(models.Model):
+    """Stores a learner's guided writing response for a story."""
+
+    child = models.ForeignKey(Child, on_delete=models.CASCADE, related_name='reading_responses')
+    lesson = models.ForeignKey(Lesson, on_delete=models.CASCADE, related_name='learner_responses')
+    activity = models.ForeignKey(
+        ReadingActivity,
+        on_delete=models.SET_NULL,
+        related_name='learner_responses',
+        null=True,
+        blank=True,
+    )
+    response = models.JSONField(default=dict, blank=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=['child', 'lesson'],
+                name='unique_child_lesson_reading_response',
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.child.name} - {self.lesson.title} response"
+
+
 class VisualActivityItem(models.Model):
     """One image-word pair in the visual matching activity."""
     lesson = models.ForeignKey(Lesson, on_delete=models.CASCADE, related_name='visual_items')
@@ -238,6 +341,7 @@ class Progress(models.Model):
     total_score = models.IntegerField(default=0)
     total_possible = models.IntegerField(default=0)
     stars_earned = models.IntegerField(default=0)
+    assessment_scores = models.JSONField(default=dict, blank=True)
     completed_on = models.DateTimeField(auto_now_add=True)
 
     @property

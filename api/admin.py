@@ -5,7 +5,7 @@ without writing code.
 """
 from django.contrib import admin
 from .models import (
-    Parent, Teacher, Child, Lesson, StoryPage, ComprehensionQuestion,
+    Parent, Teacher, Child, Lesson, StoryPage, ComprehensionQuestion, ReadingActivity,
     VisualActivityItem, PronunciationWord, SpellingActivity, Progress,
     TeacherClass, Message, Subscription, PackageCode, AIStoryJob,
 )
@@ -73,6 +73,13 @@ class StoryPageAdmin(admin.ModelAdmin):
 class ComprehensionQuestionAdmin(admin.ModelAdmin):
     list_display = ('lesson', 'question', 'correct_answer')
     list_filter = ('lesson',)
+
+
+@admin.register(ReadingActivity)
+class ReadingActivityAdmin(admin.ModelAdmin):
+    list_display = ('lesson', 'order', 'activity_type', 'skill', 'question')
+    list_filter = ('lesson', 'activity_type', 'skill')
+    ordering = ('lesson', 'order')
 
 
 @admin.register(VisualActivityItem)

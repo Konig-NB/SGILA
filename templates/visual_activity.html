@@ -11,7 +11,7 @@
   <div id="visual-grid" class="activity-grid">
     {% for item in items %}
       <article class="activity-card" data-item-id="{{ item.id }}">
-        <div class="picture-placeholder">
+        <div class="picture-placeholder{% if '/storyboards/' in item.image_url or '/vocab_sheets/' in item.image_url %} storyboard-crop{% if '#panel-2' in item.image_url %} storyboard-panel-2{% elif '#panel-3' in item.image_url %} storyboard-panel-3{% elif '#panel-4' in item.image_url %} storyboard-panel-4{% elif '#panel-5' in item.image_url %} storyboard-panel-5{% elif '#panel-6' in item.image_url %} storyboard-panel-6{% else %} storyboard-panel-1{% endif %}{% endif %}">
           {% if item.image_url %}
             <img src="{{ item.image_url }}" alt="Visual matching picture">
           {% else %}

@@ -12,16 +12,16 @@
 
   <div class="form-card">
     <h2>Current plan</h2>
-    <p style="font-weight:800;">{{ subscription.get_plan_type_display }} — {{ subscription.get_status_display }}</p>
+    <p class="subscription-status">{{ subscription.get_plan_type_display }} — {{ subscription.get_status_display }}</p>
 
-    <p style="margin-top: 1rem; color:var(--muted);">If you're sure, click the button below to cancel. You can reactivate at any time from the Plan page.</p>
+    <p class="subscription-cancel-copy">If you're sure, click the button below to cancel. You can reactivate at any time from the Plan page.</p>
 
     <form method="POST">
       {% csrf_token %}
-      <button class="btn btn-danger btn-full" type="submit" style="margin-top:1.2rem; background:#d64545; color:#fff; border:none; box-shadow:0 8px 20px rgba(214,69,69,.22);">Yes — cancel my subscription</button>
+      <button class="btn btn-danger btn-full subscription-cancel-button" type="submit">Yes — cancel my subscription</button>
     </form>
 
-    <p class="form-note" style="margin-top:.8rem;">
+    <p class="form-note subscription-back-link">
       <a href="/subscription">← Back to plan selection</a>
     </p>
   </div>

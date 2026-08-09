@@ -1,161 +1,140 @@
 {% extends 'base.html' %}
-{% block title %}{{ child.name }}'s Report - SGILA{% endblock %}
+{% block title %}{{ child.name }}'s Story Progress - SGILA{% endblock %}
 {% block content %}
-<section class="parent-report-page result-two-only single-learner-report">
-  <header class="parent-dashboard-toolbar">
+<section class="story-progress-page">
+  <header class="story-progress-header">
     <div>
-      <p class="eyebrow">
-        {% if request.session.account_role == 'teacher' %}
-          Teacher dashboard
-        {% elif request.session.account_role == 'learner' %}
-          Learner dashboard
-        {% else %}
-          Parent dashboard
-        {% endif %}
-      </p>
-      <h1>Learner progress reports</h1>
+      <p class="eyebrow">{{ role_label }}</p>
+      <h1>{{ child.name }}'s story progress</h1>
+      <p>Grade {{ child.grade }} story completion and assessment reports.</p>
     </div>
-    {% if request.session.account_role == 'parent' %}
-      <a href="/parent/add-child" class="btn btn-primary parent-add-action">Add another child</a>
+    {% if request.session.account_role == 'learner' %}
+      <a href="/grade/{{ child.grade }}" class="btn btn-light">Back to lessons</a>
+    {% elif request.session.account_role == 'parent' %}
+      <a href="/parent/dashboard" class="btn btn-light">All children</a>
+    {% else %}
+      <a href="/teacher/dashboard" class="btn btn-light">All learners</a>
     {% endif %}
   </header>
 
-  <article class="parent-report-card tone-sky">
-    <aside class="parent-report-rail">
-      <span class="rail-label">Learner report</span>
-      <div class="rail-avatar {% if child.photo %}has-photo{% endif %}">
-        {% if child.photo %}
-          <img src="{{ child.photo.url }}" alt="{{ child.name }} photo">
-        {% else %}
-          {{ child.name|slice:":1" }}{{ child.name|slice:"1:2" }}
-        {% endif %}
-      </div>
-      <h2>{{ child.name }}</h2>
-      <p>Grade {{ child.grade }}{% if child.school_name %} - {{ child.school_name }}{% endif %}</p>
-
-      <div class="rail-score-ring" style="--score: {{ avg_score }}%;">
-        <strong>{{ avg_score }}%</strong>
-        <span>Overall score</span>
-      </div>
-
-      {% if needs_focus %}
-        <div class="rail-focus-card">
-          <strong>Focus</strong>
-          <span>{{ needs_focus }}</span>
-          {% if needs_focus_tip %}
-            <small>{{ needs_focus_tip }}</small>
-          {% endif %}
-        </div>
+  <section class="story-progress-summary" aria-label="Grade {{ child.grade }} completion summary">
+    <div class="story-progress-avatar {% if child.photo %}has-photo{% endif %}">
+      {% if child.photo %}
+        <img src="{{ child.photo.url }}" alt="{{ child.name }} photo">
+      {% else %}
+        {{ child.name|slice:":1" }}
       {% endif %}
-    </aside>
-
-    <div class="parent-report-main">
-      <div class="parent-report-heading">
-        <div>
-          <h2>{{ child.name }}'s Progress</h2>
-          <p>Clear cards over the original background.</p>
-        </div>
-        <a href="#lesson-history" class="parent-open-report">View report</a>
-      </div>
-
-      <section class="parent-score-grid" aria-label="Learner score cards">
-        <article class="score-tile score-gold">
-          <i>T</i>
-          <span>Overall</span>
-          <strong>{{ avg_score }}%</strong>
-        </article>
-        {% if is_grade4 %}
-          {% if g4_best2 %}
-            {% for act in g4_best2 %}
-            <article class="score-tile score-green">
-              <i>★</i>
-              <span>Best: {{ act.label }}</span>
-              <strong>{{ act.pct }}%</strong>
-            </article>
-            {% endfor %}
-          {% endif %}
-          {% if g4_worst2 %}
-            {% for act in g4_worst2 %}
-            <article class="score-tile score-orange">
-              <i>↑</i>
-              <span>Focus: {{ act.label }}</span>
-              <strong>{{ act.pct }}%</strong>
-            </article>
-            {% endfor %}
-          {% endif %}
-        {% else %}
-        <article class="score-tile score-purple">
-          <i>R</i>
-          <span>Reading</span>
-          <strong>{{ avg_comprehension }}</strong>
-        </article>
-        <article class="score-tile score-blue">
-          <i>V</i>
-          <span>Visual</span>
-          <strong>{{ avg_visual }}</strong>
-        </article>
-        <article class="score-tile score-green">
-          <i>S</i>
-          <span>Spelling</span>
-          <strong>{{ avg_spelling }}</strong>
-        </article>
-        {% endif %}
-      </section>
-
-      <section class="parent-mini-grid">
-        <article><span>Lesson</span><strong>{{ total_lessons }}</strong></article>
-        <article><span>Stars</span><strong>{{ total_stars }}</strong></article>
-        <article><span>Best</span><strong>{% if best_lesson %}{{ best_lesson.percentage }}%{% else %}0%{% endif %}</strong></article>
-      </section>
-
-      <section class="parent-activity-bars" aria-label="Average scores by activity">
-        <h3>Activity scores</h3>
-        {% if is_grade4 %}
-          {% if g4_best2 %}
-            <p class="activity-group-label" style="font-size:0.8rem;font-weight:700;text-transform:uppercase;color:var(--text-muted,#555);margin:0 0 0.3rem;">🏆 Best</p>
-            {% for act in g4_best2 %}
-            <div class="parent-bar reading"><em>★</em><span>{{ act.label }}</span><b style="--progress: {{ act.pct }}%;"></b><strong>{{ act.pct }}%</strong></div>
-            {% endfor %}
-          {% endif %}
-          {% if g4_worst2 %}
-            <p class="activity-group-label" style="font-size:0.8rem;font-weight:700;text-transform:uppercase;color:var(--text-muted,#555);margin:0.8rem 0 0.3rem;">↑ Needs work</p>
-            {% for act in g4_worst2 %}
-            <div class="parent-bar spelling"><em>↑</em><span>{{ act.label }}</span><b style="--progress: {{ act.pct }}%;"></b><strong>{{ act.pct }}%</strong></div>
-            {% endfor %}
-          {% endif %}
-          {% if not g4_best2 and not g4_worst2 %}
-            <p style="color:var(--text-muted,#888);font-size:0.9rem;">Complete lessons to see activity scores.</p>
-          {% endif %}
-        {% else %}
-        <div class="parent-bar reading"><em>R</em><span>Reading</span><b style="--progress: {{ avg_comprehension }}%;"></b><strong>{{ avg_comprehension }}</strong></div>
-        <div class="parent-bar visual"><em>V</em><span>Visual</span><b style="--progress: {{ avg_visual }}%;"></b><strong>{{ avg_visual }}</strong></div>
-        <div class="parent-bar spelling"><em>S</em><span>Spelling</span><b style="--progress: {{ avg_spelling }}%;"></b><strong>{{ avg_spelling }}</strong></div>
-        {% endif %}
-      </section>
-
-      <section class="parent-history" id="lesson-history">
-        <h3>Lesson history</h3>
-        {% if records %}
-          {% for record in records %}
-            <div class="parent-history-row">
-              <span class="history-dot"></span>
-              <strong>{{ record.lesson.title }}</strong>
-              <b>{{ record.percentage }}%</b>
-              <span>{{ record.stars_earned }} stars</span>
-              <time>{{ record.completed_on|date:"d M" }}</time>
-            </div>
-          {% endfor %}
-        {% else %}
-          <div class="parent-history-row muted">
-            <span class="history-dot"></span>
-            <strong>No lessons completed yet</strong>
-            <b>0%</b>
-            <span>0 stars</span>
-            <time>Start now</time>
-          </div>
-        {% endif %}
-      </section>
     </div>
-  </article>
+    <div class="story-progress-summary-copy">
+      <span>Grade {{ child.grade }} progress</span>
+      <strong>{{ completed_count }} of {{ story_count }} stories completed</strong>
+      <div class="story-progress-track" aria-hidden="true">
+        <span style="--progress: {{ progress_percent }}%;"></span>
+      </div>
+    </div>
+    <div class="story-progress-stars">
+      <strong>{{ total_stars }}</strong>
+      <span>Stars earned</span>
+    </div>
+  </section>
+
+  <div class="story-list-heading">
+    <div>
+      <p class="eyebrow">Grade {{ child.grade }}</p>
+      <h2>Stories</h2>
+    </div>
+    <span>{{ completed_count }} completed</span>
+  </div>
+
+  <form method="get" class="story-library-tools" role="search">
+    <label class="story-search-field" for="story-search">
+      <span>Search stories</span>
+      <input
+        id="story-search"
+        type="search"
+        name="q"
+        value="{{ search_query }}"
+        placeholder="Enter a story title">
+    </label>
+
+    <label class="story-sort-field" for="story-sort">
+      <span>Sort by</span>
+      <select id="story-sort" name="sort">
+        <option value="curriculum" {% if sort_value == 'curriculum' %}selected{% endif %}>Curriculum order</option>
+        <option value="recent" {% if sort_value == 'recent' %}selected{% endif %}>Recently completed</option>
+        <option value="oldest" {% if sort_value == 'oldest' %}selected{% endif %}>Oldest completed</option>
+        <option value="stars_desc" {% if sort_value == 'stars_desc' %}selected{% endif %}>Stars: high to low</option>
+        <option value="stars_asc" {% if sort_value == 'stars_asc' %}selected{% endif %}>Stars: low to high</option>
+        <option value="score_desc" {% if sort_value == 'score_desc' %}selected{% endif %}>Score: high to low</option>
+        <option value="score_asc" {% if sort_value == 'score_asc' %}selected{% endif %}>Score: low to high</option>
+        <option value="completed_first" {% if sort_value == 'completed_first' %}selected{% endif %}>Completed first</option>
+        <option value="incomplete_first" {% if sort_value == 'incomplete_first' %}selected{% endif %}>Not completed first</option>
+        <option value="title_asc" {% if sort_value == 'title_asc' %}selected{% endif %}>Title: A to Z</option>
+        <option value="title_desc" {% if sort_value == 'title_desc' %}selected{% endif %}>Title: Z to A</option>
+      </select>
+    </label>
+
+    <button type="submit" class="story-tools-submit">Apply</button>
+    {% if search_query or sort_value != 'curriculum' %}
+      <a href="/dashboard/{{ child.id }}" class="story-tools-clear">Clear</a>
+    {% endif %}
+  </form>
+
+  <div class="story-results-count" aria-live="polite">
+    Showing {{ visible_story_count }} of {{ story_count }} stories
+  </div>
+
+  <section class="story-report-list" aria-label="Grade {{ child.grade }} story reports">
+    {% for item in story_rows %}
+      {% if item.completed %}
+        <a class="story-report-row is-complete" href="/dashboard/{{ child.id }}/lessons/{{ item.lesson.id }}">
+      {% else %}
+        <article class="story-report-row is-incomplete">
+      {% endif %}
+        <div class="story-report-cover{% if '/storyboards/' in item.lesson.thumbnail_image %} storyboard-crop storyboard-panel-1{% endif %}">
+          {% if item.lesson.thumbnail_image %}
+            <img src="{{ item.lesson.thumbnail_image }}" alt="">
+          {% else %}
+            {{ item.lesson.title|slice:":1" }}
+          {% endif %}
+        </div>
+        <div class="story-report-copy">
+          <span class="story-status {% if item.completed %}status-complete{% else %}status-not-started{% endif %}">
+            {% if item.completed %}Completed{% else %}Not completed{% endif %}
+          </span>
+          <h3>{{ item.lesson.title }}</h3>
+          {% if item.completed %}
+            <p>{{ item.assessment_count }} assessed skill{{ item.assessment_count|pluralize }} - completed {{ item.record.completed_on|date:"d M Y" }}</p>
+          {% else %}
+            <p>Detailed results available after completion.</p>
+          {% endif %}
+        </div>
+        <div class="story-report-result">
+          {% if item.completed %}
+            <strong>{{ item.percentage }}%</strong>
+            <span>{{ item.record.stars_earned }} star{{ item.record.stars_earned|pluralize }}</span>
+          {% else %}
+            <strong>-</strong>
+            <span>No score yet</span>
+          {% endif %}
+        </div>
+        <span class="story-report-action">
+          {% if item.completed %}View detailed report{% else %}Not available{% endif %}
+        </span>
+      {% if item.completed %}
+        </a>
+      {% else %}
+        </article>
+      {% endif %}
+    {% empty %}
+      <div class="story-report-empty">
+        {% if search_query %}
+          No stories match "{{ search_query }}".
+        {% else %}
+          No Grade {{ child.grade }} stories are available yet.
+        {% endif %}
+      </div>
+    {% endfor %}
+  </section>
 </section>
 {% endblock %}
