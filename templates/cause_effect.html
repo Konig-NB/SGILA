@@ -11,33 +11,13 @@
   <div id="mascot-reaction" class="mascot"><img src="{% static 'img/koaly_cutout.png' %}" alt=""><span>Koaly</span></div>
   <div id="message-area" class="message-area hidden"></div>
   <div id="matching-area" class="cause-effect-grid"></div>
-  <div class="center" style="margin-top:1.2rem">
+  <div class="center activity-action-row">
     <button id="check-btn" class="btn btn-primary" type="button">Check my matches</button>
   </div>
-  <div id="results-area" class="center hidden" style="margin-top:1rem">
+  <div id="results-area" class="center hidden activity-results-row">
     <a href="/lessons/{{ lesson.id }}/theme" class="btn btn-primary">Next activity</a>
   </div>
-</section>
-<style>
-.cause-effect-grid { display:grid; grid-template-columns:1fr 1fr; gap:0.8rem; margin-top:1rem; }
-.cause-card, .effect-card {
-  background: var(--surface, #fff);
-  border: 2px solid var(--border, #ddd);
-  border-radius: 10px;
-  padding: 0.75rem 0.9rem;
-  font-size: 0.92rem;
-  cursor: pointer;
-  min-height: 60px;
-  display:flex; align-items:center;
-}
-.cause-card { border-color: #818cf8; background: #eef2ff; }
-.effect-card { border-color: #34d399; background: #ecfdf5; }
-.cause-card.selected  { border-width: 3px; box-shadow: 0 0 0 3px #818cf840; }
-.effect-card.selected { border-width: 3px; box-shadow: 0 0 0 3px #34d39940; }
-.pair-correct { border-color: #22c55e !important; background:#f0fdf4 !important; }
-.pair-wrong   { border-color: #ef4444 !important; background:#fef2f2 !important; }
-</style>
-<script>
+</section><script>
 const lessonId = {{ lesson.id }};
 const KOALY = {
   ready: "{% static 'img/koaly_cutout.png' %}",

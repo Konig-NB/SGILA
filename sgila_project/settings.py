@@ -116,22 +116,20 @@ REST_FRAMEWORK = {
     ]
 }
 
-# ─── EMAIL (OTP delivery) ──────────────────────────────────────────────────────
-# Development: print OTPs to the terminal console (no SMTP needed)
-EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
-EMAIL_HOST = 'smtp.gmail.com'
-EMAIL_PORT = 587
-EMAIL_USE_TLS = True
-EMAIL_HOST_USER = 'sgila.info@gmail.com'
-EMAIL_HOST_PASSWORD = 'vlsz huoz teqp ctoo'
-DEFAULT_FROM_EMAIL = 'SGILA <sgila.info@gmail.com>'
-# Production: swap to SMTP and fill in real credentials via environment variables
-# EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
-# EMAIL_HOST = 'smtp.sendgrid.net'
-# EMAIL_PORT = 587
-# EMAIL_USE_TLS = True
-# EMAIL_HOST_USER = 'apikey'
-# EMAIL_HOST_PASSWORD = os.environ.get('SENDGRID_API_KEY')
+# EMAIL (OTP delivery)
+# Clean-machine default: print OTPs to the terminal, with no account required.
+EMAIL_BACKEND = os.environ.get(
+    'EMAIL_BACKEND',
+    'django.core.mail.backends.console.EmailBackend',
+)
+EMAIL_HOST = os.environ.get('EMAIL_HOST', 'smtp.gmail.com')
+EMAIL_PORT = int(os.environ.get('EMAIL_PORT', '587'))
+EMAIL_USE_TLS = os.environ.get('EMAIL_USE_TLS', 'True').lower() in {
+    '1', 'true', 'yes', 'on'
+}
+EMAIL_HOST_USER = os.environ.get('EMAIL_HOST_USER', '')
+EMAIL_HOST_PASSWORD = os.environ.get('EMAIL_HOST_PASSWORD', '')
+DEFAULT_FROM_EMAIL = os.environ.get('DEFAULT_FROM_EMAIL', 'SGILA <noreply@localhost>')
 
 # ─── JWT ───────────────────────────────────────────────────────────────────────
 # Access tokens are signed with SECRET_KEY via HS256.

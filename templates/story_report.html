@@ -1,0 +1,131 @@
+{% extends 'base.html' %}
+{% block title %}{{ lesson.title }} Report - SGILA{% endblock %}
+{% block content %}
+<section class="story-detail-page">
+  <a href="/dashboard/{{ child.id }}" class="story-detail-back">Back to Grade {{ child.grade }} stories</a>
+
+  <header class="story-detail-header">
+    <div class="story-detail-identity">
+      <div class="story-detail-avatar {% if child.photo %}has-photo{% endif %}">
+        {% if child.photo %}
+          <img src="{{ child.photo.url }}" alt="{{ child.name }} photo">
+        {% else %}
+          <span>{{ child.name|slice:":1" }}</span>
+        {% endif %}
+      </div>
+      <div class="story-detail-copy">
+        <p class="eyebrow">Completed story report</p>
+        <h1>{{ lesson.title }}</h1>
+        <p>{{ child.name }} - Grade {{ child.grade }} - completed {{ record.completed_on|date:"d M Y" }}</p>
+      </div>
+    </div>
+  </header>
+
+  <section class="story-detail-summary" aria-label="Story result summary">
+    <article>
+      <span>Overall result</span>
+      <strong>{{ report_percentage }}%</strong>
+      <small>{{ report_score }} out of {{ report_total }}</small>
+    </article>
+    <article>
+      <span>Stars earned</span>
+      <strong>{{ record.stars_earned }}</strong>
+      <small>For this story</small>
+    </article>
+    <article>
+      <span>Strongest skill</span>
+      <strong class="summary-skill">{% if strength %}{{ strength.label }}{% else %}No score{% endif %}</strong>
+      <small>{% if strength %}{{ strength.pct }}%{% else %}No assessed skills{% endif %}</small>
+    </article>
+  </section>
+
+  {% if perfect_work %}
+    <section class="story-focus-callout is-perfect">
+      <div class="story-focus-icon">&#10003;</div>
+      <div>
+        <span>Focus suggestion</span>
+        <h2>Good job! you got everything correct</h2>
+        <p>Every skill assessed in this story is currently correct.</p>
+      </div>
+    </section>
+  {% elif focus %}
+    <section class="story-focus-callout">
+      <div class="story-focus-icon">{{ focus.initial }}</div>
+      <div>
+        <span>First focus area</span>
+        <h2>{{ focus.label }}</h2>
+        <p>{{ focus.tip }}</p>
+      </div>
+    </section>
+  {% endif %}
+
+  <section class="story-skill-section">
+    <div class="story-skill-heading">
+      <div>
+        <p class="eyebrow">Detailed results</p>
+        <h2>Skills tested in this story</h2>
+      </div>
+      <span>{{ breakdown|length }} skill{{ breakdown|length|pluralize }}</span>
+    </div>
+
+    <div class="story-skill-list">
+      {% for item in breakdown %}
+        <article class="story-skill-row">
+          <div class="story-skill-name">
+            <i>{{ item.initial }}</i>
+            <div>
+              <strong>{{ item.label }}</strong>
+              <span>{{ item.tip }}</span>
+            </div>
+          </div>
+          <div class="story-skill-score">
+            <div class="story-skill-track" aria-label="{{ item.label }}: {{ item.pct }} percent">
+              <span style="--progress: {{ item.pct }}%;"></span>
+            </div>
+            <b>{{ item.score }}/{{ item.total }}</b>
+            <strong>{{ item.pct }}%</strong>
+          </div>
+        </article>
+      {% empty %}
+        <div class="story-report-empty">No detailed skill scores were saved for this story.</div>
+      {% endfor %}
+    </div>
+  </section>
+
+  {% if diary_response %}
+    <section class="story-diary-report">
+      <div class="story-diary-heading">
+        <div>
+          <p class="eyebrow">My diary</p>
+          <h2>{{ child.name }}'s story connection</h2>
+        </div>
+        <span>Saved {{ diary_response.updated_at|date:"d M Y" }}</span>
+      </div>
+      <article class="story-diary-paper">
+        <strong>Dear Diary,</strong>
+        <p>Today I felt <b>{{ diary_response.response.feeling }}</b> because {{ diary_response.response.because }}</p>
+        <p>The best part of my day was {{ diary_response.response.best_part }}</p>
+        <p>Next time I would like to {{ diary_response.response.next_time }}</p>
+        <p class="story-diary-signature">From {{ diary_response.response.from_name }}</p>
+      </article>
+    </section>
+  {% endif %}
+
+  {% if suggestions %}
+    <section class="story-suggestions">
+      <div>
+        <p class="eyebrow">Suggested practice</p>
+        <h2>Focus areas for this story</h2>
+      </div>
+      <div class="story-suggestion-list">
+        {% for item in suggestions %}
+          <article>
+            <strong>{{ item.label }}</strong>
+            <span>{{ item.tip }}</span>
+          </article>
+        {% endfor %}
+      </div>
+    </section>
+  {% endif %}
+</section>
+{% endblock %}

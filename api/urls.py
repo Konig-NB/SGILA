@@ -34,6 +34,7 @@ urlpatterns = [
 
     # Screen 6B — Check Answer    POST /api/check-answer
     path('check-answer', views.check_answer, name='check-answer'),
+    path('check-reading-activity', views.check_reading_activity, name='check-reading-activity'),
 
     # Screen 7 — Visual Activity  e.g. GET /api/lessons/1/visual-activity
     path('lessons/<int:lesson_id>/visual-activity', views.visual_activity, name='visual-activity'),

@@ -24,6 +24,11 @@ urlpatterns = [
     path('lessons/<int:lesson_id>/spelling', views.spelling_page, name='spelling-page'),
     path('lessons/<int:lesson_id>/results', views.results_page, name='results-page'),
     path('dashboard/<int:child_id>', views.dashboard_page, name='dashboard'),
+    path(
+        'dashboard/<int:child_id>/lessons/<int:lesson_id>',
+        views.story_report_page,
+        name='story-report',
+    ),
 
     # Grade 4 activity pages
     path('lessons/<int:lesson_id>/vocabulary', views.vocabulary_page, name='vocabulary-page'),
