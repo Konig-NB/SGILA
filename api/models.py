@@ -6,6 +6,20 @@ from django.db import models
 from django.utils import timezone
 
 
+def capitalize_first(value):
+    """Return text with its first non-space character capitalized."""
+    value = (value or '').strip()
+    for index, character in enumerate(value):
+        if character.isalpha():
+            return f'{value[:index]}{character.upper()}{value[index + 1:]}'
+    return value
+
+
+def title_case(value):
+    """Return trimmed text with every word title-cased."""
+    return (value or '').strip().title()
+
+
 def generate_class_code():
     """Generate a short teacher/class code for parent and learner linking."""
     return ''.join(random.choices(string.ascii_uppercase + string.digits, k=6))
@@ -23,6 +37,10 @@ class Parent(models.Model):
     def __str__(self):
         return self.full_name
 
+    def save(self, *args, **kwargs):
+        self.full_name = title_case(self.full_name)
+        super().save(*args, **kwargs)
+
 
 class Teacher(models.Model):
     """Teacher account for monitoring class progress."""
@@ -38,6 +56,11 @@ class Teacher(models.Model):
 
     def __str__(self):
         return self.full_name
+
+    def save(self, *args, **kwargs):
+        self.full_name = title_case(self.full_name)
+        self.school_name = title_case(self.school_name)
+        super().save(*args, **kwargs)
 
 
 class Child(models.Model):
@@ -96,6 +119,11 @@ class Child(models.Model):
             self.save(update_fields=['age'])
 
     def save(self, *args, **kwargs):
+        self.username = capitalize_first(self.username)
+        self.first_name = title_case(self.first_name)
+        self.last_name = title_case(self.last_name)
+        self.name = title_case(self.name)
+        self.school_name = title_case(self.school_name)
         if self.date_of_birth:
             self.age = self.calculate_age()
         super().save(*args, **kwargs)
@@ -114,6 +142,10 @@ class TeacherClass(models.Model):
 
     def __str__(self):
         return f"{self.teacher.full_name} - {self.name}"
+
+    def save(self, *args, **kwargs):
+        self.name = capitalize_first(self.name)
+        super().save(*args, **kwargs)
 
 
 class Lesson(models.Model):
@@ -636,7 +668,13 @@ class Subscription(models.Model):
 
     def __str__(self):
         owner = self.parent or self.teacher
-        return f"{self.get_plan_type_display()} — {owner} ({self.status})"
+        return f"{self.get_plan_type_display()} - {owner} ({self.status})"
+
+    def save(self, *args, **kwargs):
+        self.school_name = title_case(self.school_name)
+        for field in ('district_or_province', 'contact_name', 'funding_source', 'notes', 'payer_name', 'bank_name'):
+            setattr(self, field, capitalize_first(getattr(self, field)))
+        super().save(*args, **kwargs)
 
 
 class OTPToken(models.Model):
@@ -716,6 +754,10 @@ class Message(models.Model):
     def __str__(self):
         sender = self.sender_parent or self.sender_teacher
         return f"Message about {self.child.name} from {self.sender_role} ({sender}) at {self.sent_at:%Y-%m-%d %H:%M}"
+
+    def save(self, *args, **kwargs):
+        self.body = capitalize_first(self.body)
+        super().save(*args, **kwargs)
 
 
 # ───────────── AI story generation (background job tracking) ─────────────
