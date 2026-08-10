@@ -96,93 +96,6 @@
   </form>
 </section>
 
-<style>
-.password-strength { margin: 6px 0; }
-.strength-bar { width: 100%; height: 6px; background: #e5e7eb; border-radius: 3px; overflow: hidden; }
-.strength-bar-fill { height: 100%; width: 0%; transition: width 0.2s ease, background-color 0.2s ease; background: #ef4444; }
-.strength-label { font-size: 0.85rem; font-weight: 600; display: inline-block; margin-top: 4px; }
-.password-requirements { list-style: none; padding: 0; margin: 6px 0 4px; font-size: 0.82rem; }
-.password-requirements li { color: #9ca3af; padding: 1px 0; }
-.password-requirements li::before { content: "✕ "; }
-.password-requirements li.met { color: #16a34a; }
-.password-requirements li.met::before { content: "✓ "; }
-.password-suggestion { font-size: 0.82rem; color: #b45309; background: #fffbeb; border: 1px solid #fde68a; padding: 6px 8px; border-radius: 6px; margin: 6px 0; }
-.form-card label.terms-checkbox-label {
-  display: inline-flex;
-  flex-direction: row;
-  flex-wrap: nowrap;
-  align-items: center;
-  gap: 6px;
-  font-size: 0.9rem;
-  margin: 14px 0;
-  cursor: pointer;
-  line-height: 1.3;
-  white-space: nowrap;
-}
-.form-card label.terms-checkbox-label input[type="checkbox"] {
-  appearance: auto;
-  -webkit-appearance: checkbox;
-  width: 16px;
-  height: 16px;
-  min-width: 16px;
-  min-height: 16px;
-  max-width: 16px;
-  max-height: 16px;
-  margin: 0;
-  flex: 0 0 16px;
-  cursor: pointer;
-}
-.form-card label.terms-checkbox-label .terms-link {
-  display: inline;
-  white-space: nowrap;
-}
-button[disabled] { opacity: 0.55; cursor: not-allowed; }
-
-.password-field-wrap { position: relative; display: flex; align-items: center; }
-.password-field-wrap input[type="password"],
-.password-field-wrap input[type="text"] { flex: 1; padding-right: 60px; }
-.password-toggle-visibility {
-  position: absolute;
-  right: 8px;
-  background: none;
-  border: none;
-  color: #2563eb;
-  font-size: 0.78rem;
-  font-weight: 600;
-  cursor: pointer;
-  padding: 4px 6px;
-}
-.generate-password-btn {
-  display: inline-block;
-  background: #eef2ff;
-  border: 1px solid #c7d2fe;
-  color: #4338ca;
-  font-size: 0.82rem;
-  font-weight: 600;
-  padding: 6px 10px;
-  border-radius: 6px;
-  cursor: pointer;
-}
-.generate-password-btn:hover { background: #e0e7ff; }
-.generate-password-btn:active { transform: translateY(1px); }
-
-.password-actions { display: flex; flex-wrap: wrap; gap: 8px; margin: 6px 0 4px; }
-.copy-password-btn {
-  display: inline-block;
-  background: #f0fdf4;
-  border: 1px solid #bbf7d0;
-  color: #15803d;
-  font-size: 0.82rem;
-  font-weight: 600;
-  padding: 6px 10px;
-  border-radius: 6px;
-  cursor: pointer;
-}
-.copy-password-btn:hover { background: #dcfce7; }
-.copy-password-btn:active { transform: translateY(1px); }
-.copy-password-btn.copied { background: #16a34a; border-color: #16a34a; color: #fff; }
-</style>
-
 <script>
 (function () {
   const SPECIAL_RE = /[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?~`]/;
@@ -206,20 +119,20 @@ button[disabled] { opacity: 0.55; cursor: not-allowed; }
     if (rules.number) score++;
     if (rules.special) score++;
 
-    let label, color, pct;
+    let label, strength;
     if (pw.length === 0) {
-      label = ''; color = '#e5e7eb'; pct = 0;
+      label = ''; strength = 'empty';
     } else if (!allMet) {
-      label = 'Too weak'; color = '#ef4444'; pct = 25;
+      label = 'Too weak'; strength = 'weak';
     } else if (score <= 5) {
-      label = 'Okay'; color = '#f59e0b'; pct = 60;
+      label = 'Okay'; strength = 'okay';
     } else if (score === 6) {
-      label = 'Strong'; color = '#16a34a'; pct = 85;
+      label = 'Strong'; strength = 'strong';
     } else {
-      label = 'Very strong'; color = '#15803d'; pct = 100;
+      label = 'Very strong'; strength = 'very-strong';
     }
 
-    return { rules, allMet, label, color, pct };
+    return { rules, allMet, label, strength };
   }
 
   function suggestionFor(pw, rules) {
@@ -302,10 +215,9 @@ button[disabled] { opacity: 0.55; cursor: not-allowed; }
       const pw = pwInput.value;
       const result = evaluatePassword(pw);
 
-      barFill.style.width = result.pct + '%';
-      barFill.style.backgroundColor = result.color;
+      barFill.dataset.strength = result.strength;
       label.textContent = result.label;
-      label.style.color = result.color;
+      label.dataset.strength = result.strength;
 
       reqItems.forEach(li => {
         const rule = li.getAttribute('data-rule');
