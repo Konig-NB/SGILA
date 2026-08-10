@@ -72,44 +72,12 @@ TEMPLATES = [
 
 WSGI_APPLICATION = 'sgila_project.wsgi.application'
 
-<<<<<<< HEAD
-USE_SQLITE = os.environ.get('USE_SQLITE', 'True').lower() in {'1', 'true', 'yes', 'on'}
-
-if USE_SQLITE:
-    DATABASES = {
-        'default': {
-            'ENGINE': 'django.db.backends.sqlite3',
-            'NAME': BASE_DIR / 'db.sqlite3',
-        }
-    }
-else:
-=======
 if os.environ.get('DB_ENGINE', 'sqlite').lower() in {'postgres', 'postgresql'}:
->>>>>>> zodi-update
     DATABASES = {
         'default': {
             'ENGINE': 'django.db.backends.postgresql',
             'NAME': os.environ.get('DB_NAME', 'sgila_db'),
             'USER': os.environ.get('DB_USER', 'postgres'),
-<<<<<<< HEAD
-            'PASSWORD': os.environ.get('DB_PASSWORD'),
-            'HOST': os.environ.get('DB_HOST'),
-            'PORT': os.environ.get('DB_PORT'),
-        }
-    }
-
-# PostgreSQL on AWS RDS (uncomment and fill in .env when ready):
-# DATABASES = {
-#     'default': {
-#         'ENGINE': 'django.db.backends.postgresql',
-#         'NAME': 'sgila-db',
-#         'USER': 'sgila_admin',
-#         'PASSWORD': os.environ.get('DB_PASSWORD'),
-#         'HOST': os.environ.get('DB_HOST'),   # AWS RDS endpoint
-#         'PORT': '5432',
-#     }
-# }
-=======
             'PASSWORD': os.environ.get('DB_PASSWORD', ''),
             'HOST': os.environ.get('DB_HOST', 'localhost'),
             'PORT': os.environ.get('DB_PORT', '5432'),
@@ -122,7 +90,6 @@ else:
             'NAME': BASE_DIR / 'db.sqlite3',
         }
     }
->>>>>>> zodi-update
 
 LANGUAGE_CODE = 'en-us'
 TIME_ZONE = 'Africa/Johannesburg'
