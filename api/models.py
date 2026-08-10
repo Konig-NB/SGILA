@@ -1,8 +1,23 @@
 import random
 import string
+from datetime import date
 
 from django.db import models
 from django.utils import timezone
+
+
+def capitalize_first(value):
+    """Return text with its first non-space character capitalized."""
+    value = (value or '').strip()
+    for index, character in enumerate(value):
+        if character.isalpha():
+            return f'{value[:index]}{character.upper()}{value[index + 1:]}'
+    return value
+
+
+def title_case(value):
+    """Return trimmed text with every word title-cased."""
+    return (value or '').strip().title()
 
 
 def generate_class_code():
@@ -22,6 +37,10 @@ class Parent(models.Model):
     def __str__(self):
         return self.full_name
 
+    def save(self, *args, **kwargs):
+        self.full_name = title_case(self.full_name)
+        super().save(*args, **kwargs)
+
 
 class Teacher(models.Model):
     """Teacher account for monitoring class progress."""
@@ -38,6 +57,11 @@ class Teacher(models.Model):
     def __str__(self):
         return self.full_name
 
+    def save(self, *args, **kwargs):
+        self.full_name = title_case(self.full_name)
+        self.school_name = title_case(self.school_name)
+        super().save(*args, **kwargs)
+
 
 class Child(models.Model):
     """Stores every registered child in the app."""
@@ -48,6 +72,12 @@ class Child(models.Model):
     first_name = models.CharField(max_length=80, blank=True)
     last_name = models.CharField(max_length=80, blank=True)
     name = models.CharField(max_length=100)
+    date_of_birth = models.DateField(null=True, blank=True)
+    # Kept as a stored column (rather than computed only on read) so it can be used
+    # directly in querysets/reports. It is always recalculated from date_of_birth
+    # in save() below, and opportunistically refreshed by refresh_age_if_stale()
+    # whenever the child is loaded in a view — so it keeps itself correct every
+    # birthday/new year without needing a scheduled task.
     age = models.IntegerField(null=True, blank=True)
     grade = models.IntegerField()          # 1 to 4
     school_name = models.CharField(max_length=160, blank=True)
@@ -58,6 +88,45 @@ class Child(models.Model):
 
     def __str__(self):
         return f"{self.name} (Grade {self.grade})"
+
+    def calculate_age(self):
+        """Return the child's current age worked out from date_of_birth as of today.
+
+        Falls back to the existing stored age if no date_of_birth is on file yet
+        (e.g. profiles created before this field existed).
+        """
+        if not self.date_of_birth:
+            return self.age
+        today = date.today()
+        years = today.year - self.date_of_birth.year
+        had_birthday_this_year = (today.month, today.day) >= (self.date_of_birth.month, self.date_of_birth.day)
+        if not had_birthday_this_year:
+            years -= 1
+        return years
+
+    def refresh_age_if_stale(self):
+        """Recalculate age from date_of_birth and persist it if it has drifted.
+
+        Call this whenever a child record is loaded in a view. It only writes to
+        the database when the stored age is actually out of date (e.g. a birthday
+        has passed since the last save), so it is cheap to call on every request.
+        """
+        if not self.date_of_birth:
+            return
+        current_age = self.calculate_age()
+        if current_age != self.age:
+            self.age = current_age
+            self.save(update_fields=['age'])
+
+    def save(self, *args, **kwargs):
+        self.username = capitalize_first(self.username)
+        self.first_name = title_case(self.first_name)
+        self.last_name = title_case(self.last_name)
+        self.name = title_case(self.name)
+        self.school_name = title_case(self.school_name)
+        if self.date_of_birth:
+            self.age = self.calculate_age()
+        super().save(*args, **kwargs)
 
 
 class TeacherClass(models.Model):
@@ -74,12 +143,26 @@ class TeacherClass(models.Model):
     def __str__(self):
         return f"{self.teacher.full_name} - {self.name}"
 
+    def save(self, *args, **kwargs):
+        self.name = capitalize_first(self.name)
+        super().save(*args, **kwargs)
+
 
 class Lesson(models.Model):
     """One lesson card shown on the home page."""
     title = models.CharField(max_length=200)
     grade = models.IntegerField()
     thumbnail_image = models.CharField(max_length=300, blank=True)
+    curriculum_source = models.CharField(max_length=120, blank=True)
+    source_attribution = models.TextField(blank=True)
+    is_ai_generated = models.BooleanField(default=False)
+    # AI-generated stories belong to the learner who unlocked them. Workbook
+    # lessons (and any shared/reviewed AI stories) have no owner and remain
+    # available to every learner in the grade.
+    generated_for = models.ForeignKey(
+        Child, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='generated_lessons',
+    )
     created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):
@@ -481,7 +564,13 @@ class Subscription(models.Model):
 
     def __str__(self):
         owner = self.parent or self.teacher
-        return f"{self.get_plan_type_display()} — {owner} ({self.status})"
+        return f"{self.get_plan_type_display()} - {owner} ({self.status})"
+
+    def save(self, *args, **kwargs):
+        self.school_name = title_case(self.school_name)
+        for field in ('district_or_province', 'contact_name', 'funding_source', 'notes', 'payer_name', 'bank_name'):
+            setattr(self, field, capitalize_first(getattr(self, field)))
+        super().save(*args, **kwargs)
 
 
 class OTPToken(models.Model):
@@ -561,3 +650,48 @@ class Message(models.Model):
     def __str__(self):
         sender = self.sender_parent or self.sender_teacher
         return f"Message about {self.child.name} from {self.sender_role} ({sender}) at {self.sent_at:%Y-%m-%d %H:%M}"
+
+    def save(self, *args, **kwargs):
+        self.body = capitalize_first(self.body)
+        super().save(*args, **kwargs)
+
+
+# ───────────── AI story generation (background job tracking) ─────────────
+
+class AIStoryJob(models.Model):
+    """Tracks one background 'write me a new story' request for a learner.
+
+    Generation (Gemini text + Pollinations illustrations) happens in a
+    background thread so the HTTP request that kicks it off can return
+    immediately; the frontend polls this row's status instead of blocking
+    on the request. Coordination is via the database, not shared memory,
+    so this also works correctly across multiple web-server processes.
+    """
+
+    STATUS_PENDING = 'pending'
+    STATUS_RUNNING = 'running'
+    STATUS_DONE = 'done'
+    STATUS_ERROR = 'error'
+    STATUS_CHOICES = [
+        (STATUS_PENDING, 'Pending'),
+        (STATUS_RUNNING, 'Running'),
+        (STATUS_DONE, 'Done'),
+        (STATUS_ERROR, 'Error'),
+    ]
+
+    child = models.ForeignKey(Child, on_delete=models.CASCADE, related_name='ai_story_jobs')
+    grade = models.IntegerField()
+    status = models.CharField(max_length=10, choices=STATUS_CHOICES, default=STATUS_PENDING)
+    lesson = models.ForeignKey(
+        Lesson, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='ai_story_job',
+    )
+    error_message = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"AI story job for {self.child.name} (grade {self.grade}) — {self.status}"

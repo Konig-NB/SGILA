@@ -32,7 +32,7 @@
 
 <section class="lesson-grid">
   {% for lesson in lessons %}
-    <a href="/lessons/{{ lesson.id }}/story" class="lesson-card">
+    <a href="/lessons/{{ lesson.id }}/story" class="lesson-card{% if lesson.is_current_ai_story %} current-ai-story{% endif %}">
       <div class="lesson-cover">
         {% if lesson.thumbnail_image %}
           <img src="{{ lesson.thumbnail_image }}" alt="{{ lesson.title }} cover">
@@ -44,6 +44,7 @@
         <span class="badge {% if lesson.completed %}badge-done{% else %}badge-new{% endif %}">
           {% if lesson.completed %}Completed{% else %}New lesson{% endif %}
         </span>
+        {% if lesson.is_current_ai_story %}<span class="badge badge-ai">AI story — just for you</span>{% endif %}
         <h2>{{ lesson.title }}</h2>
         <p>Grade {{ lesson.grade }} story and activities</p>
         <small>{% for star in lesson.stars %}&#9733;{% empty %}Start reading for 2x rewards{% endfor %}</small>
@@ -53,4 +54,87 @@
     <p class="empty">No lessons are available for this grade yet.</p>
   {% endfor %}
 </section>
+
+{% if grade in grades_with_ai %}
+<section class="ai-story-panel" id="ai-story-panel">
+  <div>
+    <h2>Explore more stories</h2>
+    <p>Once every story here is mastered, unlock a brand-new AI-written story made just for you.</p>
+  </div>
+  <button type="button" class="btn btn-primary" id="ai-story-btn"
+    {% if not ai_story_available and not ai_story_job_id %}disabled{% endif %}>
+    {% if ai_story_job_id %}Creating your story…{% else %}Explore more stories{% endif %}
+  </button>
+  <p class="ai-story-status" id="ai-story-status" role="status"></p>
+</section>
+
+<script>
+(function () {
+  function getCookie(name) {
+    const match = document.cookie.match('(^|;)\\s*' + name + '\\s*=\\s*([^;]+)');
+    return match ? decodeURIComponent(match.pop()) : '';
+  }
+
+  const button = document.getElementById('ai-story-btn');
+  const status = document.getElementById('ai-story-status');
+  let pollTimer = null;
+
+  function pollJob(jobId) {
+    fetch(`/ai-story-job/${jobId}/status`)
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.status === 'done') {
+          clearInterval(pollTimer);
+          status.textContent = 'Your story is ready!';
+          button.textContent = 'Read your new story →';
+          button.disabled = false;
+          button.onclick = () => { window.location.href = data.redirect_url; };
+        } else if (data.status === 'error') {
+          clearInterval(pollTimer);
+          button.disabled = false;
+          button.textContent = 'Explore more stories';
+          status.textContent = data.error || 'Could not create a story right now. Please try again.';
+        } else {
+          status.textContent = 'Creating your story… this can take a minute.';
+        }
+      })
+      .catch(() => { /* transient network hiccup — next poll will retry */ });
+  }
+
+  {% if ai_story_job_id %}
+  status.textContent = 'Creating your story… this can take a minute.';
+  pollTimer = setInterval(() => pollJob({{ ai_story_job_id }}), 3000);
+  {% endif %}
+
+  button.addEventListener('click', () => {
+    if (button.textContent.includes('Read your new story')) return;
+    button.disabled = true;
+    button.textContent = 'Creating your story…';
+    status.textContent = 'Starting up…';
+    fetch('/grade/{{ grade }}/generate-ai-story', {
+      method: 'POST',
+      headers: { 'X-CSRFToken': getCookie('csrftoken'), 'X-Requested-With': 'XMLHttpRequest' },
+    })
+      .then((r) => r.json())
+      .then((data) => {
+        if (!data.success) {
+          button.disabled = false;
+          button.textContent = 'Explore more stories';
+          status.textContent = data.error || 'Could not start your story right now.';
+          if (data.redirect_url) {
+            setTimeout(() => { window.location.href = data.redirect_url; }, 1500);
+          }
+          return;
+        }
+        pollTimer = setInterval(() => pollJob(data.job_id), 3000);
+      })
+      .catch(() => {
+        button.disabled = false;
+        button.textContent = 'Explore more stories';
+        status.textContent = 'Something went wrong. Please try again.';
+      });
+  });
+})();
+</script>
+{% endif %}
 {% endblock %}
