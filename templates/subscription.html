@@ -20,7 +20,7 @@
       <p class="epic-billed epic-billed-tight">For 1 child</p>
       <p class="epic-price">R49<span>/month</span></p>
       <p class="epic-billed">Billed Monthly</p>
-      <button class="epic-cta epic-cta-pink" type="submit">Choose Individual Plan</button>
+      <button class="epic-cta epic-cta-individual" type="submit">Choose Individual Plan</button>
     </form>
 
     <form method="POST" class="epic-card epic-card-family">
@@ -31,30 +31,16 @@
       <p class="epic-billed epic-billed-tight">For up to 4 children</p>
       <p class="epic-price">R89<span>/month</span></p>
       <p class="epic-billed">Billed Monthly</p>
-      <button class="epic-cta epic-cta-blue" type="submit">Choose Family Plan</button>
+      <button class="epic-cta epic-cta-family" type="submit">Choose Family Plan</button>
     </form>
 
     <form method="POST" class="epic-card epic-card-enterprise">
       {% csrf_token %}
       <input type="hidden" name="plan" value="enterprise">
       <h2 class="epic-plan-name">Enterprise</h2>
-      <p class="epic-billed epic-billed-copy">For schools or large shared accounts — no per-family payments.</p>
-
-      <label class="subscription-field subscription-field-spaced">School name
-        <input type="text" name="school_name" placeholder="e.g. Ntuzuma Primary School" required>
-      </label>
-
-      <label class="subscription-field subscription-field-spaced">Package code
-        <input class="uppercase-field" type="text" name="package_code" placeholder="Code from your district/government contact" required>
-      </label>
-
-<<<<<<< HEAD
-      <p class="epic-billed" style="margin-top:10px;">No payment details required here.</p>
-      <button class="epic-cta epic-cta-green" type="submit" style="margin-top:12px;">Activate Enterprise Package</button>
-=======
-      <p class="epic-billed epic-billed-top">No payment details required here.</p>
-      <button class="epic-cta epic-cta-blue subscription-action-top" type="submit">Activate Enterprise Package</button>
->>>>>>> zodi-update
+      <p class="epic-billed" style="margin-bottom: 4px;">For schools &amp; shared accounts</p>
+      <p class="epic-enterprise-min">Minimum starts from 100 learners</p>
+      <button class="epic-cta epic-cta-enterprise" type="submit">Activate Enterprise Package</button>
     </form>
 
   </div>
@@ -65,14 +51,10 @@
     <button type="submit">Not right now — continue with a free trial</button>
   </form>
 
-  <div class="subscription-cancel-wrap">
-    <a href="/subscription/cancel" class="epic-cta epic-cta-blue subscription-cancel-link">Cancel subscription</a>
+  <div style="text-align:center; margin-top:32px;">
+    <a href="/subscription/cancel" class="epic-cta epic-cta-red" style="display:inline-block; width:auto; padding:12px 24px;">Cancel subscription</a>
   </div>
 </section>
-
-<p class="form-note subscription-note">
-  Next you'll be asked for your payment details, then taken straight to your dashboard.
-</p>
 
 {% else %}
 
@@ -123,16 +105,12 @@
 
 </section>
 
-<p class="form-note subscription-instructions">
-  All three tiers work the same way below — enter your school name and the code your district/government contact received.
-</p>
-
 <section class="epic-cards subscription-activation-cards">
   <form method="POST" class="epic-card form-card subscription-activation-card">
     {% csrf_token %}
 <<<<<<< HEAD
     <span class="badge badge-done" style="margin-bottom: 8px;">Enterprise / Government-funded</span>
-    <h2 class="epic-plan-name" style="color: var(--success);">Activate your package</h2>
+    <h2 class="epic-plan-name" style="color: var(--lavender);">Activate your package</h2>
     <p class="epic-billed" style="margin-bottom: 22px;">Have a code? Redeem it here</p>
 =======
     <span class="badge badge-done subscription-tier-badge">Enterprise / Government-funded</span>
@@ -155,10 +133,6 @@
 >>>>>>> zodi-update
   </form>
 </section>
-
-<p class="form-note subscription-note">
-  Don't have a code yet? Ask your district or government education contact — they receive a code from SGILA once your school's package has been arranged.
-</p>
 
 {% endif %}
 
@@ -187,6 +161,7 @@
 .epic-cards {
   display: flex;
   justify-content: center;
+  align-items: flex-start;
   gap: 26px;
   flex-wrap: wrap;
   max-width: 1100px;
@@ -198,11 +173,13 @@
   background: var(--white);
   border-radius: 20px;
   width: 320px;
+  height: 300px;
   padding: 44px 32px 32px;
   box-shadow: 0 18px 34px rgba(20, 40, 50, .16);
   display: flex;
   flex-direction: column;
   align-items: center;
+  justify-content: center;
   gap: 6px;
 }
 
@@ -228,9 +205,9 @@
   margin: 6px 0 0;
   color: var(--ink);
 }
-.epic-card-individual .epic-plan-name { color: #b8860b; }
-.epic-card-family .epic-plan-name { color: var(--lavender); }
-.epic-card-enterprise .epic-plan-name { color: var(--success); }
+.epic-card-individual .epic-plan-name { color: #ffd22e; }
+.epic-card-family .epic-plan-name { color: #83a8f6; }
+.epic-card-enterprise .epic-plan-name { color: #5bdad4; }
 
 .epic-price {
   font-size: 2.6rem;
@@ -283,11 +260,34 @@
   font-size: 1rem;
   cursor: pointer;
   transition: transform .15s ease, box-shadow .15s ease;
+  min-height: 50px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-decoration: none;
 }
 .epic-cta:hover { transform: translateY(-1px); }
 .epic-cta-pink { background: var(--sun); color: var(--ink); box-shadow: 0 10px 20px rgba(248, 200, 75, .35); }
 .epic-cta-blue { background: var(--lavender); color: #fff; box-shadow: 0 10px 20px rgba(169, 150, 238, .35); }
-.epic-cta-green { background: var(--success); color: #fff; box-shadow: 0 10px 20px rgba(48, 203, 127, .35); }
+
+/* Plan CTAs matched to each plan name's color */
+.epic-cta-individual { background: #ffd22e; color: var(--ink); box-shadow: 0 10px 20px rgba(255, 210, 46, .38); }
+.epic-cta-family { background: #83a8f6; color: #fff; box-shadow: 0 10px 20px rgba(131, 168, 246, .38); }
+.epic-cta-enterprise { background: #5bdad4; color: var(--ink); box-shadow: 0 10px 20px rgba(91, 218, 212, .38); }
+
+.epic-cta-red { background: var(--danger); color: #fff; box-shadow: 0 10px 20px rgba(217, 93, 93, .35); }
+
+.epic-enterprise-min {
+  width: 100%;
+  text-align: center;
+  margin: 4px 0 0;
+  padding: 14px 12px;
+  border-radius: 14px;
+  background: var(--mint-soft);
+  color: var(--success);
+  font-weight: 800;
+  font-size: 1.02rem;
+}
 
 .epic-skip { margin-top: 34px; }
 .epic-skip button {
