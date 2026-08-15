@@ -9679,3 +9679,53 @@ body:not(.diagram-body) .story-diary-signature {
 /* State utilities intentionally sit above component layers. */
 .hidden { display: none; }
 .is-hidden { display: none; }
+
+/* ─── Trial-expired "payment due" screen ────────────────────────────── */
+.payment-due-overlay {
+  min-height: 60vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem 1rem;
+}
+
+.payment-due-modal {
+  background: var(--white);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: 0 12px 32px rgba(36, 48, 68, .12);
+  max-width: 480px;
+  width: 100%;
+  padding: 2.4rem 2rem;
+  text-align: center;
+}
+
+.payment-due-koaly {
+  width: 72px;
+  height: auto;
+  margin: 0 auto 1rem;
+}
+
+.payment-due-modal h1 {
+  font-size: 1.5rem;
+  margin-bottom: .8rem;
+  color: var(--ink);
+}
+
+.payment-due-modal p {
+  color: var(--muted);
+  line-height: 1.5;
+  margin-bottom: .6rem;
+}
+
+.payment-due-sub {
+  font-size: .92rem;
+}
+
+.payment-due-actions {
+  display: flex;
+  gap: .8rem;
+  justify-content: center;
+  margin-top: 1.4rem;
+  flex-wrap: wrap;
+}

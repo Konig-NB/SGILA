@@ -80,6 +80,28 @@ def set_account_session(request, role, account, child=None):
         request.session['child_grade'] = child.grade
 
 
+def account_trial_expired(account):
+    """True if this Parent/Teacher's own subscription has run past its free trial."""
+    subscription = getattr(account, 'subscription', None)
+    return bool(subscription and subscription.is_trial_expired)
+
+
+def learner_trial_expired(child):
+    """A learner's access rides on their parent's subscription: if the parent's
+    free trial has lapsed, the child is blocked too. School-linked learners
+    (no parent account, added via a teacher/class code) aren't gated this way —
+    their access follows the school's package-code subscription instead.
+    """
+    if not child.parent_id:
+        return False
+    return account_trial_expired(child.parent)
+
+
+def payment_due_response(request, context=None):
+    """Renders the 'payment due' screen in place of blocked content."""
+    return render(request, 'payment_due.html', context or {})
+
+
 def learner_required(request):
     child_id = request.session.get('child_id')
     if not child_id:
@@ -89,6 +111,8 @@ def learner_required(request):
     # Self-heals the stored age against date_of_birth on every learner page load,
     # so it rolls over on the child's birthday without needing a scheduled task.
     child.refresh_age_if_stale()
+    if learner_trial_expired(child):
+        return child, payment_due_response(request, {'role': 'learner', 'child': child})
     return child, None
 
 
@@ -2554,6 +2578,8 @@ def parent_dashboard(request):
     if request.session.get('account_role') != 'parent':
         return redirect('/login?role=parent')
     parent = get_object_or_404(Parent, id=request.session['account_id'])
+    if account_trial_expired(parent):
+        return payment_due_response(request, {'role': 'parent'})
     children = Child.objects.filter(Q(parent=parent) | Q(parent_email__iexact=parent.email)).distinct().order_by('name')
     for child in children:
         # Self-heals the stored age against date_of_birth whenever a parent views
@@ -2581,6 +2607,8 @@ def teacher_dashboard(request):
     if request.session.get('account_role') != 'teacher':
         return redirect('/login?role=teacher')
     teacher = get_object_or_404(Teacher, id=request.session['account_id'])
+    if account_trial_expired(teacher):
+        return payment_due_response(request, {'role': 'teacher'})
     teacher_classes = ensure_teacher_codes(teacher)
     learners = Child.objects.filter(
         Q(teacher=teacher) | Q(school_name__iexact=teacher.school_name)
