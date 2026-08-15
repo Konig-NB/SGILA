@@ -7,7 +7,7 @@ from django.contrib import admin
 from .models import (
     Parent, Teacher, Child, Lesson, StoryPage, ComprehensionQuestion, ReadingActivity,
     VisualActivityItem, PronunciationWord, SpellingActivity, Progress,
-    TeacherClass, Message, Subscription, PackageCode, AIStoryJob,
+    TeacherClass, Message, Subscription, PackageCode, AIStoryJob, GradeHistory,
 )
 
 @admin.register(PackageCode)
@@ -99,9 +99,18 @@ class SpellingActivityAdmin(admin.ModelAdmin):
 
 @admin.register(Child)
 class ChildAdmin(admin.ModelAdmin):
-    list_display = ('name', 'username', 'grade', 'school_name', 'parent_email', 'parent', 'teacher', 'teacher_class', 'created_at')
+    list_display = ('name', 'username', 'grade', 'grade_confirmed_year', 'school_name', 'parent_email', 'parent', 'teacher', 'teacher_class', 'created_at')
     list_filter = ('grade', 'school_name')
     search_fields = ('name', 'username', 'parent_email', 'school_name')
+
+
+@admin.register(GradeHistory)
+class GradeHistoryAdmin(admin.ModelAdmin):
+    list_display = ('child', 'year', 'grade', 'repeated', 'confirmed_by', 'confirmed_by_name', 'created_at')
+    list_filter = ('year', 'grade', 'repeated', 'confirmed_by')
+    search_fields = ('child__name', 'confirmed_by_name')
+    readonly_fields = ('created_at',)
+    ordering = ('-year', 'child__name')
 
 
 @admin.register(Parent)

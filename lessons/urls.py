@@ -19,6 +19,7 @@ urlpatterns = [
     path('parent/add-child', views.parent_add_child, name='parent-add-child'),
     path('parent/delete-child/<int:child_id>', views.parent_delete_child, name='parent-delete-child'),
     path('teacher/dashboard', views.teacher_dashboard, name='teacher-dashboard'),
+    path('confirm-grade/<int:child_id>', views.confirm_child_grade, name='confirm-child-grade'),
     path('grade/<int:grade>', views.grade_home, name='grade-home'),
     path('grade/<int:grade>/generate-ai-story', views.generate_ai_story_ajax, name='generate-ai-story'),
     path('ai-story-job/<int:job_id>/status', views.ai_story_job_status, name='ai-story-job-status'),

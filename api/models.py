@@ -25,6 +25,11 @@ def generate_class_code():
     return ''.join(random.choices(string.ascii_uppercase + string.digits, k=6))
 
 
+def current_school_year():
+    """South African school years run Jan-Dec, so the academic/school year is just the calendar year."""
+    return date.today().year
+
+
 class Parent(models.Model):
     """Guardian account that can manage one or more learner profiles."""
     full_name = models.CharField(max_length=120)
@@ -79,7 +84,12 @@ class Child(models.Model):
     # whenever the child is loaded in a view — so it keeps itself correct every
     # birthday/new year without needing a scheduled task.
     age = models.IntegerField(null=True, blank=True)
-    grade = models.IntegerField()          # 1 to 4
+    grade = models.IntegerField()          # 1 to 4 — the grade the child is currently shown content for.
+    # The school year (calendar year) for which `grade` was last confirmed by a parent or
+    # teacher. This is what makes grade changes an explicit human decision rather than
+    # something the app infers from app usage — see needs_grade_confirmation() below and
+    # GradeHistory for the full record of what was confirmed each year.
+    grade_confirmed_year = models.IntegerField(null=True, blank=True)
     school_name = models.CharField(max_length=160, blank=True)
     parent_email = models.EmailField()
     photo = models.FileField(upload_to='child_photos/', blank=True)
@@ -127,6 +137,81 @@ class Child(models.Model):
         if self.date_of_birth:
             self.age = self.calculate_age()
         super().save(*args, **kwargs)
+
+    def needs_grade_confirmation(self):
+        """True once a new school year has started and nobody has confirmed this
+        child's real-world grade for it yet.
+
+        The app never advances `grade` on its own — completing lessons proves
+        content mastery, not that the school promoted the child. Instead, once a
+        new school year begins, this flags the child so the parent/teacher
+        dashboard can ask a human: 'What grade is <name> actually in now?'
+        """
+        return self.grade_confirmed_year is None or self.grade_confirmed_year < current_school_year()
+
+    def suggested_next_grade(self):
+        """Default suggestion shown alongside the confirmation prompt — the parent
+        or teacher can accept it, pick a different grade (e.g. repeated), or leave
+        the child where they are. Never applied automatically."""
+        return min(self.grade + 1, 4)
+
+    def record_grade_confirmation(self, grade, confirmed_by, confirmed_by_name=''):
+        """Apply a human-confirmed grade for the current school year and log it.
+
+        `confirmed_by` should be one of GradeHistory.CONFIRMED_BY_CHOICES values.
+        This is the ONLY place `grade` should change after registration — it is
+        always the result of an explicit confirmation, never an automatic rollover.
+        """
+        year = current_school_year()
+        previous_grade = self.grade
+        self.grade = grade
+        self.grade_confirmed_year = year
+        self.save(update_fields=['grade', 'grade_confirmed_year'])
+        GradeHistory.objects.update_or_create(
+            child=self,
+            year=year,
+            defaults={
+                'grade': grade,
+                'repeated': confirmed_by != GradeHistory.REGISTRATION and grade == previous_grade,
+                'confirmed_by': confirmed_by,
+                'confirmed_by_name': confirmed_by_name,
+            },
+        )
+        return self
+
+
+class GradeHistory(models.Model):
+    """Records the human-confirmed grade for a child for one school year.
+
+    One row per child per year — this is the audit trail behind
+    Child.grade_confirmed_year, and lets a parent/teacher see a learner's real
+    grade progression over time (including repeated years).
+    """
+    PARENT = 'parent'
+    TEACHER = 'teacher'
+    REGISTRATION = 'registration'
+    CONFIRMED_BY_CHOICES = [
+        (PARENT, 'Parent'),
+        (TEACHER, 'Teacher'),
+        (REGISTRATION, 'Set at registration'),
+    ]
+
+    child = models.ForeignKey(Child, on_delete=models.CASCADE, related_name='grade_history')
+    year = models.IntegerField()
+    grade = models.IntegerField()
+    repeated = models.BooleanField(default=False)
+    confirmed_by = models.CharField(max_length=20, choices=CONFIRMED_BY_CHOICES)
+    confirmed_by_name = models.CharField(max_length=120, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-year']
+        constraints = [
+            models.UniqueConstraint(fields=['child', 'year'], name='unique_child_grade_year'),
+        ]
+
+    def __str__(self):
+        return f"{self.child.name} — {self.year} — Grade {self.grade}"
 
 
 class TeacherClass(models.Model):

@@ -17,6 +17,7 @@ from api.curriculum_library import STORYBOARD_IMAGES
 from api.models import (
     Child,
     ComprehensionQuestion,
+    GradeHistory,
     Lesson,
     OTPToken,
     Parent,
@@ -29,6 +30,7 @@ from api.models import (
     Teacher,
     TeacherClass,
     VisualActivityItem,
+    current_school_year,
 )
 
 
@@ -1035,3 +1037,133 @@ class CurriculumSeedTests(TestCase):
                 image_url.split('#', 1)[0] == lesson.thumbnail_image
                 for image_url in page_images
             ))
+
+
+class GradeConfirmationTests(TestCase):
+    """Covers the yearly grade-confirmation feature: no auto-rollover, an
+    explicit human decision is required, and it's fully logged."""
+
+    def setUp(self):
+        self.client = Client()
+        self.parent = Parent.objects.create(
+            full_name='Test Parent', email='parent-gc@example.com',
+            password=make_password('password123'), accepted_popia=True,
+        )
+        self.teacher = Teacher.objects.create(
+            full_name='Test Teacher', email='teacher-gc@example.com',
+            password=make_password('password123'), school_name='Sgila Primary',
+            grades_taught='2,3', accepted_popia=True,
+        )
+        self.child = Child.objects.create(
+            name='Test Learner', username='testlearnergc', grade=2,
+            parent=self.parent, parent_email=self.parent.email,
+            school_name='Sgila Primary', teacher=self.teacher,
+            password=make_password('password123'),
+        )
+
+    def login_parent(self):
+        return self.client.post('/login', {'role': 'parent', 'email': self.parent.email, 'password': 'password123'})
+
+    def login_teacher(self):
+        return self.client.post('/login', {'role': 'teacher', 'email': self.teacher.email, 'password': 'password123'})
+
+    def test_registration_confirms_current_year_and_needs_no_prompt(self):
+        self.assertEqual(self.child.grade_confirmed_year, None)
+        # Simulate what register_learner/parent_add_child do on creation.
+        from lessons.views import mark_grade_confirmed_at_registration
+        mark_grade_confirmed_at_registration(self.child)
+        self.child.refresh_from_db()
+        self.assertEqual(self.child.grade_confirmed_year, current_school_year())
+        self.assertFalse(self.child.needs_grade_confirmation())
+        self.assertEqual(
+            GradeHistory.objects.get(child=self.child).confirmed_by,
+            GradeHistory.REGISTRATION,
+        )
+
+    def test_grade_never_changes_on_its_own(self):
+        """Simulates a new school year starting with nobody confirming anything:
+        the app must not touch `grade` by itself."""
+        self.child.grade_confirmed_year = current_school_year() - 1
+        self.child.save(update_fields=['grade_confirmed_year'])
+        self.assertTrue(self.child.needs_grade_confirmation())
+
+        self.login_parent()
+        response = self.client.get('/parent/dashboard')
+        self.assertContains(response, 'confirm')
+        self.assertContains(response, 'Test Learner')
+
+        self.child.refresh_from_db()
+        self.assertEqual(self.child.grade, 2)  # untouched
+
+    def test_parent_can_confirm_promotion(self):
+        self.child.grade_confirmed_year = current_school_year() - 1
+        self.child.save(update_fields=['grade_confirmed_year'])
+        self.login_parent()
+
+        response = self.client.post(f'/confirm-grade/{self.child.id}', {'grade': '3'}, follow=True)
+        self.assertEqual(response.status_code, 200)
+
+        self.child.refresh_from_db()
+        self.assertEqual(self.child.grade, 3)
+        self.assertEqual(self.child.grade_confirmed_year, current_school_year())
+        self.assertFalse(self.child.needs_grade_confirmation())
+
+        history = GradeHistory.objects.get(child=self.child, year=current_school_year())
+        self.assertEqual(history.grade, 3)
+        self.assertEqual(history.confirmed_by, GradeHistory.PARENT)
+        self.assertFalse(history.repeated)
+
+    def test_parent_can_confirm_a_repeated_grade(self):
+        self.child.grade_confirmed_year = current_school_year() - 1
+        self.child.save(update_fields=['grade_confirmed_year'])
+        self.login_parent()
+
+        self.client.post(f'/confirm-grade/{self.child.id}', {'grade': '2'})
+
+        self.child.refresh_from_db()
+        self.assertEqual(self.child.grade, 2)  # repeated, not bumped
+
+        history = GradeHistory.objects.get(child=self.child, year=current_school_year())
+        self.assertEqual(history.grade, 2)
+        # Registration already logged grade 2 for the child's first year, so a
+        # later parent confirmation of the same grade is correctly flagged as a repeat.
+        self.assertTrue(history.repeated)
+
+    def test_teacher_can_confirm_a_linked_learner(self):
+        self.child.grade_confirmed_year = current_school_year() - 1
+        self.child.save(update_fields=['grade_confirmed_year'])
+        self.login_teacher()
+
+        response = self.client.post(f'/confirm-grade/{self.child.id}', {'grade': '3'}, follow=True)
+        self.assertEqual(response.status_code, 200)
+
+        self.child.refresh_from_db()
+        self.assertEqual(self.child.grade, 3)
+        history = GradeHistory.objects.get(child=self.child, year=current_school_year())
+        self.assertEqual(history.confirmed_by, GradeHistory.TEACHER)
+
+    def test_parent_cannot_confirm_a_child_that_is_not_theirs(self):
+        other_parent = Parent.objects.create(
+            full_name='Other Parent', email='other-parent-gc@example.com',
+            password=make_password('password123'), accepted_popia=True,
+        )
+        self.client.post('/login', {'role': 'parent', 'email': other_parent.email, 'password': 'password123'})
+        self.child.grade_confirmed_year = current_school_year() - 1
+        self.child.save(update_fields=['grade_confirmed_year'])
+
+        self.client.post(f'/confirm-grade/{self.child.id}', {'grade': '4'})
+
+        self.child.refresh_from_db()
+        self.assertEqual(self.child.grade, 2)  # unchanged — access denied
+        self.assertFalse(GradeHistory.objects.filter(child=self.child, year=current_school_year()).exists())
+
+    def test_invalid_grade_is_rejected(self):
+        self.child.grade_confirmed_year = current_school_year() - 1
+        self.child.save(update_fields=['grade_confirmed_year'])
+        self.login_parent()
+
+        self.client.post(f'/confirm-grade/{self.child.id}', {'grade': '9'})
+
+        self.child.refresh_from_db()
+        self.assertEqual(self.child.grade, 2)
+        self.assertTrue(self.child.needs_grade_confirmation())

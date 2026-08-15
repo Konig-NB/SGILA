@@ -34,6 +34,7 @@ from api.models import (
     ComprehensionQuestion,
     FeelingsQuestion,
     Grade4ActivityProgress,
+    GradeHistory,
     InferenceQuestion,
     Lesson,
     Message,
@@ -58,6 +59,7 @@ from api.models import (
     Subscription,
     PackageCode,
     capitalize_first,
+    current_school_year,
     title_case,
 )
 from api.reporting import aggregate_rows, rows_for_record, rows_from_scores
@@ -176,6 +178,22 @@ def link_child_to_class(child, raw_code):
     return bool(teacher)
 
 
+def mark_grade_confirmed_at_registration(child):
+    """Registering a child counts as confirming their grade for this school year.
+
+    Every year after this one, the parent/teacher dashboard will prompt for an
+    explicit confirmation instead of assuming the child moved up a grade — see
+    Child.needs_grade_confirmation().
+    """
+    child.grade_confirmed_year = current_school_year()
+    child.save(update_fields=['grade_confirmed_year'])
+    GradeHistory.objects.update_or_create(
+        child=child,
+        year=current_school_year(),
+        defaults={'grade': child.grade, 'confirmed_by': GradeHistory.REGISTRATION},
+    )
+
+
 def teacher_can_view_child(teacher, child):
     if child.teacher_id == teacher.id:
         return True
@@ -283,6 +301,7 @@ def register_learner(request):
         teacher=teacher,
         teacher_class=teacher_class,
     )
+    mark_grade_confirmed_at_registration(child)
     set_account_session(request, 'learner', child, child)
     return redirect(f'/grade/{child.grade}')
 
@@ -818,7 +837,7 @@ def parent_add_child(request):
                     messages.error(request, 'That teacher class code was not found.')
                     return render(request, 'add_child.html', {'parent': parent})
 
-            Child.objects.create(
+            child = Child.objects.create(
                 parent=parent,
                 username=username,
                 first_name=first_name,
@@ -834,6 +853,7 @@ def parent_add_child(request):
                 teacher=teacher,
                 teacher_class=teacher_class,
             )
+            mark_grade_confirmed_at_registration(child)
             messages.success(request, 'Child profile added.')
             return redirect('/parent/dashboard')
 
@@ -2547,6 +2567,8 @@ def build_dashboard_row(child):
         'needs_help': bool(percentages) and average < 70,
         'perfect_work': perfect_work,
         'assessment_rows': assessment_rows,
+        'needs_grade_confirmation': child.needs_grade_confirmation(),
+        'suggested_grade': child.suggested_next_grade(),
     }
 
 
@@ -2566,6 +2588,7 @@ def parent_dashboard(request):
     total_lessons_done = sum(card['lessons_done'] for card in cards)
     total_stars = sum(card['stars'] for card in cards)
     needs_help_count = sum(1 for card in cards if card['needs_help'])
+    grade_confirmation_cards = [card for card in cards if card['needs_grade_confirmation']]
 
     return render(request, 'parent_dashboard.html', {
         'parent': parent,
@@ -2574,6 +2597,7 @@ def parent_dashboard(request):
         'total_lessons_done': total_lessons_done,
         'total_stars': total_stars,
         'needs_help_count': needs_help_count,
+        'grade_confirmation_cards': grade_confirmation_cards,
     })
 
 
@@ -2605,6 +2629,7 @@ def teacher_dashboard(request):
         })
 
     class_average = round(sum(row['average'] for row in active_rows) / len(active_rows)) if active_rows else 0
+    grade_confirmation_rows = [row for row in learner_rows if row['needs_grade_confirmation']]
     return render(request, 'teacher_dashboard.html', {
         'teacher': teacher,
         'learner_rows': learner_rows,
@@ -2615,7 +2640,60 @@ def teacher_dashboard(request):
         'total_stars': sum(row['stars'] for row in learner_rows),
         'needs_help_count': sum(1 for row in learner_rows if row['needs_help']),
         'teacher_classes': teacher_classes,
+        'grade_confirmation_rows': grade_confirmation_rows,
     })
+
+
+@require_http_methods(['POST'])
+def confirm_child_grade(request, child_id):
+    """Yearly grade-confirmation step (see Child.needs_grade_confirmation).
+
+    The app never advances a learner's grade by itself. Once a new school year
+    starts, the parent or teacher dashboard shows a prompt for each learner who
+    hasn't been confirmed yet; this view applies exactly what they choose —
+    moved up, repeated, or anything else — and logs it to GradeHistory.
+    """
+    role = request.session.get('account_role')
+
+    if role == 'parent':
+        parent = get_object_or_404(Parent, id=request.session['account_id'])
+        child = Child.objects.filter(id=child_id).filter(
+            Q(parent=parent) | Q(parent_email__iexact=parent.email)
+        ).first()
+        confirmed_by, confirmed_by_name, redirect_to = GradeHistory.PARENT, parent.full_name, '/parent/dashboard'
+    elif role == 'teacher':
+        teacher = get_object_or_404(Teacher, id=request.session['account_id'])
+        child = Child.objects.filter(id=child_id).first()
+        if child and not teacher_can_view_child(teacher, child):
+            child = None
+        confirmed_by, confirmed_by_name, redirect_to = GradeHistory.TEACHER, teacher.full_name, '/teacher/dashboard'
+    else:
+        return redirect('/login')
+
+    if not child:
+        messages.error(request, 'Learner profile not found or access denied.')
+        return redirect(redirect_to)
+
+    try:
+        grade = int(request.POST.get('grade', ''))
+    except (TypeError, ValueError):
+        grade = None
+
+    if grade not in (1, 2, 3, 4):
+        messages.error(request, 'Please choose a valid grade (1 to 4).')
+        return redirect(redirect_to)
+
+    previous_grade = child.grade
+    child.record_grade_confirmation(grade, confirmed_by=confirmed_by, confirmed_by_name=confirmed_by_name)
+
+    if grade > previous_grade:
+        messages.success(request, f'{child.name} is now set to Grade {grade}. Their lessons will update to match.')
+    elif grade == previous_grade:
+        messages.success(request, f'{child.name} stays in Grade {grade} this year.')
+    else:
+        messages.success(request, f'{child.name} has been moved back to Grade {grade}.')
+
+    return redirect(redirect_to)
 
 
 # ─────────────────────────────────────────────────────────────
