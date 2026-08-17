@@ -33,7 +33,7 @@
 <section class="lesson-grid">
   {% for lesson in lessons %}
     <a href="/lessons/{{ lesson.id }}/story" class="lesson-card{% if lesson.is_current_ai_story %} current-ai-story{% endif %}">
-      <div class="lesson-cover">
+      <div class="lesson-cover{% if '/storyboards/' in lesson.thumbnail_image %} storyboard-crop storyboard-panel-1{% endif %}">
         {% if lesson.thumbnail_image %}
           <img src="{{ lesson.thumbnail_image }}" alt="{{ lesson.title }} cover">
         {% else %}

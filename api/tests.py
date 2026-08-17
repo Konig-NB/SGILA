@@ -1,15 +1,29 @@
 import json
+import re
+from pathlib import Path
 
 from django.contrib.auth.hashers import make_password
+from django.core.management import call_command
 from django.test import Client, TestCase
 
+from api.curriculum_enrichment import (
+    LESSON_WORDS,
+    LESSON_SPELLING,
+    PRONUNCIATION_WORDS,
+    STORYBOARD_PAGE_PANELS,
+    VISUAL_VOCAB_SHEETS,
+)
+from api.curriculum_library import STORYBOARD_IMAGES
 from api.models import (
     Child,
     ComprehensionQuestion,
     Lesson,
+    OTPToken,
     Parent,
     PronunciationWord,
     Progress,
+    ReadingActivity,
+    ReadingActivityResponse,
     SpellingActivity,
     StoryPage,
     Teacher,
@@ -37,6 +51,15 @@ class SgilaFlowTests(TestCase):
             option_4="Home",
             correct_answer="Market",
         )
+        self.reading_activity = ReadingActivity.objects.create(
+            lesson=self.lesson,
+            order=1,
+            activity_type=ReadingActivity.MULTIPLE_CHOICE,
+            skill='literal_comprehension',
+            question='Where is Sipho?',
+            options=['Market', 'School', 'River'],
+            correct_answer='Market',
+        )
         VisualActivityItem.objects.create(
             lesson=self.lesson,
             correct_word="Market",
@@ -60,18 +83,47 @@ class SgilaFlowTests(TestCase):
         session['child_grade'] = child.grade
         session.save()
 
-    def test_learner_can_register_and_reach_lesson_flow(self):
-        response = self.client.post("/register", {
-            "role": "learner",
-            "child_name": "Sipho",
-            "age": 7,
-            "grade": 1,
-            "school_name": "Thuthuka Primary",
-            "parent_email": "sipho@example.com",
-            "password": "password123",
-        })
-        self.assertRedirects(response, "/grade/1")
-        self.assertEqual(Child.objects.count(), 1)
+    def test_frontend_has_one_layered_stylesheet_without_force_overrides(self):
+        project_root = Path(__file__).resolve().parent.parent
+        stylesheet = project_root / 'static' / 'css' / 'sgila_app.css'
+        css = stylesheet.read_text(encoding='utf-8')
+
+        self.assertTrue(stylesheet.is_file())
+        self.assertIn('@layer foundation, application, pages;', css)
+        self.assertNotIn('!important', css)
+        self.assertFalse((stylesheet.parent / 'sgila.css').exists())
+        self.assertFalse((stylesheet.parent / 'sgila_web.css').exists())
+
+        for template in (project_root / 'templates').glob('*.html'):
+            with self.subTest(template=template.name):
+                template_html = template.read_text(encoding='utf-8')
+                self.assertNotIn('<style>', template_html)
+                inline_styles = re.findall(r'style="([^"]*)"', template_html)
+                self.assertTrue(all(
+                    style.strip().startswith('--progress:')
+                    for style in inline_styles
+                ))
+                self.assertNotRegex(
+                    template_html,
+                    r'\.style\.(display|width|color|margin|padding|background|border)\s*=',
+                )
+
+        response = self.client.get('/login?role=learner')
+        self.assertContains(response, 'css/sgila_app.css')
+        self.assertNotContains(response, 'css/sgila.css')
+        self.assertNotContains(response, 'css/sgila_web.css')
+
+    def test_learner_can_reach_lesson_flow(self):
+        child = Child.objects.create(
+            username="sipho",
+            name="Sipho",
+            age=7,
+            grade=1,
+            school_name="Thuthuka Primary",
+            parent_email="sipho@example.com",
+            password=make_password("password123"),
+        )
+        self.sign_in_child(child)
 
         for path in [
             f"/lessons/{self.lesson.id}/story",
@@ -92,6 +144,12 @@ class SgilaFlowTests(TestCase):
             "password": "password123",
             "accepted_popia": "on",
         })
+        self.assertEqual(parent_response.status_code, 200)
+        parent_otp = OTPToken.objects.get(email="nomsa@example.com", role="parent")
+        parent_response = self.client.post("/verify-otp", {
+            "otp_session": str(parent_otp.id),
+            "code": parent_otp.code,
+        })
         self.assertRedirects(parent_response, "/parent/dashboard")
         self.assertEqual(self.client.get("/parent/dashboard").status_code, 200)
 
@@ -104,6 +162,12 @@ class SgilaFlowTests(TestCase):
             "grades_taught": "1,2",
             "password": "password123",
             "accepted_popia": "on",
+        })
+        self.assertEqual(teacher_response.status_code, 200)
+        teacher_otp = OTPToken.objects.get(email="teacher@example.com", role="teacher")
+        teacher_response = self.client.post("/verify-otp", {
+            "otp_session": str(teacher_otp.id),
+            "code": teacher_otp.code,
         })
         self.assertRedirects(teacher_response, "/teacher/dashboard")
         teacher = Teacher.objects.get(email="teacher@example.com")
@@ -140,7 +204,7 @@ class SgilaFlowTests(TestCase):
         session.save()
 
         response = self.client.post("/parent/add-child", {
-            "username": "lethu_m",
+            "username": "lethum",
             "first_name": "Lethu",
             "last_name": "Mokoena",
             "age": 7,
@@ -150,7 +214,7 @@ class SgilaFlowTests(TestCase):
             "password": "password123",
         })
         self.assertRedirects(response, "/parent/dashboard")
-        child = Child.objects.get(username="lethu_m")
+        child = Child.objects.get(username="lethum")
         self.assertEqual(child.name, "Lethu Mokoena")
         self.assertEqual(child.parent_email, parent.email)
         self.assertEqual(child.teacher, teacher)
@@ -176,7 +240,7 @@ class SgilaFlowTests(TestCase):
         self.assertContains(response, 'name="photo"')
         self.assertContains(response, 'enctype="multipart/form-data"')
 
-    def test_parent_dashboard_congratulates_perfect_work(self):
+    def test_parent_report_acknowledges_perfect_work(self):
         parent = Parent.objects.create(
             full_name="Nomsa Dlamini",
             email="nomsa@example.com",
@@ -208,9 +272,8 @@ class SgilaFlowTests(TestCase):
         session['account_name'] = parent.full_name
         session.save()
 
-        response = self.client.get("/parent/dashboard")
-        self.assertContains(response, "Congratulations!")
-        self.assertContains(response, "got everything right")
+        response = self.client.get(f"/dashboard/{child.id}/lessons/{self.lesson.id}")
+        self.assertContains(response, "Good job! you got everything correct")
 
     def test_basic_routes_work_with_default_allowed_hosts(self):
         self.assertEqual(self.client.get("/").status_code, 200)
@@ -237,10 +300,18 @@ class SgilaFlowTests(TestCase):
         Progress.objects.create(child=child, lesson=self.lesson, total_score=1, total_possible=1, stars_earned=3)
 
         self.assertEqual(self.client.get(f"/dashboard/{child.id}").status_code, 302)
+        self.assertEqual(
+            self.client.get(f"/dashboard/{child.id}/lessons/{self.lesson.id}").status_code,
+            302,
+        )
         self.assertEqual(self.client.get(f"/api/progress/{child.id}").status_code, 403)
 
         self.sign_in_child(child)
         self.assertEqual(self.client.get(f"/dashboard/{child.id}").status_code, 200)
+        self.assertEqual(
+            self.client.get(f"/dashboard/{child.id}/lessons/{self.lesson.id}").status_code,
+            200,
+        )
         self.assertEqual(self.client.get(f"/api/progress/{child.id}").status_code, 200)
         self.assertEqual(self.client.get(f"/dashboard/{other_child.id}").status_code, 302)
         self.assertEqual(self.client.get(f"/api/progress/{other_child.id}").status_code, 403)
@@ -350,6 +421,378 @@ class SgilaFlowTests(TestCase):
         self.assertNotIn("correct_word", item_data)
         self.assertIn("word_options", item_data)
 
+    def test_reading_activity_answer_is_hidden_until_submission(self):
+        response = self.client.get(f"/api/lessons/{self.lesson.id}/questions")
+
+        self.assertEqual(response.status_code, 200)
+        activity_data = response.json()[0]
+        self.assertEqual(activity_data["activity_type"], "multiple_choice")
+        self.assertNotIn("correct_answer", activity_data)
+
+    def test_reading_activity_is_checked_and_scored_server_side(self):
+        child = Child.objects.create(
+            name="Sipho",
+            age=7,
+            grade=1,
+            parent_email="reading@example.com",
+            password="hash",
+        )
+        self.sign_in_child(child)
+
+        response = self.client.post("/api/check-reading-activity", json.dumps({
+            "child_id": child.id,
+            "lesson_id": self.lesson.id,
+            "activity_id": self.reading_activity.id,
+            "child_answer": "Market",
+        }), content_type="application/json")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.json()["correct"])
+        self.assertEqual(response.json()["comprehension_score"], 1)
+        self.assertEqual(self.client.session[f"lesson_{self.lesson.id}_comprehension_score"], 1)
+
+        retry_response = self.client.post("/api/check-reading-activity", json.dumps({
+            "child_id": child.id,
+            "lesson_id": self.lesson.id,
+            "activity_id": self.reading_activity.id,
+            "child_answer": "School",
+        }), content_type="application/json")
+
+        self.assertEqual(retry_response.status_code, 200)
+        self.assertFalse(retry_response.json()["correct"])
+        self.assertEqual(retry_response.json()["comprehension_score"], 0)
+
+    def test_structured_reading_activity_scores_each_item_and_skill(self):
+        child = Child.objects.create(
+            name="Sipho",
+            age=10,
+            grade=4,
+            parent_email="structured@example.com",
+            password="hash",
+        )
+        activity = ReadingActivity.objects.create(
+            lesson=self.lesson,
+            order=2,
+            group_number=2,
+            group_title='Crossword Puzzle',
+            activity_type=ReadingActivity.CROSSWORD,
+            skill='vocabulary_in_context',
+            question='Complete the words.',
+            options={'entries': []},
+            correct_answer=json.dumps({'1-across': 'RUNNING', '2-down': 'NERVOUS'}),
+        )
+        self.sign_in_child(child)
+
+        response = self.client.post("/api/check-reading-activity", json.dumps({
+            "child_id": child.id,
+            "lesson_id": self.lesson.id,
+            "activity_id": activity.id,
+            "child_answer": {'1-across': 'running', '2-down': 'happy'},
+        }), content_type="application/json")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.json()['partial'])
+        self.assertEqual(response.json()['score_awarded'], 1)
+        self.assertEqual(response.json()['score_possible'], 2)
+        self.assertEqual(
+            self.client.session[f"lesson_{self.lesson.id}_reading_skill_scores"]['vocabulary_in_context'],
+            {'score': 1, 'total': 2},
+        )
+
+    def test_grade_four_matching_returns_row_level_correct_answers(self):
+        child = Child.objects.create(
+            name='Mandu',
+            age=10,
+            grade=4,
+            parent_email='grade4-matching@example.com',
+            password='hash',
+        )
+        lesson = Lesson.objects.create(title='Grade 4 Word Detective', grade=4)
+        activity = ReadingActivity.objects.create(
+            lesson=lesson,
+            order=1,
+            group_number=1,
+            group_title='Word Detective',
+            activity_type=ReadingActivity.MATCHING,
+            skill='vocabulary_in_context',
+            question='Match each word with its meaning.',
+            options={
+                'prompts': [
+                    {'key': '1', 'text': 'practised'},
+                    {'key': '2', 'text': 'grateful'},
+                ],
+                'choices': [
+                    {'key': 'a', 'text': 'did something repeatedly'},
+                    {'key': 'b', 'text': 'feeling thankful'},
+                ],
+            },
+            correct_answer=json.dumps({'1': 'a', '2': 'b'}),
+        )
+        self.sign_in_child(child)
+
+        response = self.client.post('/api/check-reading-activity', json.dumps({
+            'child_id': child.id,
+            'lesson_id': lesson.id,
+            'activity_id': activity.id,
+            'child_answer': {'1': 'a', '2': 'a'},
+        }), content_type='application/json')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()['score_awarded'], 1)
+        self.assertEqual(response.json()['score_possible'], 2)
+        self.assertEqual(response.json()['correct_answer'], {'1': 'a', '2': 'b'})
+
+    def test_word_scramble_returns_row_answers_for_colour_coded_feedback(self):
+        child = Child.objects.create(
+            name='Mandu',
+            age=10,
+            grade=4,
+            parent_email='grade4-scramble@example.com',
+            password='hash',
+        )
+        lesson = Lesson.objects.create(title='Grade 4 Spelling', grade=4)
+        activity = ReadingActivity.objects.create(
+            lesson=lesson,
+            order=1,
+            group_number=1,
+            group_title='Spelling Activity',
+            activity_type=ReadingActivity.WORD_SCRAMBLE,
+            skill='spelling',
+            question='Unscramble the words.',
+            options={'items': [
+                {'key': '1', 'scramble': 'OSHSE'},
+                {'key': '2', 'scramble': 'NIRNGNU'},
+            ]},
+            correct_answer=json.dumps({'1': 'SHOES', '2': 'RUNNING'}),
+        )
+        self.sign_in_child(child)
+
+        response = self.client.post('/api/check-reading-activity', json.dumps({
+            'child_id': child.id,
+            'lesson_id': lesson.id,
+            'activity_id': activity.id,
+            'child_answer': {'1': 'shoes', '2': 'wrong'},
+        }), content_type='application/json')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()['score_awarded'], 1)
+        self.assertEqual(response.json()['score_possible'], 2)
+        self.assertEqual(response.json()['correct_answer'], {'1': 'SHOES', '2': 'RUNNING'})
+        questions_page = self.client.get(f'/lessons/{lesson.id}/questions')
+        self.assertContains(questions_page, 'function markScrambleAnswers')
+        stylesheet = Path(__file__).resolve().parent.parent / 'static' / 'css' / 'sgila_app.css'
+        self.assertIn('.scramble-row.scramble-correct', stylesheet.read_text(encoding='utf-8'))
+        self.assertIn('.scramble-row.scramble-wrong', stylesheet.read_text(encoding='utf-8'))
+
+    def test_guided_diary_is_saved_to_the_child_story_profile(self):
+        child = Child.objects.create(
+            name="Mandu",
+            age=9,
+            grade=3,
+            parent_email="diary@example.com",
+            password="hash",
+        )
+        activity = ReadingActivity.objects.create(
+            lesson=self.lesson,
+            order=2,
+            group_number=7,
+            group_title='My Diary',
+            activity_type=ReadingActivity.REASONING,
+            skill='text_to_self',
+            question='Write your own diary entry.',
+            options={
+                'writing_template': True,
+                'feelings': ['happy', 'proud'],
+            },
+            correct_answer='Any complete diary entry.',
+        )
+        self.sign_in_child(child)
+        answer = {
+            'feeling': 'proud',
+            'because': 'I helped my friend keep a secret',
+            'best_part': 'we solved the problem together',
+            'next_time': 'write down my thoughts',
+            'from_name': 'Mandu',
+        }
+
+        response = self.client.post('/api/check-reading-activity', json.dumps({
+            'child_id': child.id,
+            'lesson_id': self.lesson.id,
+            'activity_id': activity.id,
+            'child_answer': answer,
+        }), content_type='application/json')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.json()['saved'])
+        self.assertEqual(response.json()['message'], 'Your diary entry is saved to your profile, Mandu.')
+        saved = ReadingActivityResponse.objects.get(child=child, lesson=self.lesson)
+        self.assertEqual(saved.response, answer)
+
+    def test_dashboard_lists_grade_stories_and_opens_dynamic_story_report(self):
+        parent = Parent.objects.create(
+            full_name="Nomsa Dlamini",
+            email="dynamic@example.com",
+            password="hash",
+            accepted_popia=True,
+        )
+        child = Child.objects.create(
+            parent=parent,
+            name="Mandu",
+            age=10,
+            grade=4,
+            parent_email=parent.email,
+            photo="child_photos/mandu.jpg",
+            password="hash",
+        )
+        completed_lesson = Lesson.objects.create(title="Mandu's Running Shoes", grade=4)
+        incomplete_lesson = Lesson.objects.create(title="Why Mapula Missed School", grade=4)
+        Progress.objects.create(
+            child=child,
+            lesson=completed_lesson,
+            total_score=6,
+            total_possible=10,
+            stars_earned=1,
+            assessment_scores={
+                'inference': {'score': 1, 'total': 3},
+                'spelling': {'score': 5, 'total': 7},
+            },
+        )
+        ReadingActivityResponse.objects.create(
+            child=child,
+            lesson=completed_lesson,
+            response={
+                'feeling': 'proud',
+                'because': 'I kept trying',
+                'best_part': 'finishing the race',
+                'next_time': 'run with a friend',
+                'from_name': 'Mandu',
+            },
+        )
+        session = self.client.session
+        session['account_role'] = 'parent'
+        session['account_id'] = parent.id
+        session.save()
+
+        response = self.client.get(f"/dashboard/{child.id}")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Running Shoes")
+        self.assertContains(response, "Why Mapula Missed School")
+        self.assertContains(response, '1 of 2 stories completed')
+        self.assertContains(response, 'View detailed report')
+        self.assertContains(response, 'id="story-search"')
+        self.assertContains(response, 'id="story-sort"')
+        self.assertContains(response, 'Recently completed')
+        self.assertContains(response, 'Stars: high to low')
+        self.assertNotContains(response, 'Activity scores')
+        self.assertEqual(len(response.context['story_rows']), 2)
+
+        searched = self.client.get(f"/dashboard/{child.id}", {'q': 'Mapula'})
+        self.assertContains(searched, 'Why Mapula Missed School')
+        self.assertNotContains(searched, 'Running Shoes')
+        self.assertEqual(searched.context['visible_story_count'], 1)
+
+        sorted_response = self.client.get(
+            f"/dashboard/{child.id}",
+            {'sort': 'title_desc'},
+        )
+        self.assertEqual(
+            [item['lesson'].title for item in sorted_response.context['story_rows']],
+            ['Why Mapula Missed School', "Mandu's Running Shoes"],
+        )
+
+        detail = self.client.get(
+            f"/dashboard/{child.id}/lessons/{completed_lesson.id}"
+        )
+        self.assertEqual(detail.status_code, 200)
+        self.assertContains(detail, 'Skills tested in this story')
+        self.assertContains(detail, 'class="story-detail-avatar has-photo"')
+        self.assertContains(detail, 'src="/media/child_photos/mandu.jpg"')
+        self.assertContains(detail, 'Inference')
+        self.assertContains(detail, 'Spelling')
+        self.assertContains(detail, 'Focus areas for this story')
+        self.assertContains(detail, "Mandu's story connection")
+        self.assertContains(detail, 'finishing the race')
+        self.assertEqual(
+            {row['key'] for row in detail.context['breakdown']},
+            {'inference', 'spelling'},
+        )
+
+        locked = self.client.get(
+            f"/dashboard/{child.id}/lessons/{incomplete_lesson.id}"
+        )
+        self.assertRedirects(locked, f"/dashboard/{child.id}")
+
+    def test_grade_three_reports_hide_retired_sequence_and_visual_scores(self):
+        parent = Parent.objects.create(
+            full_name='Grade Three Parent',
+            email='grade3-report@example.com',
+            password='hash',
+            accepted_popia=True,
+        )
+        child = Child.objects.create(
+            parent=parent,
+            name='Thato',
+            age=9,
+            grade=3,
+            parent_email=parent.email,
+            password='hash',
+        )
+        lesson = Lesson.objects.create(title='Retired Activity Report', grade=3)
+        Progress.objects.create(
+            child=child,
+            lesson=lesson,
+            total_score=6,
+            total_possible=8,
+            stars_earned=2,
+            assessment_scores={
+                'literal_comprehension': {'score': 1, 'total': 2},
+                'sequencing': {'score': 1, 'total': 1},
+                'visual_literacy': {'score': 4, 'total': 5},
+            },
+        )
+        session = self.client.session
+        session['account_role'] = 'parent'
+        session['account_id'] = parent.id
+        session.save()
+
+        dashboard = self.client.get(f'/dashboard/{child.id}')
+        detail = self.client.get(f'/dashboard/{child.id}/lessons/{lesson.id}')
+
+        self.assertEqual(dashboard.context['story_rows'][0]['assessment_count'], 1)
+        self.assertEqual(dashboard.context['story_rows'][0]['percentage'], 50)
+        self.assertEqual(detail.context['report_percentage'], 50)
+        self.assertEqual(
+            {row['key'] for row in detail.context['breakdown']},
+            {'literal_comprehension'},
+        )
+        self.assertNotContains(detail, 'Visual matching')
+        self.assertNotContains(detail, 'Sequencing')
+
+    def test_questions_page_uses_a_guided_child_friendly_flow(self):
+        child = Child.objects.create(
+            name="Sipho",
+            age=7,
+            grade=1,
+            parent_email="guided@example.com",
+            password="hash",
+        )
+        self.sign_in_child(child)
+
+        response = self.client.get(f"/lessons/{self.lesson.id}/questions")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, self.lesson.title)
+        self.assertContains(response, 'id="activity-map"')
+        self.assertContains(response, 'const childName = "Sipho";')
+        self.assertContains(response, 'markMatchingAnswers(data);')
+        self.assertContains(response, "badge.textContent = isCorrect ? 'Correct' : 'Incorrect';")
+        self.assertContains(response, 'Correct match:')
+        self.assertContains(response, "Choose the best answer, then check it.")
+        self.assertContains(response, "Say your answer out loud. You do not need to type.")
+        self.assertContains(response, "I said my answer")
+        self.assertNotContains(response, "Type the words you said.")
+
     def test_spelling_page_and_api_do_not_expose_answers_before_answering(self):
         child = Child.objects.create(
             name="Sipho",
@@ -412,3 +855,183 @@ class SgilaFlowTests(TestCase):
         self.assertEqual(visual_response.status_code, 200)
         self.assertContains(visual_response, "No visual matching cards have been added yet.")
         self.assertContains(visual_response, "Continue")
+
+    def test_grade_three_flow_skips_visual_matching_and_keeps_pronunciation(self):
+        child = Child.objects.create(
+            name="Mandu",
+            age=9,
+            grade=3,
+            parent_email="grade3-flow@example.com",
+            password="hash",
+        )
+        lesson = Lesson.objects.create(title="Grade 3 Flow", grade=3)
+        ReadingActivity.objects.create(
+            lesson=lesson,
+            order=1,
+            activity_type=ReadingActivity.MULTIPLE_CHOICE,
+            skill='literal_comprehension',
+            question='What did Mandu find?',
+            options=['A clue', 'A map'],
+            correct_answer='A clue',
+        )
+        PronunciationWord.objects.create(lesson=lesson, word='Clue')
+        SpellingActivity.objects.create(
+            lesson=lesson,
+            activity_type=SpellingActivity.FILL_VOWEL,
+            display_text='cl_e',
+            answer='clue',
+        )
+        self.sign_in_child(child)
+
+        questions_response = self.client.get(f'/lessons/{lesson.id}/questions')
+        visual_response = self.client.get(f'/lessons/{lesson.id}/visual-activity')
+
+        self.assertEqual(questions_response.context['next_activity_url'], f'/lessons/{lesson.id}/pronunciation')
+        self.assertRedirects(visual_response, f'/lessons/{lesson.id}/pronunciation')
+
+
+class CurriculumSeedTests(TestCase):
+    def test_seeded_curriculum_content_is_limited_to_grades_one_to_four(self):
+        call_command('seed_data', verbosity=0)
+
+        self.assertEqual(set(Lesson.objects.values_list('grade', flat=True)), {1, 2, 3, 4})
+        self.assertFalse(Lesson.objects.filter(pages__text__icontains='practice story').exists())
+        for grade in range(1, 5):
+            self.assertEqual(Lesson.objects.filter(grade=grade).count(), 5)
+            for lesson in Lesson.objects.filter(grade=grade):
+                self.assertGreaterEqual(lesson.pages.count(), 3)
+                expected_minimum = 5 if grade == 3 else grade + 3
+                self.assertGreaterEqual(lesson.reading_activities.count(), expected_minimum)
+                expected_visual_count = 0 if grade == 3 else 5
+                self.assertEqual(lesson.visual_items.count(), expected_visual_count)
+                expected_pronunciation_count = 8 if lesson.title in PRONUNCIATION_WORDS else 5
+                self.assertEqual(lesson.pronunciation_words.count(), expected_pronunciation_count)
+                if grade == 3:
+                    self.assertEqual(lesson.sequencing_activities.count(), 0)
+                    self.assertFalse(
+                        lesson.reading_activities.filter(
+                            activity_type__in={
+                                ReadingActivity.SEQUENCING,
+                                ReadingActivity.TRUE_FALSE,
+                            },
+                        ).exists()
+                    )
+                for visual_item in lesson.visual_items.all():
+                    self.assertEqual(len(visual_item.get_word_options()), 5)
+                    self.assertIn(visual_item.correct_word, visual_item.get_word_options())
+
+        formats = set(ReadingActivity.objects.values_list('activity_type', flat=True))
+        self.assertTrue({
+            ReadingActivity.MULTIPLE_CHOICE,
+            ReadingActivity.TRUE_FALSE,
+            ReadingActivity.SEQUENCING,
+            ReadingActivity.ORAL_RESPONSE,
+            ReadingActivity.OPEN_ENDED,
+            ReadingActivity.PREDICTION,
+            ReadingActivity.REASONING,
+            ReadingActivity.CLOZE,
+            ReadingActivity.MATCHING,
+            ReadingActivity.CROSSWORD,
+            ReadingActivity.WORD_SCRAMBLE,
+        }.issubset(formats))
+
+        hot_day = Lesson.objects.get(title='A Very Hot Day')
+        self.assertEqual(
+            list(hot_day.reading_activities.values_list('activity_type', flat=True)[:2]),
+            [ReadingActivity.CLOZE, ReadingActivity.MULTIPLE_CHOICE],
+        )
+        running_story = Lesson.objects.get(title="Mandu's Running Shoes")
+        self.assertEqual(running_story.reading_activities.count(), 13)
+        self.assertEqual(
+            list(running_story.reading_activities.values_list('group_number', flat=True)),
+            ([1] * 10) + [2, 3, 4],
+        )
+        self.assertEqual(running_story.reading_activities.first().activity_type, ReadingActivity.MULTIPLE_CHOICE)
+        running_choices = list(running_story.reading_activities.filter(group_number=1))
+        running_answer_positions = [
+            activity.options.index(activity.correct_answer)
+            for activity in running_choices
+        ]
+        self.assertEqual(running_answer_positions, [2, 0, 3, 1, 2, 1, 3, 0, 2, 1])
+        self.assertEqual(set(running_answer_positions), {0, 1, 2, 3})
+        self.assertEqual(
+            list(running_story.reading_activities.filter(group_number__gt=1).values_list('activity_type', flat=True)),
+            [ReadingActivity.CROSSWORD, ReadingActivity.MATCHING, ReadingActivity.WORD_SCRAMBLE],
+        )
+        self.assertEqual(
+            running_story.reading_activities.get(activity_type=ReadingActivity.MATCHING).group_title,
+            'Word Detective',
+        )
+        diary_story = Lesson.objects.get(title="Mandu's Secret Diary")
+        self.assertEqual(diary_story.reading_activities.count(), 21)
+        self.assertEqual(
+            list(diary_story.reading_activities.values_list('group_number', flat=True)),
+            ([1] * 12) + [2] + ([3] * 5) + ([4] * 2) + [5],
+        )
+        self.assertEqual(
+            list(diary_story.pronunciation_words.values_list('word', flat=True)),
+            ['Diary', 'Secret', 'Hide', 'Clue', 'Blond', 'Flour', 'Footprint', 'Culprit'],
+        )
+        diary_pronunciation_images = [
+            f'/static/img/pronunciation/mandu_secret_diary/{word}.png'
+            for word in ['diary', 'secret', 'hide', 'clue', 'blond', 'flour', 'footprint', 'culprit']
+        ]
+        self.assertEqual(
+            list(diary_story.pronunciation_words.values_list('image_url', flat=True)),
+            diary_pronunciation_images,
+        )
+        static_root = Path(__file__).resolve().parent.parent / 'static'
+        self.assertTrue(all(
+            (static_root / image_url.removeprefix('/static/')).is_file()
+            for image_url in diary_pronunciation_images
+        ))
+        self.assertEqual(
+            list(diary_story.spelling_activities.values_list('display_text', 'answer')),
+            LESSON_SPELLING["Mandu's Secret Diary"],
+        )
+        diary_story_text = ' '.join(diary_story.pages.values_list('text', flat=True))
+        self.assertIn('relieved and amused', diary_story_text)
+        self.assertIn('much better hiding place', diary_story_text)
+        self.assertEqual(set(Lesson.objects.values_list('title', flat=True)), set(LESSON_WORDS))
+
+        activity_signatures = {
+            tuple(lesson.reading_activities.values_list('activity_type', flat=True))
+            for lesson in Lesson.objects.all()
+        }
+        self.assertGreaterEqual(len(activity_signatures), 15)
+
+        bongi_story = Lesson.objects.get(title='Bongi Waits')
+        self.assertIn(
+            'baby brother, Siya',
+            ' '.join(bongi_story.pages.values_list('text', flat=True)),
+        )
+
+        for title, filename in VISUAL_VOCAB_SHEETS.items():
+            lesson = Lesson.objects.get(title=title)
+            expected_images = [
+                f'/static/img/vocab_sheets/{filename}#panel-{panel}'
+                for panel in range(1, 6)
+            ]
+            expected_visual_images = [] if lesson.grade == 3 else expected_images
+            self.assertEqual(
+                list(lesson.visual_items.values_list('image_url', flat=True)),
+                expected_visual_images,
+            )
+            if title not in PRONUNCIATION_WORDS:
+                self.assertEqual(
+                    list(lesson.pronunciation_words.values_list('image_url', flat=True)),
+                    expected_images,
+                )
+
+        for title in STORYBOARD_IMAGES:
+            lesson = Lesson.objects.get(title=title)
+            self.assertIn('/static/img/storyboards/', lesson.thumbnail_image)
+            page_images = list(lesson.pages.values_list('image_url', flat=True))
+            self.assertEqual(
+                [int(image_url.rsplit('#panel-', 1)[1]) for image_url in page_images],
+                STORYBOARD_PAGE_PANELS[title],
+            )
+            self.assertTrue(all(
+                image_url.split('#', 1)[0] == lesson.thumbnail_image
+                for image_url in page_images
+            ))

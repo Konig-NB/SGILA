@@ -15,23 +15,10 @@
     <p id="question-text" class="question-text"></p>
     <div id="options-area" class="options-grid"></div>
   </div>
-  <div id="results-area" class="center hidden" style="margin-top:1rem">
+  <div id="results-area" class="center hidden activity-results-row">
     <a href="/lessons/{{ lesson.id }}/feelings" class="btn btn-primary">Next activity</a>
   </div>
-</section>
-<style>
-.stop-point-box {
-  background: var(--surface, #f8f8ff);
-  border-left: 4px solid var(--primary, #6c63ff);
-  border-radius: 8px;
-  padding: 0.85rem 1.1rem;
-  margin-bottom: 1.1rem;
-  font-style: italic;
-  color: var(--text-muted, #555);
-  font-size: 0.97rem;
-}
-</style>
-<script>
+</section><script>
 const lessonId = {{ lesson.id }};
 const KOALY = {
   ready: "{% static 'img/koaly_cutout.png' %}",

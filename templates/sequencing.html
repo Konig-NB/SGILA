@@ -2,7 +2,7 @@
 {% load static %}
 {% block title %}Sequencing - {{ lesson.title }}{% endblock %}
 {% block content %}
-<section class="activity-shell">
+<section class="activity-shell sequencing-page">
   <div class="activity-top">
     <a href="/lessons/{{ lesson.id }}/questions" class="back-link">Back</a>
     <span class="step-pill">Sequencing</span>
@@ -12,28 +12,12 @@
   <div id="message-area" class="message-area hidden"></div>
   <p class="instruction-text">Drag the events into the correct order, then press Check.</p>
   <ul id="event-list" class="sequence-list"></ul>
-  <div class="center" style="margin-top:1.2rem">
+  <div class="center activity-action-row">
     <button id="check-btn" class="btn btn-primary" type="button">Check my order</button>
   </div>
-  <div id="results-area" class="center hidden" style="margin-top:1.2rem">
+  <div id="results-area" class="center hidden activity-action-row">
     <a href="/lessons/{{ lesson.id }}/inference" class="btn btn-primary">Next activity</a>
-  </div>
-</section>
-<style>
-.sequence-list { list-style:none; padding:0; margin:1rem 0; }
-.sequence-list li {
-  background: var(--surface, #fff);
-  border: 2px solid var(--border, #ddd);
-  border-radius: 10px;
-  padding: 0.75rem 1rem;
-  margin-bottom: 0.6rem;
-  cursor: grab;
-  font-size: 1rem;
-  user-select: none;
-}
-.sequence-list li.drag-over { border-color: var(--primary, #6c63ff); background: var(--primary-light, #f0eeff); }
-.seq-correct { border-color: #22c55e !important; background: #f0fdf4 !important; }
-.seq-wrong   { border-color: #ef4444 !important; background: #fef2f2 !important; }
+  <ant; }
 </style>
 <script>
 const lessonId = {{ lesson.id }};

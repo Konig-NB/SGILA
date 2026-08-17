@@ -1,6 +1,22 @@
+import random
+import re
+
 from django.contrib.auth.hashers import make_password
 from django.core.management.base import BaseCommand
 
+from api.curriculum_enrichment import (
+    LESSON_WORDS,
+    LESSON_SPELLING,
+    PRONUNCIATION_WORDS,
+    STORYBOARD_PAGE_PANELS,
+    VISUAL_VOCAB_SHEETS,
+    build_enriched_activities,
+)
+from api.curriculum_library import (
+    EXPANDED_STORIES,
+    MANDUS_SECRET_DIARY_ACTIVITIES,
+    STORYBOARD_IMAGES,
+)
 from api.models import (
     CauseEffectPair,
     Child,
@@ -12,6 +28,7 @@ from api.models import (
     PredictionQuestion,
     Progress,
     PronunciationWord,
+    ReadingActivity,
     SequencingActivity,
     SpellingActivity,
     StoryPage,
@@ -45,7 +62,7 @@ class Command(BaseCommand):
             full_name='Miss Khumalo',
             email='teacher@sgila.test',
             school_name='Thuthuka Primary',
-            grades_taught='1,2',
+            grades_taught='1,2,3,4',
             phone='0720000000',
             password=make_password('password123'),
             accepted_popia=True,
@@ -62,6 +79,18 @@ class Command(BaseCommand):
             name='Grade 2',
             grade=2,
             class_code='RAINB2',
+        )
+        TeacherClass.objects.create(
+            teacher=teacher,
+            name='Grade 3',
+            grade=3,
+            class_code='RAINB3',
+        )
+        TeacherClass.objects.create(
+            teacher=teacher,
+            name='Grade 4',
+            grade=4,
+            class_code='RAINB4',
         )
         child = Child.objects.create(
             parent=parent,
@@ -113,13 +142,13 @@ class Command(BaseCommand):
             teacher=teacher2,
             name='Grade 4',
             grade=4,
-            class_code='RAINB4',
+            class_code='MKGRD4',
         )
         TeacherClass.objects.create(
             teacher=teacher2,
             name='Grade 3',
             grade=3,
-            class_code='RAINB3',
+            class_code='MKGRD3',
         )
         child = Child.objects.create(
             parent=parent2,
@@ -137,12 +166,125 @@ class Command(BaseCommand):
             password=make_password('password123'),
         )
 
-        self.create_water_stopped_lesson()
-        self.create_extra_lessons()
+        self.create_big_book_lessons()
 
         self.stdout.write(self.style.SUCCESS(
             "Demo data loaded. Logins: sipho_d / parent@sgila.test / teacher@sgila.test, password password123. Class code RAINB1."
         ))
+
+    def add_reading_activities(self, lesson, activities):
+        for order, activity in enumerate(activities, 1):
+            ReadingActivity.objects.create(lesson=lesson, order=order, **activity)
+
+    def apply_lesson_enrichment(self, lesson):
+        source_activities = [
+            {
+                'activity_type': activity.activity_type,
+                'skill': activity.skill,
+                'question': activity.question,
+                'options': (
+                    dict(activity.options)
+                    if isinstance(activity.options, dict)
+                    else list(activity.options or [])
+                ),
+                'correct_answer': activity.correct_answer,
+                'items_in_correct_order': list(activity.items_in_correct_order or []),
+                'group_number': activity.group_number,
+                'group_title': activity.group_title,
+            }
+            for activity in lesson.reading_activities.order_by('order', 'id')
+        ]
+        lesson.reading_activities.all().delete()
+        enriched_activities = build_enriched_activities(lesson.title, source_activities)
+        if lesson.grade == 3:
+            lesson.sequencing_activities.all().delete()
+            enriched_activities = [
+                activity
+                for activity in enriched_activities
+                if activity.get('activity_type') not in {
+                    ReadingActivity.SEQUENCING,
+                    ReadingActivity.TRUE_FALSE,
+                }
+            ]
+            group_numbers = {}
+            for activity in enriched_activities:
+                original_group = activity.get('group_number') or 0
+                if original_group:
+                    if original_group not in group_numbers:
+                        group_numbers[original_group] = len(group_numbers) + 1
+                    activity['group_number'] = group_numbers[original_group]
+        self.add_reading_activities(
+            lesson,
+            enriched_activities,
+        )
+
+        storyboard = STORYBOARD_IMAGES.get(lesson.title)
+        panel_sequence = STORYBOARD_PAGE_PANELS.get(lesson.title)
+        storyboard_url = ''
+        if storyboard and panel_sequence:
+            storyboard_url = f'/static/img/storyboards/{storyboard[0]}'
+            pages = list(lesson.pages.order_by('page_number'))
+            if len(pages) != len(panel_sequence):
+                raise ValueError(
+                    f'{lesson.title} has {len(pages)} pages but '
+                    f'{len(panel_sequence)} storyboard panels were configured.'
+                )
+            for page, panel in zip(pages, panel_sequence):
+                page.image_url = f'{storyboard_url}#panel-{panel}'
+                page.save(update_fields=['image_url'])
+            lesson.thumbnail_image = storyboard_url
+            lesson.save(update_fields=['thumbnail_image'])
+
+        lesson.visual_items.all().delete()
+        lesson.pronunciation_words.all().delete()
+        lesson_words = LESSON_WORDS.get(lesson.title)
+        pronunciation_words = PRONUNCIATION_WORDS.get(lesson.title, lesson_words)
+        vocab_sheet = VISUAL_VOCAB_SHEETS.get(lesson.title)
+        if not lesson_words or len(lesson_words) < 5:
+            raise ValueError(f'{lesson.title} must have at least five lesson words.')
+
+        if lesson.grade != 3:
+            english_words = [word for word, _isizulu, _image in lesson_words]
+            for word, isizulu_word, image_source in lesson_words:
+                image_url = (
+                    f'/static/img/vocab_sheets/{vocab_sheet}#panel-{image_source}'
+                    if isinstance(image_source, int)
+                    else image_source
+                )
+                options = english_words.copy()
+                random.Random(f'{lesson.title}:{word}').shuffle(options)
+                VisualActivityItem.objects.create(
+                    lesson=lesson,
+                    image_url=image_url,
+                    correct_word=word,
+                    word_options=','.join(options),
+                )
+        for word, isizulu_word, image_source in pronunciation_words:
+            image_url = (
+                f'/static/img/vocab_sheets/{vocab_sheet}#panel-{image_source}'
+                if isinstance(image_source, int)
+                else image_source
+            )
+            audio_slug = re.sub(r'[^a-z0-9]+', '-', word.lower()).strip('-')
+            PronunciationWord.objects.create(
+                lesson=lesson,
+                word=word,
+                image_url=image_url,
+                english_audio=f'voiceover:{audio_slug}-english',
+                isizulu_audio=f'voiceover:{audio_slug}-zulu',
+                isizulu_word=isizulu_word,
+            )
+
+        spelling_words = LESSON_SPELLING.get(lesson.title)
+        if spelling_words:
+            lesson.spelling_activities.all().delete()
+            for display_text, answer in spelling_words:
+                SpellingActivity.objects.create(
+                    lesson=lesson,
+                    activity_type=SpellingActivity.FILL_VOWEL,
+                    display_text=display_text,
+                    answer=answer,
+                )
 
     def create_lerato_lesson(self):
         lesson = Lesson.objects.create(
@@ -198,6 +340,38 @@ class Command(BaseCommand):
                 correct_answer=answer,
             )
 
+        self.add_reading_activities(lesson, [
+            {
+                'activity_type': ReadingActivity.MULTIPLE_CHOICE,
+                'skill': 'literal_comprehension',
+                'question': 'What did Mother buy?',
+                'options': ['A mango', 'A basket', 'A banana'],
+                'correct_answer': 'A mango',
+            },
+            {
+                'activity_type': ReadingActivity.ORAL_RESPONSE,
+                'skill': 'literal_comprehension',
+                'question': 'Why does Lerato eat fruit?',
+                'correct_answer': 'She eats fruit to stay healthy and strong.',
+            },
+            {
+                'activity_type': ReadingActivity.SEQUENCING,
+                'skill': 'sequencing',
+                'question': 'Put the story in order.',
+                'items_in_correct_order': [
+                    'Mother buys a mango.',
+                    'Lerato puts it in the basket.',
+                    'Lerato eats fruit to stay strong.',
+                ],
+            },
+            {
+                'activity_type': ReadingActivity.TRUE_FALSE,
+                'skill': 'literal_comprehension',
+                'question': 'Lerato keeps fruit in a basket.',
+                'correct_answer': 'True',
+            },
+        ])
+
         fruit_words = [
             ('Apple', 'apple', 'Ihhabhula', '/static/img/lerato/fruit_apple.png'),
             ('Banana', 'banana', 'Ubhanana', '/static/img/lerato/fruit_banana.png'),
@@ -231,6 +405,7 @@ class Command(BaseCommand):
         SpellingActivity.objects.create(lesson=lesson, activity_type=SpellingActivity.FILL_VOWEL, display_text='Appl_', answer='Apple')
         SpellingActivity.objects.create(lesson=lesson, activity_type=SpellingActivity.DRAG_LETTERS, display_text='R,A,N,O,G,E', answer='ORANGE')
         SpellingActivity.objects.create(lesson=lesson, activity_type=SpellingActivity.COPY_WRITING, display_text='I eat an apple.', answer='I eat an apple.')
+        self.apply_lesson_enrichment(lesson)
         return lesson
 
     
@@ -436,7 +611,7 @@ class Command(BaseCommand):
                 'Sizwe opened the tap, but no water came out.|'
                 'Mr Dlamini brought them a wheelbarrow.|'
                 'Amahle and Sizwe fetched water from the community tank.|'
-                'The tap worked again the next morning.'
+                'Amahle helped an elderly woman on the way home.'
             ),
         )
 
@@ -498,9 +673,9 @@ class Command(BaseCommand):
                 'worried',
             ),
             (
-                'How did Sizwe feel when the tap worked again?',
-                'cheerful', 'frightened', 'angry', 'confused',
-                'cheerful',
+                'How did Amahle and Sizwe feel when they heard water dripping at the tank?',
+                'relieved', 'frightened', 'angry', 'confused',
+                'relieved',
             ),
             (
                 'How did Gogo feel when the children came home with water?',
@@ -524,7 +699,7 @@ class Command(BaseCommand):
             (1, 'The tap stopped working.',          'Amahle and Sizwe needed another way to get water.'),
             (2, 'Mr Dlamini brought a wheelbarrow.', 'Carrying the containers became easier.'),
             (3, 'Amahle helped the elderly woman.',  'The woman thanked Amahle.'),
-            (4, 'The tap worked again the next morning.', 'The family could use water from the sink again.'),
+            (4, 'The family used their water carefully.', 'Their small supply could last longer.'),
         ]
         for order, cause, effect in cause_effect_pairs:
             CauseEffectPair.objects.create(
@@ -552,46 +727,430 @@ class Command(BaseCommand):
             guidance='Write 3 to 4 sentences.',
         )
 
+        self.add_reading_activities(lesson, [
+            {
+                'activity_type': ReadingActivity.MULTIPLE_CHOICE,
+                'skill': 'literal_comprehension',
+                'question': 'What caused the family\'s main problem?',
+                'options': [
+                    'No water came from the tap.',
+                    'The community hall was closed.',
+                    'The wheelbarrow was missing.',
+                    'The weather became cold.',
+                ],
+                'correct_answer': 'No water came from the tap.',
+            },
+            {
+                'activity_type': ReadingActivity.CLOZE,
+                'skill': 'vocabulary_in_context',
+                'question': 'Water was scarce. This means there was ____.',
+                'options': ['not enough water', 'clean water everywhere', 'water only at school'],
+                'correct_answer': 'not enough water',
+            },
+            {
+                'activity_type': ReadingActivity.MULTIPLE_CHOICE,
+                'skill': 'summarising',
+                'question': 'Which detail is most important to the story\'s solution?',
+                'options': [
+                    'The wheelbarrow had one squeaky wheel.',
+                    'Amahle remembered the community rain tank.',
+                    'The road looked white in the heat.',
+                    'The containers were filled one by one.',
+                ],
+                'correct_answer': 'Amahle remembered the community rain tank.',
+            },
+            {
+                'activity_type': ReadingActivity.REASONING,
+                'skill': 'inference',
+                'question': 'How do Amahle\'s actions show that she is responsible? Use two story details.',
+                'correct_answer': (
+                    'Amahle remembered the community tank and helped fetch water. '
+                    'She also helped the elderly woman carry her bucket.'
+                ),
+            },
+            {
+                'activity_type': ReadingActivity.REASONING,
+                'skill': 'character_motivation',
+                'question': 'How did Gogo feel when the children returned, and what proves it?',
+                'correct_answer': 'Gogo felt proud because the story says that she smiled proudly.',
+            },
+            {
+                'activity_type': ReadingActivity.PREDICTION,
+                'skill': 'prediction',
+                'question': 'If the tap stays dry tomorrow, what should the family do next, and why?',
+                'correct_answer': (
+                    'They could return to the community tank with suitable containers and keep '
+                    'sharing water carefully because the story shows that the tank still has water.'
+                ),
+            },
+            {
+                'activity_type': ReadingActivity.OPEN_ENDED,
+                'skill': 'summarising',
+                'question': 'Summarise the problem, solution, and lesson in your own words.',
+                'correct_answer': (
+                    'When the taps stopped, Amahle and Sizwe fetched water from the community tank '
+                    'with help from a neighbour. Amahle learned that water is precious and people '
+                    'should help one another.'
+                ),
+            },
+        ])
+
+        self.apply_lesson_enrichment(lesson)
         return lesson
 
-    def create_extra_lessons(self):
-        extra_lessons = [
-            (2, 'Lebo and the Lion', 'lion'),
-            (2, 'The Big River', 'river'),
-            (3, 'Grandma Finds a Map', 'map'),
-        ]
-        for grade, title, word in extra_lessons:
-            extra = Lesson.objects.create(
-                title=title,
-                grade=grade,
-                thumbnail_image=f'/images/{word}.png',
-            )
+    def create_story_lesson(self, *, title, grade, pages, activities, focus_word, visual_options):
+        storyboard = STORYBOARD_IMAGES.get(title)
+        storyboard_url = (
+            f'/static/img/storyboards/{storyboard[0]}'
+            if storyboard else ''
+        )
+        lesson = Lesson.objects.create(
+            title=title,
+            grade=grade,
+            thumbnail_image=storyboard_url or pages[0][2],
+        )
+        for page_number, text, image_url, highlighted_words in pages:
             StoryPage.objects.create(
-                lesson=extra, page_number=1,
-                text=f'{title} is a short SGILA practice story. Read slowly and look for the word {word}.',
-                image_url=f'/images/{word}.png',
-                audio_url=f'/audio/story/{word}.mp3',
-                highlighted_words=word,
+                lesson=lesson,
+                page_number=page_number,
+                text=text,
+                image_url=storyboard_url or image_url,
+                audio_url=f'voiceover:{title.lower().replace(" ", "-")}-{page_number}',
+                highlighted_words=highlighted_words,
             )
-            ComprehensionQuestion.objects.create(
-                lesson=extra, question='What should you do first?',
-                option_1='Read carefully', option_2='Close the app',
-                option_3='Skip the story', option_4='Guess quickly',
-                correct_answer='Read carefully',
-            )
-            VisualActivityItem.objects.create(
-                lesson=extra, image_url=f'/images/{word}.png',
-                correct_word=word.title(),
-                word_options=f'{word.title()},Apple,Banana,Book',
-            )
-            PronunciationWord.objects.create(
-                lesson=extra, word=word.title(),
-                image_url=f'/images/{word}.png',
-                english_audio=f'/audio/pronunciation/{word}.mp3',
-                isizulu_word='',
-            )
-            SpellingActivity.objects.create(
-                lesson=extra, activity_type=SpellingActivity.COPY_WRITING,
-                display_text=f'I can read {word}.',
-                answer=f'I can read {word}.',
-            )
+
+        self.add_reading_activities(lesson, activities)
+        focus_image = (
+            f'{storyboard_url}#panel-{storyboard[1]}'
+            if storyboard else pages[0][2]
+        )
+        VisualActivityItem.objects.create(
+            lesson=lesson,
+            image_url=focus_image,
+            correct_word=focus_word,
+            word_options=visual_options,
+        )
+        PronunciationWord.objects.create(
+            lesson=lesson,
+            word=focus_word,
+            image_url=focus_image,
+            english_audio=f'voiceover:{focus_word.lower()}-english',
+        )
+        SpellingActivity.objects.create(
+            lesson=lesson,
+            activity_type=SpellingActivity.COPY_WRITING,
+            display_text=f'I can read the word {focus_word.lower()}.',
+            answer=f'I can read the word {focus_word.lower()}.',
+        )
+        self.apply_lesson_enrichment(lesson)
+        return lesson
+
+    def create_big_book_lessons(self):
+        """Create authentic Grade 1-4 stories adapted from the supplied CAPS readers."""
+        self.create_story_lesson(
+            title='A Very Hot Day',
+            grade=1,
+            focus_word='Pond',
+            visual_options='Pond,School,Bus,House',
+            pages=[
+                (
+                    1,
+                    'Karabo, Tshepo and Cathy loved to play soccer. One Saturday, the day was very hot. '
+                    'They played for a few minutes, but soon they were sweating. "It is too hot!" said Karabo.',
+                    '/static/img/caps/g1_hot_01.png',
+                    'soccer,hot,sweating',
+                ),
+                (
+                    2,
+                    'The friends stopped playing and walked home. They passed children at the park who looked hot too. '
+                    'Then Karabo remembered the cool pond nearby. He had an idea.',
+                    '/static/img/caps/g1_hot_02.png',
+                    'stopped,park,pond',
+                ),
+                (
+                    3,
+                    'At the pond, Karabo took off his shoes and jumped into the water. "Good idea!" said Tshepo. '
+                    'The cool water helped Karabo feel better.',
+                    '/static/img/caps/g1_hot_03.png',
+                    'shoes,jumped,cool',
+                ),
+                (
+                    4,
+                    'Cathy laughed. A little fish was resting on Karabo\'s head! Karabo laughed too. '
+                    '"I could swim all day," he said.',
+                    '/static/img/caps/g1_hot_04.png',
+                    'fish,laughed,swim',
+                ),
+            ],
+            activities=[
+                {
+                    'activity_type': ReadingActivity.MULTIPLE_CHOICE,
+                    'skill': 'literal_comprehension',
+                    'question': 'Why did they stop playing?',
+                    'options': ['It was too hot.', 'They lost the ball.', 'School started.'],
+                    'correct_answer': 'It was too hot.',
+                },
+                {
+                    'activity_type': ReadingActivity.ORAL_RESPONSE,
+                    'skill': 'literal_comprehension',
+                    'question': 'Who played soccer?',
+                    'correct_answer': 'Karabo, Tshepo and Cathy played soccer.',
+                },
+                {
+                    'activity_type': ReadingActivity.SEQUENCING,
+                    'skill': 'sequencing',
+                    'question': 'Put the story in order.',
+                    'items_in_correct_order': [
+                        'The friends play soccer.',
+                        'Karabo remembers the pond.',
+                        'Karabo jumps into the water.',
+                    ],
+                },
+                {
+                    'activity_type': ReadingActivity.TRUE_FALSE,
+                    'skill': 'literal_comprehension',
+                    'question': 'A fish sat on Karabo\'s head.',
+                    'correct_answer': 'True',
+                },
+            ],
+        )
+
+        self.create_story_lesson(
+            title="A Dog's Life",
+            grade=2,
+            focus_word='Dog',
+            visual_options='Dog,Bus,Book,Ball',
+            pages=[
+                (
+                    1,
+                    'On Thursday, Abby and Lebo got onto the school bus. Poor Ben could not get onto the bus. '
+                    '"No Ben, you cannot come on," said Lebo. "No dogs allowed!"',
+                    '/static/img/caps/g2_dog_01.png',
+                    'Thursday,bus,allowed',
+                ),
+                (
+                    2,
+                    'On Friday, Abby and Lebo went to the library, but Ben could not go inside. On Saturday, '
+                    'they went to the beach, but Ben could not go with them.',
+                    '/static/img/caps/g2_dog_02.png',
+                    'Friday,library,Saturday,beach',
+                ),
+                (
+                    3,
+                    'On Sunday, Abby and Lebo went to the park. Ben sat under a tree at the gate. '
+                    'He waited and waited. Then he fell asleep and began to dream.',
+                    '/static/img/caps/g2_dog_03.png',
+                    'Sunday,park,waited,dream',
+                ),
+                (
+                    4,
+                    'Ben dreamed that he rode on the bus and sat at the front. Then he dreamed that he sat '
+                    'in class between Abby and Lebo.',
+                    '/static/img/caps/g2_dog_04.png',
+                    'dreamed,front,class',
+                ),
+                (
+                    5,
+                    'Ben dreamed that he dug in the sand, surfed in the waves, and played with other dogs. '
+                    'He went on the swing, slide and merry-go-round.',
+                    '/static/img/caps/g2_dog_05.png',
+                    'sand,waves,swing,slide',
+                ),
+                (
+                    6,
+                    'Then Abby and Lebo came back. "Wake up, Ben! We are going home," said Lebo. '
+                    'Ben opened his eyes and realised that his adventure had only been a dream.',
+                    '/static/img/caps/g2_dog_06.png',
+                    'wake,home,realised',
+                ),
+            ],
+            activities=[
+                {
+                    'activity_type': ReadingActivity.MULTIPLE_CHOICE,
+                    'skill': 'literal_comprehension',
+                    'question': 'Where did Ben fall asleep?',
+                    'options': ['Under a tree', 'On the bus', 'In the library'],
+                    'correct_answer': 'Under a tree',
+                },
+                {
+                    'activity_type': ReadingActivity.MULTIPLE_CHOICE,
+                    'skill': 'vocabulary_in_context',
+                    'question': 'What does dreamed mean in this story?',
+                    'options': [
+                        'Ben imagined events while asleep.',
+                        'Ben remembered yesterday.',
+                        'Ben planned a real trip.',
+                    ],
+                    'correct_answer': 'Ben imagined events while asleep.',
+                },
+                {
+                    'activity_type': ReadingActivity.SEQUENCING,
+                    'skill': 'sequencing',
+                    'question': 'Put the real visits in order.',
+                    'items_in_correct_order': [
+                        'Abby and Lebo rode the bus.',
+                        'They went to the library.',
+                        'They visited the beach.',
+                        'They went to the park.',
+                    ],
+                },
+                {
+                    'activity_type': ReadingActivity.REASONING,
+                    'skill': 'inference',
+                    'question': 'Why was Ben unhappy when he woke up?',
+                    'correct_answer': 'He realised that the fun places he visited were only part of his dream.',
+                },
+                {
+                    'activity_type': ReadingActivity.TRUE_FALSE,
+                    'skill': 'literal_comprehension',
+                    'question': 'Ben really rode on the school bus.',
+                    'correct_answer': 'False',
+                },
+            ],
+        )
+
+        self.create_story_lesson(
+            title='A New Baby',
+            grade=2,
+            focus_word='Baby',
+            visual_options='Baby,Doctor,Teacher,Driver',
+            pages=[
+                (
+                    1,
+                    'Bobby\'s mother told him that she was going to have a baby. She said Granny would look '
+                    'after him while she was in hospital. Bobby complained that he wanted a big brother, not a baby.',
+                    '/static/img/caps/g2_baby_01.png',
+                    'baby,Granny,hospital,complained',
+                ),
+                (
+                    2,
+                    'A few days later, Mother went to hospital. Father told Bobby that the baby had been born. '
+                    '"Is it a girl or a boy?" Bobby asked. "It is a boy," Father answered.',
+                    '/static/img/caps/g2_baby_02.png',
+                    'born,boy,Father',
+                ),
+                (
+                    3,
+                    'That afternoon, Father, Bobby and Granny went to the busy hospital. Bobby saw doctors, '
+                    'nurses and an ambulance before they reached the baby ward.',
+                    '/static/img/caps/g2_baby_03.png',
+                    'doctors,nurses,ambulance,ward',
+                ),
+                (
+                    4,
+                    'Bobby stared at a baby wearing a Bafana jersey. He knew this was his brother. '
+                    '"He is so cute. He looks just like me," Bobby said.',
+                    '/static/img/caps/g2_baby_04.png',
+                    'jersey,brother,cute',
+                ),
+                (
+                    5,
+                    'The baby\'s name was Andy. He did not have teeth and could not play soccer yet. '
+                    'Bobby looked carefully at his little brother.',
+                    '/static/img/caps/g2_baby_05.png',
+                    'Andy,teeth,soccer',
+                ),
+                (
+                    6,
+                    'Baby Andy opened his eyes and lifted his hand. Bobby thought Andy was giving him a high five. '
+                    '"I love you just as you are. We will play soccer when you are older," Bobby said.',
+                    '/static/img/caps/g2_baby_06.png',
+                    'eyes,high five,older',
+                ),
+            ],
+            activities=[
+                {
+                    'activity_type': ReadingActivity.MULTIPLE_CHOICE,
+                    'skill': 'literal_comprehension',
+                    'question': 'Who looked after Bobby?',
+                    'options': ['Granny', 'A nurse', 'His teacher'],
+                    'correct_answer': 'Granny',
+                },
+                {
+                    'activity_type': ReadingActivity.MULTIPLE_CHOICE,
+                    'skill': 'vocabulary_in_context',
+                    'question': 'Bobby complained. What does complained mean?',
+                    'options': ['He said he was unhappy.', 'He laughed loudly.', 'He asked for help.'],
+                    'correct_answer': 'He said he was unhappy.',
+                },
+                {
+                    'activity_type': ReadingActivity.SEQUENCING,
+                    'skill': 'sequencing',
+                    'question': 'Put these events in order.',
+                    'items_in_correct_order': [
+                        'Mother tells Bobby about the baby.',
+                        'Father says the baby is born.',
+                        'The family visits the hospital.',
+                        'Bobby welcomes baby Andy.',
+                    ],
+                },
+                {
+                    'activity_type': ReadingActivity.REASONING,
+                    'skill': 'inference',
+                    'question': 'Why could Andy not play soccer yet?',
+                    'correct_answer': 'Andy was a newborn baby and was too young to play soccer.',
+                },
+                {
+                    'activity_type': ReadingActivity.REASONING,
+                    'skill': 'character_motivation',
+                    'question': 'Why did Bobby change his mind about the baby?',
+                    'correct_answer': 'When Bobby met Andy, he thought the baby was cute and began to love him.',
+                },
+            ],
+        )
+
+        self.create_story_lesson(
+            title="Mandu's Secret Diary",
+            grade=3,
+            focus_word='Diary',
+            visual_options='Diary,Newspaper,Map,Poster',
+            pages=[
+                (
+                    1,
+                    'Mandu wrote in her diary every day. She recorded what she did and wrote secrets that she '
+                    'did not want anyone else to see.',
+                    '/static/img/caps/g3_mandu_01.png',
+                    'diary,recorded,secrets',
+                ),
+                (
+                    2,
+                    'Mandu needed a good hiding place, so she put the diary under her bed. One afternoon, Mandu '
+                    'and her friend Anna came home and found the diary lying open on the bedroom floor.',
+                    '/static/img/caps/g3_mandu_02.png',
+                    'hiding,under,open',
+                ),
+                (
+                    3,
+                    'Anna noticed dirty fingerprints on the diary. Mandu suspected her younger brother, Thabo, '
+                    'because his fingers were often dirty. Then she remembered that he was only five and could not read.',
+                    '/static/img/caps/g3_mandu_03.png',
+                    'fingerprints,suspected,read',
+                ),
+                (
+                    4,
+                    'Mandu found a blond hair between the pages. Everyone in her family had black hair. '
+                    'She looked suspiciously at Anna\'s blond hair.',
+                    '/static/img/caps/g3_mandu_04.png',
+                    'blond,clue,suspiciously',
+                ),
+                (
+                    5,
+                    'The girls set a trap. Mandu put the diary under the bed and sprinkled flour on the floor. '
+                    'They hid around the corner and waited. Soon they heard scratching in the bedroom.',
+                    '/static/img/caps/g3_mandu_05.png',
+                    'trap,flour,scratching',
+                ),
+                (
+                    6,
+                    'They ran into the room and saw floury paw prints. Zola, Mandu\'s long-haired blond dog, '
+                    'was playing with the diary. They had found the culprit at last. Mandu felt relieved and '
+                    'amused. Anna laughed and told Mandu to find a much better hiding place for her diary.',
+                    '/static/img/caps/g3_mandu_06.png',
+                    'paw prints,Zola,culprit',
+                ),
+            ],
+            activities=MANDUS_SECRET_DIARY_ACTIVITIES,
+        )
+
+        for story in EXPANDED_STORIES:
+            self.create_story_lesson(**story)

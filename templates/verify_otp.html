@@ -11,7 +11,7 @@
       We sent a 6-digit code to<br>
       <strong>{{ masked_email }}</strong>
     </p>
-    <p style="margin-top:1rem;">
+    <p class="otp-expiry-note">
       The code expires in <strong>10 minutes</strong>. Check your spam folder if you don't see it.
     </p>
   </aside>
@@ -19,7 +19,7 @@
   <!-- Right form card -->
   <div class="form-card">
     <h2>Enter your code</h2>
-    <p class="form-note" style="margin-bottom:1.5rem; font-size:.95rem;">
+    <p class="form-note otp-instruction">
       Type the 6-digit code sent to {{ masked_email }}
     </p>
 
@@ -42,82 +42,28 @@
         <input class="otp-digit" type="text" inputmode="numeric" maxlength="1" pattern="[0-9]" aria-label="Digit 6">
       </div>
 
-      <button class="btn btn-primary btn-full" type="submit" id="verify-btn" style="margin-top:1.5rem;" disabled>
+      <button class="btn btn-primary btn-full otp-submit" type="submit" id="verify-btn" disabled>
         Verify &amp; continue
       </button>
     </form>
 
     <!-- Resend form -->
-    <form method="POST" action="/verify-otp?session={{ otp_session }}" style="margin-top:1rem; text-align:center;">
+    <form method="POST" action="/verify-otp?session={{ otp_session }}" class="otp-resend-form">
       {% csrf_token %}
       <input type="hidden" name="otp_session" value="{{ otp_session }}">
       <input type="hidden" name="action" value="resend">
       <p class="form-note">
         Didn't receive the code?
         <button type="submit" class="link-btn" id="resend-btn">Resend code</button>
-        <span id="resend-timer" style="display:none; color:var(--muted); font-size:.85rem;"> (wait <span id="countdown">60</span>s)</span>
+        <span id="resend-timer" class="resend-timer hidden"> (wait <span id="countdown">60</span>s)</span>
       </p>
     </form>
 
-    <p class="form-note" style="margin-top:1rem; text-align:center;">
+    <p class="form-note otp-start-over">
       Wrong email? <a href="/register?role={{ role }}">Start over</a>
     </p>
   </div>
-</section>
-
-<style>
-/* ── OTP digit boxes ────────────────────────────────────────── */
-.otp-boxes {
-  display: flex;
-  gap: 10px;
-  justify-content: center;
-}
-
-.otp-digit {
-  width: 52px;
-  height: 62px;
-  text-align: center;
-  font-size: 1.6rem;
-  font-weight: 900;
-  color: var(--ink);
-  background: var(--white);
-  border: 2px solid var(--line);
-  border-radius: var(--radius);
-  outline: none;
-  transition: border-color .18s ease, box-shadow .18s ease;
-  caret-color: var(--sun);
-}
-
-.otp-digit:focus {
-  border-color: var(--sun);
-  box-shadow: 0 0 0 3px rgba(248, 200, 75, .25);
-}
-
-.otp-digit.filled {
-  border-color: var(--mint);
-  background: var(--mint-soft);
-}
-
-/* Link-style button for resend */
-.link-btn {
-  background: none;
-  border: none;
-  padding: 0;
-  color: var(--success);
-  font-weight: 700;
-  cursor: pointer;
-  font-size: inherit;
-  text-decoration: underline;
-}
-.link-btn:disabled { color: var(--muted); text-decoration: none; cursor: default; }
-
-@media (max-width: 600px) {
-  .otp-digit { width: 42px; height: 52px; font-size: 1.3rem; }
-  .otp-boxes { gap: 7px; }
-}
-</style>
-
-<script>
+</section><script>
 (function () {
   const digits = Array.from(document.querySelectorAll('.otp-digit'));
   const combined = document.getElementById('otp-combined');
@@ -170,7 +116,7 @@
   // ── Resend countdown ──────────────────────────────────────
   let seconds = 60;
   resendBtn.disabled = true;
-  timerEl.style.display = 'inline';
+  timerEl.classList.remove('hidden');
 
   const timer = setInterval(() => {
     seconds--;
@@ -178,7 +124,7 @@
     if (seconds <= 0) {
       clearInterval(timer);
       resendBtn.disabled = false;
-      timerEl.style.display = 'none';
+      timerEl.classList.add('hidden');
     }
   }, 1000);
 

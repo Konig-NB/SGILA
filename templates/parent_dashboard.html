@@ -52,7 +52,7 @@
             <div class="lr-bar-top"><span>Lessons</span><span>{{ card.lessons_done }}/{{ card.total_lessons }}</span></div>
             <div class="lr-bar-track">
               <div class="lr-bar-fill {% if card.average >= 70 %}green{% elif card.average >= 50 %}amber{% else %}red{% endif %}"
-                   style="width: {{ card.progress_percent }}%;"></div>
+                   style="--progress: {{ card.progress_percent }}%;"></div>
             </div>
           </div>
 
