@@ -20,7 +20,7 @@
   <div id="page-display" class="story-book">
     {% for page in pages %}
       <article class="story-page {% if not forloop.first %}hidden{% endif %}" data-audio="{{ page.audio_url }}" data-page="{{ page.page_number }}">
-        <div class="story-image">
+        <div class="story-image{% if '/storyboards/' in page.image_url %} storyboard-crop{% if '#panel-2' in page.image_url %} storyboard-panel-2{% elif '#panel-3' in page.image_url %} storyboard-panel-3{% elif '#panel-4' in page.image_url %} storyboard-panel-4{% elif '#panel-5' in page.image_url %} storyboard-panel-5{% elif '#panel-6' in page.image_url %} storyboard-panel-6{% else %} storyboard-panel-1{% endif %}{% endif %}">
           {% if page.image_url %}
             <img src="{{ page.image_url }}" alt="Story illustration for page {{ page.page_number }}">
           {% else %}

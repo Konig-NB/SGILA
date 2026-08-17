@@ -11,7 +11,13 @@
     {% for word in words %}
       <article class="pronunciation-card">
         {% if word.image_url %}
-          <img class="pronunciation-image" src="{{ word.image_url }}" alt="{{ word.word }}">
+          {% if '/storyboards/' in word.image_url or '/vocab_sheets/' in word.image_url %}
+            <div class="pronunciation-image storyboard-crop{% if '#panel-2' in word.image_url %} storyboard-panel-2{% elif '#panel-3' in word.image_url %} storyboard-panel-3{% elif '#panel-4' in word.image_url %} storyboard-panel-4{% elif '#panel-5' in word.image_url %} storyboard-panel-5{% elif '#panel-6' in word.image_url %} storyboard-panel-6{% else %} storyboard-panel-1{% endif %}">
+              <img src="{{ word.image_url }}" alt="{{ word.word }}">
+            </div>
+          {% else %}
+            <img class="pronunciation-image" src="{{ word.image_url }}" alt="{{ word.word }}">
+          {% endif %}
         {% endif %}
         <div>
           <strong>{{ word.word }}</strong>

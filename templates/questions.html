@@ -1,163 +1,767 @@
 {% extends 'base.html' %}
 {% load static %}
-{% block title %}Questions - SGILA{% endblock %}
+{% block title %}{{ lesson.title }} Activities - SGILA{% endblock %}
 {% block content %}
-<section class="activity-shell">
+<section class="activity-shell comprehension-shell">
   <div class="activity-top">
     <a href="/lessons/{{ lesson_id }}/story" class="back-link">Back to story</a>
-    <span class="step-pill">Comprehension</span>
+    <span class="step-pill">Grade {{ lesson.grade }}</span>
   </div>
-  <h1>Comprehension questions</h1>
-  <div id="mascot-reaction" class="mascot"><img src="{% static 'img/koaly_cutout.png' %}" alt=""> <span>Koaly</span></div>
-  <div id="message-area" class="message-area hidden"></div>
-  <div class="center">
-    <button id="next-question-btn" class="btn btn-primary hidden" type="button">Next question</button>
+
+  <header class="comprehension-header">
+    <div class="comprehension-title">
+      <p class="eyebrow">Story activities</p>
+      <h1>{{ lesson.title }}</h1>
+      <p>Think about what happened in the story.</p>
+    </div>
+    <div id="mascot-reaction" class="activity-coach koaly-ready" aria-live="polite">
+      <img src="{% static 'img/koaly_cutout.png' %}" alt="Koaly">
+      <span>Take one activity at a time.</span>
+    </div>
+  </header>
+
+  <div class="activity-progress" aria-live="polite">
+    <div class="activity-progress-copy">
+      <strong id="progress-copy">Loading activities</strong>
+      <span id="completion-copy">0 completed</span>
+    </div>
+    <div class="activity-progress-track" aria-hidden="true"><span id="progress-fill"></span></div>
+    <div id="activity-map" class="activity-map" aria-label="Activity progress"></div>
   </div>
-  <div id="question-area">
-    <p id="question-text" class="question-text"></p>
-    <div id="options-area" class="options-grid"></div>
-  </div>
-  <div id="results-area" class="center hidden">
-    <p>Well done. Your answers are saved for this lesson.</p>
-    {% if lesson.grade == 4 %}
-      <a href="/lessons/{{ lesson_id }}/sequencing" class="btn btn-primary">Next activity</a>
-    {% else %}
-      <a href="/lessons/{{ lesson_id }}/visual-activity" class="btn btn-primary">Next activity</a>
-    {% endif %}
+
+  <main id="question-area" class="comprehension-panel">
+    <div class="question-meta">
+      <span id="activity-number" class="activity-number">Activity 1</span>
+      <span id="skill-label" class="activity-stage">Remember the story</span>
+    </div>
+    <p id="activity-instruction" class="activity-instruction"></p>
+    <h2 id="question-text" class="question-text"></h2>
+    <div id="response-area" class="response-area"></div>
+    <div id="message-area" class="message-area hidden" aria-live="polite"></div>
+    <div class="activity-footer">
+      <a href="/lessons/{{ lesson_id }}/story" class="story-review-link">Read the story again</a>
+      <button id="next-question-btn" class="btn btn-primary hidden" type="button">Next activity</button>
+    </div>
+  </main>
+
+  <div id="results-area" class="comprehension-finish hidden">
+    <img src="{% static 'img/koaly_happy.png' %}" alt="Happy Koaly">
+    <div>
+      <p class="eyebrow">Activities complete</p>
+      <h2>Well done!</h2>
+      <p id="results-copy">You finished the story activities.</p>
+    </div>
+    <a href="{{ next_activity_url }}" class="btn btn-primary">Continue learning</a>
   </div>
 </section>
+
 <script>
 const childId = {{ child_id }};
+const childName = "{{ child.name|escapejs }}";
 const lessonId = {{ lesson_id }};
 const totalQuestions = {{ total_questions }};
 const storageKey = `sgila_lesson_${lessonId}`;
-let questions = [];
-let current = 0;
-let score = 0;
-const nextQuestionBtn = document.getElementById('next-question-btn');
-const mascot = document.getElementById('mascot-reaction');
-const msgArea = document.getElementById('message-area');
+const typeInstructions = {
+  multiple_choice: 'Choose the best answer, then check it.',
+  true_false: 'Decide whether the sentence is true or false.',
+  open_ended: 'Write one clear sentence in your own words.',
+  sequencing: 'Use the arrows to put the events in story order.',
+  matching: 'Match each item with the best answer.',
+  cloze: 'Choose the words that complete the sentence.',
+  oral_response: 'Say your answer out loud. You do not need to type.',
+  prediction: 'Write what you think will happen and give a story clue.',
+  reasoning: 'Write your answer and explain your thinking.',
+  crossword: 'Use the clues to complete every word in the crossword.',
+  word_scramble: 'Unscramble every set of letters, then check your spelling.',
+};
+const skillLabels = {
+  literal_comprehension: 'Remember the story',
+  sequencing: 'Put events in order',
+  inference: 'Think about story clues',
+  vocabulary_in_context: 'Words in the story',
+  prediction: 'What happens next?',
+  summarising: 'Find the big idea',
+  character_motivation: 'Feelings and reasons',
+  text_to_self: 'Make a connection',
+  fact_vs_opinion: 'Think carefully',
+  spelling: 'Build the story words',
+};
 const KOALY_IMAGES = {
   ready: "{% static 'img/koaly_cutout.png' %}",
   happy: "{% static 'img/koaly_happy.png' %}",
   sad: "{% static 'img/koaly_sad.png' %}",
 };
-let answerAudioContext = null;
+
+let activities = [];
+let activityGroups = [];
+let current = 0;
+let score = 0;
+let completedCount = 0;
+const nextButton = document.getElementById('next-question-btn');
+const mascot = document.getElementById('mascot-reaction');
+const messageArea = document.getElementById('message-area');
+const responseArea = document.getElementById('response-area');
 
 function setMascot(reaction, label) {
-  mascot.className = `mascot reactive-koaly koaly-${reaction}`;
+  mascot.className = `activity-coach koaly-${reaction}`;
   mascot.querySelector('img').src = KOALY_IMAGES[reaction] || KOALY_IMAGES.ready;
   mascot.querySelector('span').textContent = label;
-}
-
-function primeAnswerAudio() {
-  const AudioContext = window.AudioContext || window.webkitAudioContext;
-  if (!AudioContext) return null;
-  if (!answerAudioContext) answerAudioContext = new AudioContext();
-  if (answerAudioContext.state === 'suspended') answerAudioContext.resume();
-  return answerAudioContext;
-}
-
-function playTone(ctx, start, frequency, duration, type, volume) {
-  const oscillator = ctx.createOscillator();
-  const gain = ctx.createGain();
-  oscillator.type = type;
-  oscillator.frequency.setValueAtTime(frequency, start);
-  gain.gain.setValueAtTime(0.0001, start);
-  gain.gain.exponentialRampToValueAtTime(volume, start + 0.025);
-  gain.gain.exponentialRampToValueAtTime(0.0001, start + duration);
-  oscillator.connect(gain);
-  gain.connect(ctx.destination);
-  oscillator.start(start);
-  oscillator.stop(start + duration + 0.02);
-}
-
-function playAnswerSound(correct) {
-  const ctx = primeAnswerAudio();
-  if (!ctx) return;
-  const now = ctx.currentTime + 0.02;
-  if (correct) {
-    playTone(ctx, now, 523.25, 0.12, 'sine', 0.12);
-    playTone(ctx, now + 0.1, 659.25, 0.13, 'sine', 0.12);
-    playTone(ctx, now + 0.21, 783.99, 0.18, 'triangle', 0.10);
-  } else {
-    playTone(ctx, now, 220, 0.16, 'triangle', 0.10);
-    playTone(ctx, now + 0.15, 164.81, 0.22, 'sine', 0.08);
-  }
 }
 
 function saveScore() {
   const existing = JSON.parse(sessionStorage.getItem(storageKey) || '{}');
   existing.comprehension_score = score;
-  existing.comprehension_total = totalQuestions;
+  existing.comprehension_total = activities.length || totalQuestions;
   sessionStorage.setItem(storageKey, JSON.stringify(existing));
 }
 
-async function loadQuestions() {
-  const res = await fetch(`/api/lessons/${lessonId}/questions`);
-  questions = await res.json();
-  showQuestion();
+function buildActivityMap() {
+  const map = document.getElementById('activity-map');
+  map.innerHTML = '';
+  activityGroups.forEach((group) => {
+    const step = document.createElement('span');
+    step.textContent = group.number;
+    step.setAttribute('aria-label', `Activity ${group.number}: ${group.title}`);
+    if (group.indexes.every((index) => index < completedCount)) step.classList.add('is-done');
+    if (group.indexes.includes(current) && current < activities.length) step.classList.add('is-current');
+    map.appendChild(step);
+  });
 }
 
-function showQuestion() {
-  if (current >= questions.length) {
+function updateProgress() {
+  const total = activities.length;
+  const group = activityGroups.find((item) => item.indexes.includes(current));
+  const groupPosition = group ? activityGroups.indexOf(group) + 1 : activityGroups.length;
+  document.getElementById('progress-copy').textContent = group
+    ? `Activity ${groupPosition} of ${activityGroups.length}`
+    : (total ? 'Activities complete' : 'No activities yet');
+  if (group && group.indexes.length > 1) {
+    const questionPosition = group.indexes.indexOf(current) + 1;
+    document.getElementById('completion-copy').textContent = `Question ${questionPosition} of ${group.indexes.length}`;
+  } else {
+    const completeGroups = activityGroups.filter((item) => item.indexes.every((index) => index < completedCount)).length;
+    document.getElementById('completion-copy').textContent = `${completeGroups} of ${activityGroups.length} activities complete`;
+  }
+  document.getElementById('progress-fill').style.setProperty(
+    '--progress',
+    total ? `${(completedCount / total) * 100}%` : '0%',
+  );
+  buildActivityMap();
+}
+
+function makeSubmitButton(label) {
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.className = 'btn btn-primary response-submit';
+  button.textContent = label;
+  return button;
+}
+
+function renderChoice(activity) {
+  const grid = document.createElement('div');
+  grid.className = 'options-grid';
+  let selectedAnswer = '';
+  let selectedButton = null;
+
+  activity.options.forEach((option, index) => {
+    const button = document.createElement('button');
+    button.className = 'btn btn-option';
+    button.type = 'button';
+    button.dataset.answer = option;
+    button.setAttribute('aria-pressed', 'false');
+
+    const marker = document.createElement('span');
+    marker.className = 'option-marker';
+    marker.textContent = String.fromCharCode(65 + index);
+    const copy = document.createElement('span');
+    copy.textContent = option;
+    button.append(marker, copy);
+
+    button.addEventListener('click', () => {
+      grid.querySelectorAll('.btn-option').forEach((choice) => {
+        choice.classList.remove('is-selected');
+        choice.setAttribute('aria-pressed', 'false');
+      });
+      button.classList.add('is-selected');
+      button.setAttribute('aria-pressed', 'true');
+      selectedAnswer = option;
+      selectedButton = button;
+      submit.disabled = false;
+    });
+    grid.appendChild(button);
+  });
+
+  const submit = makeSubmitButton('Check answer');
+  submit.disabled = true;
+  submit.addEventListener('click', () => submitActivity(activity, selectedAnswer, selectedButton));
+  responseArea.append(grid, submit);
+}
+
+function renderCloze(activity) {
+  const bank = document.createElement('div');
+  bank.className = 'cloze-word-bank';
+  bank.setAttribute('aria-label', 'Word bank');
+  let selectedAnswer = '';
+  let selectedButton = null;
+
+  activity.options.forEach((word) => {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'cloze-chip';
+    button.textContent = word;
+    button.dataset.answer = word;
+    button.setAttribute('aria-pressed', 'false');
+    button.addEventListener('click', () => {
+      bank.querySelectorAll('.cloze-chip').forEach((chip) => {
+        chip.classList.remove('is-selected');
+        chip.setAttribute('aria-pressed', 'false');
+      });
+      button.classList.add('is-selected');
+      button.setAttribute('aria-pressed', 'true');
+      selectedAnswer = word;
+      selectedButton = button;
+      submit.disabled = false;
+    });
+    bank.appendChild(button);
+  });
+
+  const submit = makeSubmitButton('Check the word');
+  submit.disabled = true;
+  submit.addEventListener('click', () => submitActivity(activity, selectedAnswer, selectedButton));
+  responseArea.append(bank, submit);
+}
+
+function renderSequence(activity) {
+  const list = document.createElement('ol');
+  list.className = 'sequence-list';
+
+  activity.items.forEach((item) => {
+    const row = document.createElement('li');
+    const text = document.createElement('span');
+    text.textContent = item;
+    const controls = document.createElement('div');
+    controls.className = 'sequence-controls';
+
+    const up = document.createElement('button');
+    up.type = 'button';
+    up.className = 'sequence-move';
+    up.textContent = '\u2191';
+    up.title = 'Move earlier';
+    up.setAttribute('aria-label', `Move ${item} earlier`);
+    up.addEventListener('click', () => {
+      const previous = row.previousElementSibling;
+      if (previous) list.insertBefore(row, previous);
+    });
+
+    const down = document.createElement('button');
+    down.type = 'button';
+    down.className = 'sequence-move';
+    down.textContent = '\u2193';
+    down.title = 'Move later';
+    down.setAttribute('aria-label', `Move ${item} later`);
+    down.addEventListener('click', () => {
+      const next = row.nextElementSibling;
+      if (next) list.insertBefore(next, row);
+    });
+
+    controls.append(up, down);
+    row.append(text, controls);
+    list.appendChild(row);
+  });
+
+  const submit = makeSubmitButton('Check the order');
+  submit.addEventListener('click', () => {
+    const answer = [...list.querySelectorAll('li > span')].map((item) => item.textContent);
+    submitActivity(activity, answer);
+  });
+  responseArea.append(list, submit);
+}
+
+function renderCrossword(activity) {
+  const config = activity.options || {};
+  const entries = config.entries || [];
+  const rows = Number(config.rows || 0);
+  const columns = Number(config.columns || 0);
+  const cells = new Map();
+
+  entries.forEach((entry) => {
+    for (let offset = 0; offset < entry.length; offset++) {
+      const row = entry.row + (entry.direction === 'Down' ? offset : 0);
+      const column = entry.column + (entry.direction === 'Across' ? offset : 0);
+      const key = `${row}-${column}`;
+      const cell = cells.get(key) || {row, column, numbers: []};
+      if (offset === 0 && !cell.numbers.includes(entry.number)) cell.numbers.push(entry.number);
+      cells.set(key, cell);
+    }
+  });
+
+  const layout = document.createElement('div');
+  layout.className = 'crossword-layout';
+  const grid = document.createElement('div');
+  grid.className = 'crossword-grid';
+  grid.style.setProperty('--crossword-columns', columns);
+  grid.setAttribute('aria-label', 'Crossword answer grid');
+
+  for (let row = 0; row < rows; row++) {
+    for (let column = 0; column < columns; column++) {
+      const key = `${row}-${column}`;
+      const data = cells.get(key);
+      const cell = document.createElement('div');
+      cell.className = data ? 'crossword-cell' : 'crossword-block';
+      if (data) {
+        if (data.numbers.length) {
+          const number = document.createElement('span');
+          number.textContent = data.numbers.join('/');
+          cell.appendChild(number);
+        }
+        const input = document.createElement('input');
+        input.maxLength = 1;
+        input.autocomplete = 'off';
+        input.dataset.cell = key;
+        input.setAttribute('aria-label', `Crossword row ${row + 1}, column ${column + 1}`);
+        input.addEventListener('input', () => {
+          input.value = input.value.replace(/[^A-Za-z]/g, '').toUpperCase();
+        });
+        cell.appendChild(input);
+      }
+      grid.appendChild(cell);
+    }
+  }
+
+  const clues = document.createElement('div');
+  clues.className = 'crossword-clues';
+  ['Across', 'Down'].forEach((direction) => {
+    const section = document.createElement('section');
+    const heading = document.createElement('h3');
+    heading.textContent = direction;
+    section.appendChild(heading);
+    entries.filter((entry) => entry.direction === direction).forEach((entry) => {
+      const clue = document.createElement('p');
+      clue.innerHTML = `<strong>${entry.number}.</strong> ${entry.clue} <small>(${entry.length} letters)</small>`;
+      section.appendChild(clue);
+    });
+    clues.appendChild(section);
+  });
+  layout.append(grid, clues);
+
+  const submit = makeSubmitButton('Check crossword');
+  submit.addEventListener('click', () => {
+    const answer = {};
+    entries.forEach((entry) => {
+      let word = '';
+      for (let offset = 0; offset < entry.length; offset++) {
+        const row = entry.row + (entry.direction === 'Down' ? offset : 0);
+        const column = entry.column + (entry.direction === 'Across' ? offset : 0);
+        word += grid.querySelector(`[data-cell="${row}-${column}"]`).value;
+      }
+      answer[entry.key] = word;
+    });
+    submitActivity(activity, answer);
+  });
+  responseArea.append(layout, submit);
+}
+
+function renderMatching(activity) {
+  const config = activity.options || {};
+  const rows = document.createElement('div');
+  rows.className = 'matching-rows';
+  (config.prompts || []).forEach((prompt) => {
+    const row = document.createElement('label');
+    row.className = 'matching-row';
+    const word = document.createElement('strong');
+    word.textContent = prompt.text;
+    const select = document.createElement('select');
+    select.dataset.prompt = prompt.key;
+    select.innerHTML = '<option value="">Choose a meaning</option>';
+    (config.choices || []).forEach((choice) => {
+      const option = document.createElement('option');
+      option.value = choice.key;
+      option.textContent = `${choice.key}. ${choice.text}`;
+      select.appendChild(option);
+    });
+    row.append(word, select);
+    rows.appendChild(row);
+  });
+  const submit = makeSubmitButton('Check matches');
+  submit.addEventListener('click', () => {
+    const answer = {};
+    rows.querySelectorAll('select').forEach((select) => answer[select.dataset.prompt] = select.value);
+    submitActivity(activity, answer);
+  });
+  responseArea.append(rows, submit);
+}
+
+function renderWordScramble(activity) {
+  const config = activity.options || {};
+  const rows = document.createElement('div');
+  rows.className = 'scramble-rows';
+  (config.items || []).forEach((item) => {
+    const row = document.createElement('label');
+    row.className = 'scramble-row';
+    const letters = document.createElement('strong');
+    letters.textContent = item.scramble.split('').join(' ');
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.autocomplete = 'off';
+    input.dataset.item = item.key;
+    input.placeholder = 'Type the word';
+    row.append(letters, input);
+    rows.appendChild(row);
+  });
+  const submit = makeSubmitButton('Check spelling');
+  submit.addEventListener('click', () => {
+    const answer = {};
+    rows.querySelectorAll('input').forEach((input) => answer[input.dataset.item] = input.value);
+    submitActivity(activity, answer);
+  });
+  responseArea.append(rows, submit);
+}
+
+function renderOral(activity) {
+  const oral = document.createElement('div');
+  oral.className = 'oral-response';
+  const title = document.createElement('strong');
+  title.textContent = 'Say it in a full sentence';
+  const help = document.createElement('span');
+  help.textContent = 'Tell the answer to a teacher, parent, or learning partner.';
+  oral.append(title, help);
+
+  const submit = makeSubmitButton('I said my answer');
+  submit.addEventListener('click', () => submitActivity(activity, 'Answered aloud'));
+  responseArea.append(oral, submit);
+}
+
+function renderWritten(activity) {
+  const label = document.createElement('label');
+  label.className = 'reading-response-label';
+  label.setAttribute('for', 'reading-response');
+  label.textContent = activity.activity_type === 'prediction' ? 'Your prediction and clue' : 'Your answer';
+
+  const answer = document.createElement('textarea');
+  answer.id = 'reading-response';
+  answer.className = 'reading-response';
+  answer.rows = 3;
+  answer.maxLength = 600;
+  answer.placeholder = activity.activity_type === 'prediction' ? 'I think ... because ...' : 'Write one clear sentence.';
+
+  const submit = makeSubmitButton('Compare my answer');
+  submit.addEventListener('click', () => submitActivity(activity, answer.value));
+  responseArea.append(label, answer, submit);
+}
+
+function renderGuidedDiary(activity) {
+  const config = activity.options || {};
+  const diary = document.createElement('div');
+  diary.className = 'guided-diary';
+
+  const prompt = document.createElement('p');
+  prompt.className = 'guided-diary-prompt';
+  prompt.textContent = config.prompt || 'Write about a time you had a secret, like Mandu.';
+
+  const greeting = document.createElement('strong');
+  greeting.className = 'guided-diary-greeting';
+  greeting.textContent = 'Dear Diary,';
+
+  const feelingLine = document.createElement('label');
+  feelingLine.className = 'diary-line diary-feeling-line';
+  const feelingCopy = document.createElement('span');
+  feelingCopy.textContent = 'Today I felt';
+  const feeling = document.createElement('select');
+  feeling.dataset.field = 'feeling';
+  feeling.innerHTML = '<option value="">Choose a feeling</option>';
+  (config.feelings || []).forEach((item) => {
+    const option = document.createElement('option');
+    option.value = item;
+    option.textContent = item;
+    feeling.appendChild(option);
+  });
+  const becauseCopy = document.createElement('span');
+  becauseCopy.textContent = 'because';
+  feelingLine.append(feelingCopy, feeling, becauseCopy);
+
+  const because = document.createElement('textarea');
+  because.className = 'diary-text-entry';
+  because.dataset.field = 'because';
+  because.rows = 2;
+  because.maxLength = 300;
+  because.placeholder = 'Explain what happened.';
+  feelingLine.appendChild(because);
+
+  const bestPart = document.createElement('label');
+  bestPart.className = 'diary-line';
+  bestPart.innerHTML = '<span>The best part of my day was</span>';
+  const bestPartInput = document.createElement('textarea');
+  bestPartInput.className = 'diary-text-entry';
+  bestPartInput.dataset.field = 'best_part';
+  bestPartInput.rows = 2;
+  bestPartInput.maxLength = 300;
+  bestPartInput.placeholder = 'Write the best part.';
+  bestPart.appendChild(bestPartInput);
+
+  const nextTime = document.createElement('label');
+  nextTime.className = 'diary-line';
+  nextTime.innerHTML = '<span>Next time I would like to</span>';
+  const nextTimeInput = document.createElement('textarea');
+  nextTimeInput.className = 'diary-text-entry';
+  nextTimeInput.dataset.field = 'next_time';
+  nextTimeInput.rows = 2;
+  nextTimeInput.maxLength = 300;
+  nextTimeInput.placeholder = 'Write what you would like to do.';
+  nextTime.appendChild(nextTimeInput);
+
+  const signature = document.createElement('label');
+  signature.className = 'diary-line diary-signature';
+  const signatureCopy = document.createElement('span');
+  signatureCopy.textContent = 'From';
+  const signatureInput = document.createElement('input');
+  signatureInput.type = 'text';
+  signatureInput.dataset.field = 'from_name';
+  signatureInput.maxLength = 100;
+  signatureInput.value = childName;
+  signature.append(signatureCopy, signatureInput);
+
+  diary.append(prompt, greeting, feelingLine, bestPart, nextTime, signature);
+  const submit = makeSubmitButton('Save my diary');
+  submit.addEventListener('click', () => {
+    const answer = {};
+    diary.querySelectorAll('[data-field]').forEach((field) => answer[field.dataset.field] = field.value);
+    submitActivity(activity, answer);
+  });
+  responseArea.append(diary, submit);
+}
+
+function renderActivity() {
+  if (current >= activities.length) {
     saveScore();
+    updateProgress();
     document.getElementById('question-area').classList.add('hidden');
     document.getElementById('results-area').classList.remove('hidden');
-    nextQuestionBtn.classList.add('hidden');
-    msgArea.classList.add('hidden');
-    setMascot('happy', 'Great work!');
+    document.getElementById('results-copy').textContent = `You completed all ${activityGroups.length} story activities.`;
+    setMascot('happy', 'You worked through the whole story.');
     return;
   }
-  setMascot('ready', 'Koaly');
-  msgArea.classList.add('hidden');
-  nextQuestionBtn.classList.add('hidden');
-  const q = questions[current];
-  document.getElementById('question-text').textContent = `Q${current + 1}: ${q.question}`;
-  const area = document.getElementById('options-area');
-  area.innerHTML = '';
-  q.options.forEach((opt) => {
-    const btn = document.createElement('button');
-    btn.className = 'btn btn-option';
-    btn.textContent = opt;
-    btn.onclick = () => checkAnswer(q.question_id, opt);
-    area.appendChild(btn);
+
+  const activity = activities[current];
+  const group = activityGroups.find((item) => item.indexes.includes(current));
+  const questionNumber = group && group.indexes.length > 1 ? group.indexes.indexOf(current) + 1 : null;
+  responseArea.innerHTML = '';
+  responseArea.dataset.activityType = activity.activity_type;
+  messageArea.className = 'message-area hidden';
+  messageArea.innerHTML = '';
+  nextButton.classList.add('hidden');
+  document.getElementById('activity-number').textContent = questionNumber
+    ? `Activity ${group.number} - Question ${questionNumber}`
+    : `Activity ${group ? group.number : current + 1}`;
+  document.getElementById('skill-label').textContent = `${group ? group.title : 'Story activity'} - ${skillLabels[activity.skill] || 'Read for meaning'}`;
+  document.getElementById('activity-instruction').textContent = typeInstructions[activity.activity_type] || 'Use the story to answer.';
+  document.getElementById('question-text').textContent = activity.question;
+  setMascot('ready', 'Take your time and use the story.');
+  updateProgress();
+
+  if (activity.options && activity.options.writing_template) {
+    renderGuidedDiary(activity);
+  } else if (activity.activity_type === 'crossword') {
+    renderCrossword(activity);
+  } else if (activity.activity_type === 'matching' && !Array.isArray(activity.options)) {
+    renderMatching(activity);
+  } else if (activity.activity_type === 'word_scramble') {
+    renderWordScramble(activity);
+  } else if (activity.activity_type === 'sequencing') {
+    renderSequence(activity);
+  } else if (activity.activity_type === 'cloze') {
+    renderCloze(activity);
+  } else if (activity.activity_type === 'oral_response') {
+    renderOral(activity);
+  } else if (['open_ended', 'prediction', 'reasoning'].includes(activity.activity_type)) {
+    renderWritten(activity);
+  } else {
+    renderChoice(activity);
+  }
+}
+
+function disableResponses() {
+  responseArea.querySelectorAll('button, textarea, input, select').forEach((element) => element.disabled = true);
+}
+
+function markChoice(selectedButton, data) {
+  if (!selectedButton) return;
+  selectedButton.classList.add(data.correct ? 'choice-correct' : 'choice-wrong');
+  if (!data.correct) {
+    responseArea.querySelectorAll('.btn-option').forEach((button) => {
+      if (button.dataset.answer === data.correct_answer) button.classList.add('choice-correct');
+    });
+  }
+}
+
+function markMatchingAnswers(data) {
+  const expectedAnswers = data.correct_answer;
+  if (!expectedAnswers || typeof expectedAnswers !== 'object') return;
+  responseArea.querySelectorAll('.matching-row').forEach((row) => {
+    const select = row.querySelector('select');
+    const correctValue = String(expectedAnswers[select.dataset.prompt] || '');
+    const isCorrect = select.value === correctValue;
+    row.classList.add(isCorrect ? 'match-correct' : 'match-wrong');
+
+    const badge = document.createElement('span');
+    badge.className = 'matching-result-badge';
+    badge.textContent = isCorrect ? 'Correct' : 'Incorrect';
+    row.querySelector('strong').appendChild(badge);
+
+    if (!isCorrect) {
+      const correctOption = [...select.options].find((option) => option.value === correctValue);
+      const correction = document.createElement('span');
+      correction.className = 'matching-correction';
+      correction.textContent = `Correct match: ${correctOption ? correctOption.textContent : correctValue}`;
+      row.appendChild(correction);
+    }
   });
 }
 
-async function checkAnswer(questionId, answer) {
-  primeAnswerAudio();
-  const optionButtons = document.querySelectorAll('#options-area button');
-  optionButtons.forEach((button) => button.disabled = true);
-  const res = await fetch('/api/check-answer', {
+function normaliseCheckedWord(value) {
+  return String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[.,!?;:"'()[\]{}-]/g, '')
+    .replace(/\s+/g, ' ');
+}
+
+function markScrambleAnswers(data) {
+  const expectedAnswers = data.correct_answer;
+  if (
+    responseArea.dataset.activityType !== 'word_scramble'
+    || !expectedAnswers
+    || typeof expectedAnswers !== 'object'
+  ) return;
+
+  responseArea.querySelectorAll('.scramble-row').forEach((row) => {
+    const input = row.querySelector('input');
+    const correctValue = String(expectedAnswers[input.dataset.item] || '');
+    const isCorrect = normaliseCheckedWord(input.value) === normaliseCheckedWord(correctValue);
+    row.classList.add(isCorrect ? 'scramble-correct' : 'scramble-wrong');
+
+    const badge = document.createElement('span');
+    badge.className = 'scramble-result-badge';
+    badge.textContent = isCorrect ? 'Correct' : 'Incorrect';
+    row.querySelector('strong').appendChild(badge);
+
+    if (!isCorrect) {
+      const correction = document.createElement('span');
+      correction.className = 'scramble-correction';
+      correction.textContent = `Correct spelling: ${correctValue}`;
+      row.appendChild(correction);
+    }
+  });
+}
+
+function showFeedback(data) {
+  messageArea.classList.remove('hidden', 'correct', 'wrong', 'review');
+  messageArea.classList.add(data.review_required ? 'review' : (data.correct ? 'correct' : 'wrong'));
+
+  const heading = document.createElement('strong');
+  heading.textContent = data.saved
+    ? 'Diary saved'
+    : data.review_required
+    ? 'Compare your thinking'
+    : (data.correct ? 'Correct' : (data.partial ? `${data.score_awarded} of ${data.score_possible} correct` : 'Look at the story answer'));
+  const message = document.createElement('span');
+  message.textContent = data.message;
+  messageArea.append(heading, message);
+
+  if (data.model_answer) {
+    const model = document.createElement('p');
+    model.className = 'model-answer';
+    model.textContent = `${data.review_required ? 'Example answer' : 'Story answer'}: ${data.model_answer}`;
+    messageArea.appendChild(model);
+  }
+}
+
+async function submitActivity(activity, answer, selectedButton = null) {
+  if (typeof answer === 'string' && !answer.trim()) {
+    messageArea.className = 'message-area wrong';
+    messageArea.textContent = 'Add your answer before continuing.';
+    return;
+  }
+  if (answer && typeof answer === 'object' && !Array.isArray(answer)) {
+    const values = Object.values(answer);
+    if (!values.length || values.some((value) => !String(value || '').trim())) {
+      messageArea.className = 'message-area wrong';
+      messageArea.textContent = 'Complete every answer before checking this activity.';
+      return;
+    }
+  }
+
+  const isLegacy = !activity.activity_id;
+  const endpoint = isLegacy ? '/api/check-answer' : '/api/check-reading-activity';
+  const payload = {
+    child_id: childId,
+    lesson_id: lessonId,
+    child_answer: answer,
+  };
+  if (isLegacy) payload.question_id = activity.question_id;
+  else payload.activity_id = activity.activity_id;
+
+  const response = await fetch(endpoint, {
     method: 'POST',
     headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({child_id: childId, lesson_id: lessonId, question_id: questionId, child_answer: answer})
+    body: JSON.stringify(payload),
   });
-  const data = await res.json();
-  optionButtons.forEach((button) => {
-    const optionText = button.textContent.trim();
-    if (optionText === answer) {
-      button.classList.add(data.correct ? 'choice-correct' : 'choice-wrong');
-    }
-    if (!data.correct && optionText === data.correct_answer) {
-      button.classList.add('choice-correct');
-    }
-  });
-  msgArea.className = `message-area ${data.correct ? 'correct' : 'wrong'}`;
-  msgArea.textContent = data.message;
-  setMascot(data.correct ? 'happy' : 'sad', data.correct ? 'Great!' : 'Try again');
-  playAnswerSound(data.correct);
-  if (data.correct) score++;
-  nextQuestionBtn.textContent = current === questions.length - 1 ? 'Finish questions' : 'Next question';
-  nextQuestionBtn.classList.remove('hidden');
+  const data = await response.json();
+  if (!response.ok) {
+    messageArea.className = 'message-area wrong';
+    messageArea.textContent = data.error || 'Your answer could not be checked.';
+    return;
+  }
+
+  disableResponses();
+  completedCount++;
+  score = Number(data.comprehension_score || 0);
+  markChoice(selectedButton, data);
+  markMatchingAnswers(data);
+  markScrambleAnswers(data);
+  showFeedback(data);
+  setMascot(data.review_required || data.correct ? 'happy' : 'sad', data.review_required ? 'Good thinking. Compare your answer.' : (data.correct ? 'Great reading!' : 'Use the story answer to learn.'));
+  const nextActivity = activities[current + 1];
+  nextButton.textContent = current === activities.length - 1
+    ? 'Finish activities'
+    : (nextActivity.group_number === activity.group_number ? 'Next question' : `Start Activity ${nextActivity.group_number}`);
+  nextButton.classList.remove('hidden');
+  updateProgress();
 }
 
-nextQuestionBtn.addEventListener('click', () => {
+async function loadActivities() {
+  try {
+    const response = await fetch(`/api/lessons/${lessonId}/questions`);
+    if (!response.ok) throw new Error('Activities could not be loaded.');
+    activities = await response.json();
+    const groups = new Map();
+    activities.forEach((activity, index) => {
+      activity.group_number = Number(activity.group_number || index + 1);
+      activity.group_title = activity.group_title || 'Story activity';
+      if (!groups.has(activity.group_number)) {
+        groups.set(activity.group_number, {number: activity.group_number, title: activity.group_title, indexes: []});
+      }
+      groups.get(activity.group_number).indexes.push(index);
+    });
+    activityGroups = [...groups.values()];
+    if (!activities.length) {
+      document.getElementById('question-area').classList.add('hidden');
+      document.getElementById('results-area').classList.remove('hidden');
+      document.getElementById('results-copy').textContent = 'No comprehension activities have been added yet.';
+      updateProgress();
+      return;
+    }
+    renderActivity();
+  } catch (error) {
+    messageArea.className = 'message-area wrong';
+    messageArea.textContent = error.message;
+  }
+}
+
+nextButton.addEventListener('click', () => {
   current++;
-  showQuestion();
+  renderActivity();
 });
 
-loadQuestions();
+loadActivities();
 </script>
 {% endblock %}

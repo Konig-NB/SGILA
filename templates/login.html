@@ -26,7 +26,7 @@
     {% endif %}
     <label>Password<input type="password" name="password" required></label>
     {% if role != 'learner' %}
-    <p class="form-note" style="text-align:right; margin-top:-.5rem;">
+    <p class="form-note login-help-link">
       <a href="/forgot-password?role={{ role }}">Forgot password?</a>
     </p>
     {% endif %}
