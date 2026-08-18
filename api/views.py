@@ -8,6 +8,7 @@ from django.db.models import Q
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
 from .validators import password_strength_errors
+from .validators import password_strength_errors
 from django.contrib.auth.hashers import check_password, make_password
 import json
 import hashlib
@@ -20,6 +21,7 @@ import secrets
 from .models import (
     CauseEffectPair,
     Child, Parent, Teacher, Lesson, StoryPage, ComprehensionQuestion,
+    ReadingActivity, ReadingActivityResponse,
     FeelingsQuestion,
     InferenceQuestion,
     PredictionQuestion,
@@ -30,8 +32,10 @@ from .models import (
     WrittenResponsePrompt,
     OTPToken, PasswordResetToken,
     Message,
+    title_case,
 )
 from .jwt_utils import create_access_token, token_from_request
+from .reporting import rows_for_record
 
 
 # ─────────────────────────────────────────────────────────────
@@ -173,6 +177,72 @@ def spelling_answer_is_correct(activity, raw_answer):
     return normalise_spelling_answer(raw_answer) == normalise_spelling_answer(activity.answer)
 
 
+def normalise_reading_answer(value):
+    """Compare short learner answers without case or punctuation noise."""
+    value = str(value or '').strip().lower()
+    for character in '.,!?;:\"\'()[]{}-':
+        value = value.replace(character, '')
+    return ' '.join(value.split())
+
+
+def structured_reading_answer(activity):
+    try:
+        value = json.loads(activity.correct_answer or '{}')
+    except (TypeError, json.JSONDecodeError):
+        return {}
+    return value if isinstance(value, dict) else {}
+
+
+def reading_answer_score(activity, child_answer):
+    if activity.activity_type == ReadingActivity.SEQUENCING:
+        correct = list(child_answer or []) == list(activity.items_in_correct_order or [])
+        return (1 if correct else 0), 1
+
+    if activity.activity_type in {
+        ReadingActivity.CROSSWORD,
+        ReadingActivity.MATCHING,
+        ReadingActivity.WORD_SCRAMBLE,
+    }:
+        expected = structured_reading_answer(activity)
+        submitted = child_answer if isinstance(child_answer, dict) else {}
+        score = 0
+        for key, answer in expected.items():
+            child_value = submitted.get(str(key), submitted.get(key, ''))
+            if activity.activity_type == ReadingActivity.MATCHING:
+                correct = str(child_value) == str(answer)
+            else:
+                correct = normalise_reading_answer(child_value) == normalise_reading_answer(answer)
+            score += int(correct)
+        return score, len(expected)
+
+    correct = normalise_reading_answer(child_answer) == normalise_reading_answer(activity.correct_answer)
+    return (1 if correct else 0), 1
+
+
+def reading_answer_is_correct(activity, child_answer):
+    score, total = reading_answer_score(activity, child_answer)
+    return bool(total and score == total)
+
+
+def reading_model_answer(activity):
+    if activity.activity_type == ReadingActivity.SEQUENCING:
+        return ' -> '.join(activity.items_in_correct_order or [])
+    if activity.activity_type in {
+        ReadingActivity.CROSSWORD,
+        ReadingActivity.WORD_SCRAMBLE,
+    }:
+        return '; '.join(structured_reading_answer(activity).values())
+    if activity.activity_type == ReadingActivity.MATCHING:
+        config = activity.options if isinstance(activity.options, dict) else {}
+        prompts = {str(item.get('key')): item.get('text', '') for item in config.get('prompts', [])}
+        choices = {str(item.get('key')): item.get('text', '') for item in config.get('choices', [])}
+        return '; '.join(
+            f"{prompts.get(str(prompt_key), prompt_key)}: {choices.get(str(choice_key), choice_key)}"
+            for prompt_key, choice_key in structured_reading_answer(activity).items()
+        )
+    return activity.correct_answer
+
+
 # ─────────────────────────────────────────────────────────────
 # OTP HELPERS
 # ─────────────────────────────────────────────────────────────
@@ -219,7 +289,10 @@ def register(request):
         return JsonResponse({'error': 'Invalid role.'}, status=400)
 
     email = (data.get('email') or '').strip().lower()
-    full_name = (data.get('full_name') or '').strip()
+    full_name = title_case(data.get('full_name'))
+    data['full_name'] = full_name
+    if role == 'teacher':
+        data['school_name'] = title_case(data.get('school_name'))
     password = data.get('password', '')
 
     if not email or not full_name or not password:
@@ -229,7 +302,6 @@ def register(request):
     if not data.get('accepted_popia') in (True, 'true', 'True'):
         return JsonResponse({'error': 'You must accept the Terms & Conditions to register.'}, status=400)
  
-
     if role == 'parent' and Parent.objects.filter(email=email).exists():
         return JsonResponse({'error': 'That email is already registered.'}, status=400)
     if role == 'teacher' and Teacher.objects.filter(email=email).exists():
@@ -651,15 +723,166 @@ def questions(request, lesson_id):
         return JsonResponse({'error': 'Lesson not found'}, status=404)
 
     data = []
-    for q in lesson.questions.all():
-        data.append({
-            'question_id': q.id,
-            'question': q.question,
-            'options': q.get_options(),
-            # correct_answer intentionally excluded here
-        })
+    activities = list(lesson.reading_activities.all())
+    if activities:
+        for activity in activities:
+            item = {
+                'activity_id': activity.id,
+                'activity_type': activity.activity_type,
+                'skill': activity.skill,
+                'question': activity.question,
+                'options': activity.get_options(),
+                'requires_review': activity.requires_review,
+                'group_number': activity.group_number or activity.order,
+                'group_title': activity.group_title or activity.get_activity_type_display(),
+            }
+            if activity.activity_type == ReadingActivity.SEQUENCING:
+                shuffled_items = list(activity.items_in_correct_order or [])
+                random.shuffle(shuffled_items)
+                if len(shuffled_items) > 1 and shuffled_items == activity.items_in_correct_order:
+                    shuffled_items = shuffled_items[1:] + shuffled_items[:1]
+                item['items'] = shuffled_items
+            data.append(item)
+    else:
+        for q in lesson.questions.all():
+            data.append({
+                'question_id': q.id,
+                'activity_type': ReadingActivity.MULTIPLE_CHOICE,
+                'skill': 'literal_comprehension',
+                'question': q.question,
+                'options': q.get_options(),
+                'requires_review': False,
+                # correct_answer intentionally excluded here
+            })
 
     return JsonResponse(data, safe=False)
+
+
+@csrf_exempt
+@require_http_methods(["POST"])
+def check_reading_activity(request):
+    """Check a varied comprehension activity without exposing answers first."""
+    data = json_body(request)
+    lesson_id = data.get('lesson_id')
+    child_id = data.get('child_id')
+
+    if not session_child_matches(request, child_id):
+        return JsonResponse({'error': 'You do not have access to this learner attempt.'}, status=403)
+
+    try:
+        lesson_id = int(lesson_id)
+        activity = ReadingActivity.objects.get(id=data.get('activity_id'), lesson_id=lesson_id)
+        child = Child.objects.get(id=child_id)
+    except (TypeError, ValueError):
+        return JsonResponse({'error': 'Invalid lesson or activity id.'}, status=400)
+    except ReadingActivity.DoesNotExist:
+        return JsonResponse({'error': 'Activity not found.'}, status=404)
+    except Child.DoesNotExist:
+        return JsonResponse({'error': 'Child not found.'}, status=404)
+
+    child_answer = data.get('child_answer')
+    is_guided_writing = (
+        activity.requires_review
+        and isinstance(activity.options, dict)
+        and activity.options.get('writing_template') is True
+    )
+    if activity.activity_type == ReadingActivity.SEQUENCING:
+        has_answer = isinstance(child_answer, list) and bool(child_answer)
+    elif activity.activity_type in {
+        ReadingActivity.CROSSWORD,
+        ReadingActivity.MATCHING,
+        ReadingActivity.WORD_SCRAMBLE,
+    }:
+        has_answer = isinstance(child_answer, dict) and bool(child_answer)
+    else:
+        has_answer = bool(str(child_answer or '').strip())
+    if not has_answer:
+        return JsonResponse({'error': 'Please answer before continuing.'}, status=400)
+
+    if is_guided_writing:
+        if not isinstance(child_answer, dict):
+            return JsonResponse({'error': 'Please complete the diary entry before saving.'}, status=400)
+        required_fields = {'feeling', 'because', 'best_part', 'next_time', 'from_name'}
+        if any(not str(child_answer.get(field, '')).strip() for field in required_fields):
+            return JsonResponse({'error': 'Please complete every diary line before saving.'}, status=400)
+        ReadingActivityResponse.objects.update_or_create(
+            child=child,
+            lesson=activity.lesson,
+            defaults={
+                'activity': activity,
+                'response': child_answer,
+            },
+        )
+
+    review_required = activity.requires_review
+    awarded, possible = reading_answer_score(activity, child_answer)
+    if review_required:
+        awarded, possible = 1, 1
+        is_correct = None
+    else:
+        is_correct = bool(possible and awarded == possible)
+
+    answers_key = session_score_key(lesson_id, 'reading_activity_answers')
+    answers = request.session.get(answers_key, {})
+    activity_key = f'activity-{activity.id}'
+    answers[activity_key] = {
+        'score': awarded,
+        'total': possible,
+        'skill': activity.skill,
+    }
+    request.session[answers_key] = answers
+
+    skill_scores = {}
+    for result in answers.values():
+        if isinstance(result, dict):
+            bucket = skill_scores.setdefault(result.get('skill') or 'reading', {'score': 0, 'total': 0})
+            bucket['score'] += int(result.get('score') or 0)
+            bucket['total'] += int(result.get('total') or 0)
+        else:
+            bucket = skill_scores.setdefault('reading', {'score': 0, 'total': 0})
+            bucket['score'] += int(result or 0)
+            bucket['total'] += 1
+
+    request.session[session_score_key(lesson_id, 'reading_skill_scores')] = skill_scores
+    request.session[session_score_key(lesson_id, 'comprehension_score')] = sum(
+        result['score'] for result in skill_scores.values()
+    )
+    request.session[session_score_key(lesson_id, 'comprehension_total')] = sum(
+        result['total'] for result in skill_scores.values()
+    )
+    request.session.modified = True
+
+    if is_guided_writing:
+        message = f'Your diary entry is saved to your profile, {child.name}.'
+    elif review_required:
+        message = f'Thank you, {child.name}. Compare your idea with the example.'
+    elif is_correct:
+        message = f'Well done, {child.name}! That answer shows careful reading.'
+    elif awarded:
+        message = f'You got {awarded} out of {possible}. Check the remaining story clues.'
+    else:
+        message = 'Not quite. Read the story clue and compare it with the answer.'
+
+    model_answer = reading_model_answer(activity)
+    correct_answer = structured_reading_answer(activity) if activity.activity_type in {
+        ReadingActivity.CROSSWORD,
+        ReadingActivity.MATCHING,
+        ReadingActivity.WORD_SCRAMBLE,
+    } else activity.correct_answer
+
+    return JsonResponse({
+        'correct': is_correct,
+        'partial': bool(awarded and awarded < possible),
+        'score_awarded': awarded,
+        'score_possible': possible,
+        'review_required': review_required,
+        'saved': is_guided_writing,
+        'correct_answer': correct_answer,
+        'model_answer': model_answer,
+        'message': message,
+        'comprehension_score': request.session.get(session_score_key(lesson_id, 'comprehension_score'), 0),
+        'comprehension_total': request.session.get(session_score_key(lesson_id, 'comprehension_total'), 0),
+    })
 
 
 @csrf_exempt
@@ -966,6 +1189,22 @@ def save_progress(request):
     total_possible = comprehension_total + visual_total + spelling_total
     percentage = round((total_score / total_possible) * 100) if total_possible else 0
 
+    assessment_scores = {}
+    reading_skill_scores = request.session.get(session_score_key(lesson_id, 'reading_skill_scores'), {})
+    if isinstance(reading_skill_scores, dict) and reading_skill_scores:
+        for key, values in reading_skill_scores.items():
+            if isinstance(values, dict) and int(values.get('total') or 0):
+                assessment_scores[key] = {
+                    'score': int(values.get('score') or 0),
+                    'total': int(values.get('total') or 0),
+                }
+    elif comprehension_total:
+        assessment_scores['reading'] = {'score': comprehension_score, 'total': comprehension_total}
+    if visual_total:
+        assessment_scores['visual_literacy'] = {'score': visual_score, 'total': visual_total}
+    if spelling_total:
+        assessment_scores['spelling'] = {'score': spelling_score, 'total': spelling_total}
+
     stars, mascot_reaction = calculate_stars(percentage)
 
     Progress.objects.update_or_create(
@@ -978,6 +1217,7 @@ def save_progress(request):
             'total_score': total_score,
             'total_possible': total_possible,
             'stars_earned': stars,
+            'assessment_scores': assessment_scores,
         },
     )
 
@@ -1029,6 +1269,7 @@ def get_progress(request, child_id):
             'total_possible': record.total_possible,
             'stars_earned': record.stars_earned,
             'percentage': record.percentage,
+            'assessment_scores': rows_for_record(record),
             'completed_on': record.completed_on.strftime('%Y-%m-%d'),
         })
 

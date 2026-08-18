@@ -14,7 +14,6 @@
 <section class="metric-strip">
   <div><strong>{{ completed_count }}</strong><span>Lessons completed</span></div>
   <div><strong>{{ total_stars }}</strong><span>Stars earned</span></div>
-  <div><strong>4</strong><span>Grades available</span></div>
 </section>
 
 {% if not child.teacher_class %}
@@ -33,10 +32,15 @@
 
 <section class="lesson-grid">
   {% for lesson in lessons %}
+<<<<<<< HEAD
     <a href="/lessons/{{ lesson.id }}/story" class="lesson-card{% if lesson.is_current_ai_story %} current-ai-story{% endif %}"
        data-lesson-title="{{ lesson.title }}" data-activities='[{% for activity in lesson.activities %}{"label":"{{ activity.label }}","url":"{{ activity.url }}"}{% if not forloop.last %},{% endif %}{% endfor %}]'
        {% if lesson.resume_url %}data-resume-url="{{ lesson.resume_url }}"{% endif %}>
       <div class="lesson-cover">
+=======
+    <a href="/lessons/{{ lesson.id }}/story" class="lesson-card{% if lesson.is_current_ai_story %} current-ai-story{% endif %}">
+      <div class="lesson-cover{% if '/storyboards/' in lesson.thumbnail_image %} storyboard-crop storyboard-panel-1{% endif %}">
+>>>>>>> b58a443a4ffa317ebb9c1b96d24c1713bb925ae5
         {% if lesson.thumbnail_image %}
           <img src="{{ lesson.thumbnail_image }}" alt="{{ lesson.title }} cover">
         {% else %}

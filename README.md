@@ -5,11 +5,13 @@ Clean Django web application for SGILA foundation phase reading.
 ## What Is Included
 
 - Web app pages for learner, parent, and teacher flows
-- Lerato's Fruit Basket lesson
+- Five CAPS-aligned stories per grade for Grades 1-4, with varied comprehension activities
 - Parent and teacher dashboards
 - Learner progress report dashboard
 - Teacher class codes
 - Parent/learner class-code linking
+- Subscription and package-code flows
+- Optional AI-assisted story generation
 - API endpoints for lessons, activities, scoring, and progress
 
 ## Quick Start
@@ -17,7 +19,7 @@ Clean Django web application for SGILA foundation phase reading.
 ```bash
 pip install django djangorestframework
 python manage.py migrate
-python manage.py seed_data
+python manage.py load_curriculum_content
 python manage.py runserver
 ```
 
@@ -38,7 +40,7 @@ password123
 Learner:
 
 ```text
-sipho_d
+learner@sgila.test
 ```
 
 Parent:
@@ -73,6 +75,13 @@ Grade 2 class code:
 RAINB2
 ```
 
+Grade 3 and Grade 4 class codes:
+
+```text
+RAINB3
+RAINB4
+```
+
 Parents can enter a class code when adding a child. Learners can also enter a class code during learner registration.
 
 ## Useful Commands
@@ -81,8 +90,11 @@ Parents can enter a class code when adding a child. Learners can also enter a cl
 python manage.py check
 python manage.py makemigrations --check --dry-run
 python manage.py test
-python manage.py seed_data
+python manage.py load_curriculum_content
 ```
+
+`load_curriculum_content` preserves user accounts and progress. The `seed_data`
+command is reserved for an intentional full demo reset.
 
 ## Main Folders
 

@@ -12,14 +12,14 @@
       You chose the <strong>{{ subscription.get_plan_type_display }}</strong> plan.
       Once this is saved you'll go straight to your dashboard to add your child.
     </p>
-    <p style="margin-top:1rem; font-size:.9rem; color:var(--muted);">
+    <p class="payment-security-note">
       🔒 Your card/account number is never stored in full — we only keep the
       last 4 digits so you can recognise your payment method later.
     </p>
   </aside>
 
   <div class="form-card">
-    <div class="tabs" id="payment-tabs" style="margin-bottom: 1.2rem;">
+    <div class="tabs payment-tabs" id="payment-tabs">
       <a href="#" data-method="card" class="active">Card</a>
       <a href="#" data-method="debit_order">Bank debit order</a>
     </div>
@@ -48,7 +48,7 @@
         </div>
       </div>
 
-      <div id="debit-fields" style="display:none;">
+      <div id="debit-fields" class="is-hidden">
         <h2>Bank debit order details</h2>
         <label>Account holder name
           <input type="text" name="account_holder">
@@ -66,10 +66,10 @@
         </div>
       </div>
 
-      <button class="btn btn-primary btn-full" type="submit" style="margin-top:1.2rem;">
+      <button class="btn btn-primary btn-full payment-submit" type="submit">
         Confirm and go to my dashboard
       </button>
-      <p class="form-note" style="margin-top:.8rem;">
+      <p class="form-note subscription-back-link">
         <a href="/subscription">← Back to plan selection</a>
       </p>
     </form>
@@ -90,8 +90,8 @@
       tab.classList.add('active');
       const method = tab.dataset.method;
       methodInput.value = method;
-      cardFields.style.display = method === 'card' ? '' : 'none';
-      debitFields.style.display = method === 'debit_order' ? '' : 'none';
+      cardFields.classList.toggle('is-hidden', method !== 'card');
+      debitFields.classList.toggle('is-hidden', method !== 'debit_order');
     });
   });
 

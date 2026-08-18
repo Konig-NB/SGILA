@@ -42,6 +42,8 @@ from api.models import (
     PredictionQuestion,
     Progress,
     PronunciationWord,
+    ReadingActivity,
+    ReadingActivityResponse,
     SequencingActivity,
     SpellingActivity,
     StoryPage,
@@ -56,7 +58,10 @@ from api.models import (
     PasswordResetToken,
     Subscription,
     PackageCode,
+    capitalize_first,
+    title_case,
 )
+from api.reporting import aggregate_rows, rows_for_record, rows_from_scores
 
 
 def password_matches(raw, stored):
@@ -332,7 +337,7 @@ def register_learner(request):
 def register_parent(request):
     data = request.POST
     email = data['email'].strip().lower()
-    full_name = data.get('full_name', '').strip()
+    full_name = title_case(data.get('full_name'))
 
     if Parent.objects.filter(email=email).exists():
         messages.error(request, 'That parent email is already registered.')
@@ -380,7 +385,7 @@ def register_parent(request):
 def register_teacher(request):
     data = request.POST
     email = data['email'].strip().lower()
-    full_name = data.get('full_name', '').strip()
+    full_name = title_case(data.get('full_name'))
 
     if Teacher.objects.filter(email=email).exists():
         messages.error(request, 'That teacher email is already registered.')
@@ -394,7 +399,7 @@ def register_teacher(request):
         'role': 'teacher',
         'full_name': full_name,
         'email': email,
-        'school_name': data.get('school_name', '').strip(),
+        'school_name': title_case(data.get('school_name')),
         'grades_taught': ','.join(data.getlist('grades_taught')) or data.get('grades_taught', ''),
         'phone': data.get('phone', '').strip(),
         'password': data['password'],
@@ -833,12 +838,20 @@ def parent_add_child(request):
         elif Child.objects.filter(username=username).exists():
             messages.error(request, 'That username is already taken. Please choose another one.')
         else:
-            date_of_birth = parse_date((request.POST.get('date_of_birth') or '').strip())
-            if not date_of_birth:
+            date_of_birth_raw = (request.POST.get('date_of_birth') or '').strip()
+            date_of_birth = parse_date(date_of_birth_raw) if date_of_birth_raw else None
+            if date_of_birth_raw and not date_of_birth:
                 messages.error(request, 'Please enter a valid date of birth.')
                 return render(request, 'add_child.html', {'parent': parent})
-            if date_of_birth > timezone.localdate():
+            if date_of_birth and date_of_birth > timezone.localdate():
                 messages.error(request, 'Date of birth cannot be in the future.')
+                return render(request, 'add_child.html', {'parent': parent})
+
+            legacy_age = request.POST.get('age')
+            try:
+                legacy_age = int(legacy_age) if legacy_age not in (None, '') else None
+            except (TypeError, ValueError):
+                messages.error(request, 'Please enter a valid age.')
                 return render(request, 'add_child.html', {'parent': parent})
 
             first_name = request.POST.get('first_name', '').strip()
@@ -859,6 +872,7 @@ def parent_add_child(request):
                 last_name=last_name,
                 name=child_name,
                 date_of_birth=date_of_birth,  # age is calculated from this automatically — see Child.save()
+                age=legacy_age,
                 grade=int(request.POST['grade']),
                 school_name=request.POST.get('school_name', '').strip() or (teacher.school_name if teacher else ''),
                 parent_email=parent.email,
@@ -1427,12 +1441,24 @@ def questions_page(request, lesson_id):
     if response:
         return response
     lesson = get_object_or_404(Lesson, id=lesson_id)
-    total_questions = ComprehensionQuestion.objects.filter(lesson=lesson).count()
+    total_questions = lesson.reading_activities.count() or ComprehensionQuestion.objects.filter(lesson=lesson).count()
+    if lesson.reading_activities.filter(skill='spelling').exists():
+        next_activity_url = f'/lessons/{lesson_id}/results'
+    elif lesson.visual_items.exists():
+        next_activity_url = f'/lessons/{lesson_id}/visual-activity'
+    elif lesson.pronunciation_words.exists():
+        next_activity_url = f'/lessons/{lesson_id}/pronunciation'
+    elif lesson.spelling_activities.exists():
+        next_activity_url = f'/lessons/{lesson_id}/spelling'
+    else:
+        next_activity_url = f'/lessons/{lesson_id}/results'
     return render(request, 'questions.html', {
         'lesson': lesson,
         'lesson_id': lesson_id,
+        'child': child,
         'child_id': child.id,
         'total_questions': total_questions,
+        'next_activity_url': next_activity_url,
     })
 
 
@@ -1441,6 +1467,12 @@ def visual_activity_page(request, lesson_id):
     if response:
         return response
     lesson = get_object_or_404(Lesson, id=lesson_id)
+    if lesson.grade == 3 and not lesson.visual_items.exists():
+        if lesson.pronunciation_words.exists():
+            return redirect(f'/lessons/{lesson_id}/pronunciation')
+        if lesson.spelling_activities.exists():
+            return redirect(f'/lessons/{lesson_id}/spelling')
+        return redirect(f'/lessons/{lesson_id}/results')
     return render(request, 'visual_activity.html', {
         'lesson': lesson,
         'child': child,
@@ -1519,14 +1551,161 @@ def spelling_page(request, lesson_id):
     return render(request, 'spelling.html', {'lesson': lesson, 'activities': activities, 'child': child})
 
 
+def add_assessment_score(scores, key, score, total):
+    try:
+        score = max(int(score), 0)
+        total = max(int(total), 0)
+    except (TypeError, ValueError):
+        return
+    if not total:
+        return
+    bucket = scores.setdefault(key, {'score': 0, 'total': 0})
+    bucket['score'] += min(score, total)
+    bucket['total'] += total
+
+
+def session_assessment_scores(request, lesson):
+    prefix = f'lesson_{lesson.id}'
+    scores = {}
+    reading_scores = request.session.get(f'{prefix}_reading_skill_scores', {})
+    if isinstance(reading_scores, dict):
+        for key, values in reading_scores.items():
+            if isinstance(values, dict):
+                add_assessment_score(scores, key, values.get('score'), values.get('total'))
+
+    if not reading_scores:
+        add_assessment_score(
+            scores,
+            'reading',
+            request.session.get(f'{prefix}_comprehension_score', 0),
+            request.session.get(
+                f'{prefix}_comprehension_total',
+                lesson.reading_activities.count() or lesson.questions.count(),
+            ),
+        )
+
+    add_assessment_score(
+        scores,
+        'visual_literacy',
+        request.session.get(f'{prefix}_visual_score', 0),
+        request.session.get(f'{prefix}_visual_total', 0),
+    )
+    add_assessment_score(
+        scores,
+        'spelling',
+        request.session.get(f'{prefix}_spelling_score', 0),
+        request.session.get(f'{prefix}_spelling_total', 0),
+    )
+
+    legacy_scores = [
+        ('sequencing', 'seq_score', 'seq_total'),
+        ('inference', 'inference_score', 'inference_total'),
+        ('emotional_literacy', 'feelings_score', 'feelings_total'),
+        ('cause_effect', 'ce_score', 'ce_total'),
+        ('summarising', 'theme_score', 'theme_total'),
+        ('prediction', 'prediction_score', 'prediction_total'),
+    ]
+    for key, score_suffix, total_suffix in legacy_scores:
+        if f'{prefix}_{total_suffix}' in request.session:
+            add_assessment_score(
+                scores,
+                key,
+                request.session.get(f'{prefix}_{score_suffix}', 0),
+                request.session.get(f'{prefix}_{total_suffix}', 0),
+            )
+    return scores
+
+
 def results_page(request, lesson_id):
     child, response = learner_required(request)
     if response:
         return response
     lesson = get_object_or_404(Lesson, id=lesson_id)
     prefix = f'lesson_{lesson_id}'
+<<<<<<< HEAD
     # A completed lesson no longer needs its "continue later" marker.
     request.session.pop(f'{prefix}_resume_url', None)
+=======
+    fresh_suffixes = (
+        'reading_skill_scores', 'comprehension_score', 'comprehension_total',
+        'visual_score', 'visual_total', 'spelling_score', 'spelling_total',
+        'seq_score', 'seq_total', 'inference_score', 'inference_total',
+        'feelings_score', 'feelings_total', 'ce_score', 'ce_total',
+        'theme_score', 'theme_total', 'prediction_score', 'prediction_total',
+    )
+    has_fresh_result = any(f'{prefix}_{suffix}' in request.session for suffix in fresh_suffixes)
+
+    if has_fresh_result:
+        assessment_scores = session_assessment_scores(request, lesson)
+        total_score = sum(item['score'] for item in assessment_scores.values())
+        total_possible = sum(item['total'] for item in assessment_scores.values())
+        percentage = round((total_score / total_possible) * 100) if total_possible else 0
+        stars = 3 if percentage >= 90 else (2 if percentage >= 70 else 1)
+
+        reading_keys = set(assessment_scores) - {'visual_literacy', 'spelling'}
+        comprehension_score = sum(assessment_scores[key]['score'] for key in reading_keys)
+        visual_score = assessment_scores.get('visual_literacy', {}).get('score', 0)
+        spelling_score = assessment_scores.get('spelling', {}).get('score', 0)
+        record, _ = Progress.objects.update_or_create(
+            child=child,
+            lesson=lesson,
+            defaults={
+                'comprehension_score': comprehension_score,
+                'visual_score': visual_score,
+                'spelling_score': spelling_score,
+                'total_score': total_score,
+                'total_possible': total_possible,
+                'stars_earned': stars,
+                'assessment_scores': assessment_scores,
+            },
+        )
+
+        for session_key in list(request.session.keys()):
+            if session_key.startswith(f'{prefix}_'):
+                request.session.pop(session_key, None)
+        request.session.modified = True
+    else:
+        record = Progress.objects.filter(child=child, lesson=lesson).first()
+        if not record:
+            messages.error(request, 'Complete the lesson before viewing results.')
+            return redirect(f'/grade/{child.grade}')
+        total_score = record.total_score
+        total_possible = record.total_possible
+        percentage = record.percentage
+        stars = record.stars_earned
+
+    breakdown = rows_for_record(record)
+    ranked = sorted(breakdown, key=lambda item: (-item['pct'], item['label']))
+    focus_ranked = sorted(breakdown, key=lambda item: (item['pct'], item['label']))
+    best_activities = [item for item in ranked if item['pct'] > 0][:2]
+    best_keys = {item['key'] for item in best_activities}
+    worst_activities = [
+        item for item in focus_ranked
+        if item['pct'] < 100 and item['key'] not in best_keys
+    ][:2]
+    reaction = 'Amazing work' if percentage >= 90 else ('Great job' if percentage >= 70 else 'Good effort')
+    context = {
+        'child': child,
+        'lesson': lesson,
+        'total_score': total_score,
+        'total_possible': total_possible,
+        'percentage': percentage,
+        'stars': range(stars),
+        'reaction': reaction,
+        'breakdown': breakdown,
+        'best_activities': best_activities,
+        'worst_activities': worst_activities,
+    }
+    return render(request, 'results_grade4.html' if lesson.grade == 4 else 'results.html', context)
+
+
+def legacy_results_page(request, lesson_id):
+    child, response = learner_required(request)
+    if response:
+        return response
+    lesson = get_object_or_404(Lesson, id=lesson_id)
+    prefix = f'lesson_{lesson_id}'
+>>>>>>> b58a443a4ffa317ebb9c1b96d24c1713bb925ae5
 
     # ── Grade 4 results path ──────────────────────────────────────────────────
     if lesson.grade == 4:
@@ -1745,7 +1924,7 @@ def results_page(request, lesson_id):
     })
 
 
-def dashboard_page(request, child_id):
+def legacy_dashboard_page(request, child_id):
     child = get_object_or_404(Child, id=child_id)
     if not user_can_view_child(request, child):
         messages.error(request, 'You do not have access to that learner report.')
@@ -1852,7 +2031,7 @@ def dashboard_page(request, child_id):
     })
 
 
-def build_dashboard_row(child):
+def legacy_build_dashboard_row(child):
     records = list(
         Progress.objects.filter(child=child)
         .select_related('lesson')
@@ -2186,6 +2365,270 @@ def subscription_cancel_page(request):
         'account': account,
     })
 
+def assessment_percentage(rows, key):
+    row = next((item for item in rows if item['key'] == key), None)
+    return row['pct'] if row else 0
+
+
+def dashboard_page(request, child_id):
+    child = get_object_or_404(Child, id=child_id)
+    if not user_can_view_child(request, child):
+        messages.error(request, 'You do not have access to that learner report.')
+        return redirect_after_forbidden(request)
+
+    lessons = list(Lesson.objects.filter(grade=child.grade).order_by('id'))
+    records = list(
+        Progress.objects.filter(child=child, lesson__grade=child.grade)
+        .select_related('lesson')
+        .prefetch_related(
+            'lesson__reading_activities',
+            'lesson__questions',
+            'lesson__visual_items',
+            'lesson__spelling_activities',
+        )
+        .order_by('-completed_on')
+    )
+    records_by_lesson = {record.lesson_id: record for record in records}
+    story_rows = []
+    for lesson in lessons:
+        record = records_by_lesson.get(lesson.id)
+        assessment_rows = rows_for_record(record) if record else []
+        assessed_score = sum(item['score'] for item in assessment_rows)
+        assessed_total = sum(item['total'] for item in assessment_rows)
+        story_rows.append({
+            'lesson': lesson,
+            'record': record,
+            'completed': bool(record),
+            'assessment_count': len(assessment_rows),
+            'percentage': round((assessed_score / assessed_total) * 100) if assessed_total else 0,
+        })
+
+    completed_count = sum(1 for item in story_rows if item['completed'])
+    story_count = len(story_rows)
+    progress_percent = round((completed_count / story_count) * 100) if story_count else 0
+    search_query = request.GET.get('q', '').strip()
+    sort_value = request.GET.get('sort', 'curriculum').strip()
+    valid_sorts = {
+        'curriculum', 'recent', 'oldest', 'stars_desc', 'stars_asc',
+        'score_desc', 'score_asc', 'completed_first', 'incomplete_first',
+        'title_asc', 'title_desc',
+    }
+    if sort_value not in valid_sorts:
+        sort_value = 'curriculum'
+
+    def completed_first_key(item):
+        return (0 if item['completed'] else 1, item['lesson'].title.lower())
+
+    if sort_value == 'recent':
+        story_rows.sort(key=lambda item: (
+            0 if item['completed'] else 1,
+            -item['record'].completed_on.timestamp() if item['record'] else 0,
+            item['lesson'].title.lower(),
+        ))
+    elif sort_value == 'oldest':
+        story_rows.sort(key=lambda item: (
+            0 if item['completed'] else 1,
+            item['record'].completed_on.timestamp() if item['record'] else 0,
+            item['lesson'].title.lower(),
+        ))
+    elif sort_value == 'stars_desc':
+        story_rows.sort(key=lambda item: (
+            *completed_first_key(item)[:1],
+            -item['record'].stars_earned if item['record'] else 0,
+            item['lesson'].title.lower(),
+        ))
+    elif sort_value == 'stars_asc':
+        story_rows.sort(key=lambda item: (
+            *completed_first_key(item)[:1],
+            item['record'].stars_earned if item['record'] else 0,
+            item['lesson'].title.lower(),
+        ))
+    elif sort_value == 'score_desc':
+        story_rows.sort(key=lambda item: (
+            *completed_first_key(item)[:1],
+            -item['percentage'] if item['record'] else 0,
+            item['lesson'].title.lower(),
+        ))
+    elif sort_value == 'score_asc':
+        story_rows.sort(key=lambda item: (
+            *completed_first_key(item)[:1],
+            item['percentage'] if item['record'] else 0,
+            item['lesson'].title.lower(),
+        ))
+    elif sort_value == 'completed_first':
+        story_rows.sort(key=completed_first_key)
+    elif sort_value == 'incomplete_first':
+        story_rows.sort(key=lambda item: (
+            0 if not item['completed'] else 1,
+            item['lesson'].title.lower(),
+        ))
+    elif sort_value == 'title_asc':
+        story_rows.sort(key=lambda item: item['lesson'].title.lower())
+    elif sort_value == 'title_desc':
+        story_rows.sort(key=lambda item: item['lesson'].title.lower(), reverse=True)
+
+    if search_query:
+        search_term = search_query.casefold()
+        story_rows = [
+            item for item in story_rows
+            if search_term in item['lesson'].title.casefold()
+        ]
+
+    role = request.session.get('account_role')
+    role_label = {
+        'teacher': 'Teacher dashboard',
+        'learner': 'Learner dashboard',
+        'parent': 'Parent dashboard',
+    }.get(role, 'Progress dashboard')
+
+    return render(request, 'dashboard.html', {
+        'child': child,
+        'story_rows': story_rows,
+        'story_count': story_count,
+        'completed_count': completed_count,
+        'progress_percent': progress_percent,
+        'total_stars': sum(record.stars_earned for record in records),
+        'role_label': role_label,
+        'search_query': search_query,
+        'sort_value': sort_value,
+        'visible_story_count': len(story_rows),
+    })
+
+
+def story_report_page(request, child_id, lesson_id):
+    child = get_object_or_404(Child, id=child_id)
+    if not user_can_view_child(request, child):
+        messages.error(request, 'You do not have access to that learner report.')
+        return redirect_after_forbidden(request)
+
+    lesson = get_object_or_404(Lesson, id=lesson_id, grade=child.grade)
+    record = (
+        Progress.objects.filter(child=child, lesson=lesson)
+        .select_related('lesson')
+        .prefetch_related(
+            'lesson__reading_activities',
+            'lesson__questions',
+            'lesson__visual_items',
+            'lesson__spelling_activities',
+        )
+        .order_by('-completed_on')
+        .first()
+    )
+    if not record:
+        messages.info(request, 'Complete this story to unlock its detailed report.')
+        return redirect(f'/dashboard/{child.id}')
+
+    breakdown = rows_for_record(record)
+    report_score = sum(item['score'] for item in breakdown)
+    report_total = sum(item['total'] for item in breakdown)
+    report_percentage = round((report_score / report_total) * 100) if report_total else 0
+    focus = min(breakdown, key=lambda item: (item['pct'], -item['total'])) if breakdown else None
+    strength = max(breakdown, key=lambda item: (item['pct'], item['total'])) if breakdown else None
+    perfect_work = bool(report_total) and report_score == report_total
+    suggestions = sorted(
+        (item for item in breakdown if item['pct'] < 70),
+        key=lambda item: (item['pct'], -item['total'], item['label']),
+    )
+    diary_response = ReadingActivityResponse.objects.filter(
+        child=child,
+        lesson=lesson,
+    ).first()
+
+    return render(request, 'story_report.html', {
+        'child': child,
+        'lesson': lesson,
+        'record': record,
+        'breakdown': breakdown,
+        'report_score': report_score,
+        'report_total': report_total,
+        'report_percentage': report_percentage,
+        'focus': focus,
+        'strength': strength,
+        'perfect_work': perfect_work,
+        'suggestions': suggestions,
+        'diary_response': diary_response,
+    })
+
+
+def build_dashboard_row(child):
+    records = list(
+        Progress.objects.filter(child=child)
+        .select_related('lesson')
+        .prefetch_related(
+            'lesson__reading_activities',
+            'lesson__questions',
+            'lesson__visual_items',
+            'lesson__spelling_activities',
+        )
+        .order_by('-completed_on')
+    )
+    lessons_done = len(records)
+    record_percentages = {}
+    for record in records:
+        record_rows = rows_for_record(record)
+        record_score = sum(item['score'] for item in record_rows)
+        record_total = sum(item['total'] for item in record_rows)
+        record_percentages[record.id] = (
+            round((record_score / record_total) * 100) if record_total else 0
+        )
+    percentages = list(record_percentages.values())
+    average = round(sum(percentages) / len(percentages)) if percentages else 0
+    total_lessons = Lesson.objects.filter(grade=child.grade).count() or Lesson.objects.count()
+    progress_percent = round((lessons_done / total_lessons) * 100) if total_lessons else 0
+    stars = sum(record.stars_earned for record in records)
+    latest = records[0] if records else None
+    best_lesson = max(records, key=lambda record: record_percentages[record.id], default=None)
+    best_score = record_percentages[best_lesson.id] if best_lesson else 0
+    perfect_work = bool(records) and all(
+        record_percentages[record.id] == 100
+        for record in records
+    )
+    assessment_rows = aggregate_rows(records)
+
+    if perfect_work:
+        focus_label = 'Excellent work'
+        focus_tip = f'{child.name} got every assessed skill correct.'
+    elif assessment_rows:
+        focus = min(assessment_rows, key=lambda item: (item['pct'], -item['total']))
+        focus_label = focus['label']
+        focus_tip = focus['tip']
+    else:
+        focus_label = 'Keep going'
+        focus_tip = 'Complete a lesson to see the first focus area.'
+
+    reading_rows = [
+        item for item in assessment_rows
+        if item['key'] not in {'visual_literacy', 'spelling'}
+    ]
+    reading_score = sum(item['score'] for item in reading_rows)
+    reading_total = sum(item['total'] for item in reading_rows)
+    avg_comprehension = round((reading_score / reading_total) * 100) if reading_total else 0
+
+    return {
+        'child': child,
+        'learner': child,
+        'teacher': child.teacher,
+        'teacher_class': child.teacher_class,
+        'lessons_done': lessons_done,
+        'total_lessons': total_lessons,
+        'progress_percent': min(progress_percent, 100),
+        'average': average,
+        'stars': stars,
+        'latest': latest,
+        'records': records,
+        'avg_comprehension': avg_comprehension,
+        'avg_visual': assessment_percentage(assessment_rows, 'visual_literacy'),
+        'avg_spelling': assessment_percentage(assessment_rows, 'spelling'),
+        'best_lesson': best_lesson,
+        'best_score': best_score,
+        'focus_area': focus_label,
+        'focus_tip': focus_tip,
+        'needs_help': bool(percentages) and average < 70,
+        'perfect_work': perfect_work,
+        'assessment_rows': assessment_rows,
+    }
+
+
 def parent_dashboard(request):
     if request.session.get('account_role') != 'parent':
         return redirect('/login?role=parent')
@@ -2241,6 +2684,11 @@ def teacher_dashboard(request):
         })
 
     class_average = round(sum(row['average'] for row in active_rows) / len(active_rows)) if active_rows else 0
+    # Prepare up to 3 preview learners for the compact avatar stack
+    preview_learners = learner_rows[:3]
+    # Anchor target for ellipsis (jump to first grade section if present)
+    first_grade_anchor = f"grade-section-{grade_sections[0]['grade']}" if grade_sections else ''
+
     return render(request, 'teacher_dashboard.html', {
         'teacher': teacher,
         'learner_rows': learner_rows,
@@ -2250,6 +2698,8 @@ def teacher_dashboard(request):
         'total_lessons_done': sum(row['lessons_done'] for row in learner_rows),
         'total_stars': sum(row['stars'] for row in learner_rows),
         'needs_help_count': sum(1 for row in learner_rows if row['needs_help']),
+        'preview_learners': preview_learners,
+        'first_grade_anchor': first_grade_anchor,
         'teacher_classes': teacher_classes,
     })
 
@@ -2357,7 +2807,7 @@ def written_response_page(request, lesson_id):
     prompt = lesson.written_prompts.first()
 
     if request.method == 'POST':
-        text = request.POST.get('response_text', '').strip()
+        text = capitalize_first(request.POST.get('response_text', ''))
         # Written response counts as 1 mark for attempting it
         attempted = 1 if text else 0
         request.session[f'lesson_{lesson_id}_written_score'] = attempted

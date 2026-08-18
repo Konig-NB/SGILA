@@ -6,6 +6,20 @@ from django.db import models
 from django.utils import timezone
 
 
+def capitalize_first(value):
+    """Return text with its first non-space character capitalized."""
+    value = (value or '').strip()
+    for index, character in enumerate(value):
+        if character.isalpha():
+            return f'{value[:index]}{character.upper()}{value[index + 1:]}'
+    return value
+
+
+def title_case(value):
+    """Return trimmed text with every word title-cased."""
+    return (value or '').strip().title()
+
+
 def generate_class_code():
     """Generate a short teacher/class code for parent and learner linking."""
     return ''.join(random.choices(string.ascii_uppercase + string.digits, k=6))
@@ -23,6 +37,10 @@ class Parent(models.Model):
     def __str__(self):
         return self.full_name
 
+    def save(self, *args, **kwargs):
+        self.full_name = title_case(self.full_name)
+        super().save(*args, **kwargs)
+
 
 class Teacher(models.Model):
     """Teacher account for monitoring class progress."""
@@ -38,6 +56,11 @@ class Teacher(models.Model):
 
     def __str__(self):
         return self.full_name
+
+    def save(self, *args, **kwargs):
+        self.full_name = title_case(self.full_name)
+        self.school_name = title_case(self.school_name)
+        super().save(*args, **kwargs)
 
 
 class Child(models.Model):
@@ -96,6 +119,11 @@ class Child(models.Model):
             self.save(update_fields=['age'])
 
     def save(self, *args, **kwargs):
+        self.username = capitalize_first(self.username)
+        self.first_name = title_case(self.first_name)
+        self.last_name = title_case(self.last_name)
+        self.name = title_case(self.name)
+        self.school_name = title_case(self.school_name)
         if self.date_of_birth:
             self.age = self.calculate_age()
         super().save(*args, **kwargs)
@@ -114,6 +142,10 @@ class TeacherClass(models.Model):
 
     def __str__(self):
         return f"{self.teacher.full_name} - {self.name}"
+
+    def save(self, *args, **kwargs):
+        self.name = capitalize_first(self.name)
+        super().save(*args, **kwargs)
 
 
 class Lesson(models.Model):
@@ -178,6 +210,109 @@ class ComprehensionQuestion(models.Model):
         return f"{self.lesson.title} — {self.question[:50]}"
 
 
+class ReadingActivity(models.Model):
+    """A grade-calibrated comprehension activity for one story."""
+
+    MULTIPLE_CHOICE = 'multiple_choice'
+    TRUE_FALSE = 'true_false'
+    OPEN_ENDED = 'open_ended'
+    SEQUENCING = 'sequencing'
+    MATCHING = 'matching'
+    CLOZE = 'cloze'
+    ORAL_RESPONSE = 'oral_response'
+    PREDICTION = 'prediction'
+    REASONING = 'reasoning'
+    CROSSWORD = 'crossword'
+    WORD_SCRAMBLE = 'word_scramble'
+
+    ACTIVITY_TYPES = [
+        (MULTIPLE_CHOICE, 'Multiple choice'),
+        (TRUE_FALSE, 'True or false'),
+        (OPEN_ENDED, 'Open-ended response'),
+        (SEQUENCING, 'Sequencing'),
+        (MATCHING, 'Matching'),
+        (CLOZE, 'Fill in the blank'),
+        (ORAL_RESPONSE, 'Oral response'),
+        (PREDICTION, 'Prediction'),
+        (REASONING, 'Reasoning'),
+        (CROSSWORD, 'Crossword puzzle'),
+        (WORD_SCRAMBLE, 'Word scramble'),
+    ]
+
+    SKILL_CHOICES = [
+        ('literal_comprehension', 'Literal comprehension'),
+        ('sequencing', 'Sequencing'),
+        ('inference', 'Inference'),
+        ('vocabulary_in_context', 'Vocabulary in context'),
+        ('prediction', 'Prediction'),
+        ('summarising', 'Summarising'),
+        ('character_motivation', 'Character motivation'),
+        ('text_to_self', 'Text-to-self connection'),
+        ('fact_vs_opinion', 'Fact versus opinion'),
+        ('spelling', 'Spelling'),
+    ]
+
+    lesson = models.ForeignKey(Lesson, on_delete=models.CASCADE, related_name='reading_activities')
+    activity_type = models.CharField(max_length=30, choices=ACTIVITY_TYPES)
+    skill = models.CharField(max_length=40, choices=SKILL_CHOICES)
+    question = models.TextField()
+    options = models.JSONField(default=list, blank=True)
+    correct_answer = models.TextField(blank=True)
+    items_in_correct_order = models.JSONField(default=list, blank=True)
+    order = models.PositiveIntegerField(default=0)
+    group_number = models.PositiveSmallIntegerField(default=0)
+    group_title = models.CharField(max_length=120, blank=True)
+
+    class Meta:
+        ordering = ['order', 'id']
+
+    @property
+    def requires_review(self):
+        return self.activity_type in {
+            self.OPEN_ENDED,
+            self.ORAL_RESPONSE,
+            self.PREDICTION,
+            self.REASONING,
+        }
+
+    def get_options(self):
+        if self.activity_type == self.TRUE_FALSE and not self.options:
+            return ['True', 'False']
+        if isinstance(self.options, dict):
+            return dict(self.options)
+        return list(self.options or [])
+
+    def __str__(self):
+        return f"{self.lesson.title} - {self.get_activity_type_display()}: {self.question[:50]}"
+
+
+class ReadingActivityResponse(models.Model):
+    """Stores a learner's guided writing response for a story."""
+
+    child = models.ForeignKey(Child, on_delete=models.CASCADE, related_name='reading_responses')
+    lesson = models.ForeignKey(Lesson, on_delete=models.CASCADE, related_name='learner_responses')
+    activity = models.ForeignKey(
+        ReadingActivity,
+        on_delete=models.SET_NULL,
+        related_name='learner_responses',
+        null=True,
+        blank=True,
+    )
+    response = models.JSONField(default=dict, blank=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=['child', 'lesson'],
+                name='unique_child_lesson_reading_response',
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.child.name} - {self.lesson.title} response"
+
+
 class VisualActivityItem(models.Model):
     """One image-word pair in the visual matching activity."""
     lesson = models.ForeignKey(Lesson, on_delete=models.CASCADE, related_name='visual_items')
@@ -238,6 +373,7 @@ class Progress(models.Model):
     total_score = models.IntegerField(default=0)
     total_possible = models.IntegerField(default=0)
     stars_earned = models.IntegerField(default=0)
+    assessment_scores = models.JSONField(default=dict, blank=True)
     completed_on = models.DateTimeField(auto_now_add=True)
 
     @property
@@ -532,7 +668,13 @@ class Subscription(models.Model):
 
     def __str__(self):
         owner = self.parent or self.teacher
-        return f"{self.get_plan_type_display()} — {owner} ({self.status})"
+        return f"{self.get_plan_type_display()} - {owner} ({self.status})"
+
+    def save(self, *args, **kwargs):
+        self.school_name = title_case(self.school_name)
+        for field in ('district_or_province', 'contact_name', 'funding_source', 'notes', 'payer_name', 'bank_name'):
+            setattr(self, field, capitalize_first(getattr(self, field)))
+        super().save(*args, **kwargs)
 
 
 class OTPToken(models.Model):
@@ -612,6 +754,10 @@ class Message(models.Model):
     def __str__(self):
         sender = self.sender_parent or self.sender_teacher
         return f"Message about {self.child.name} from {self.sender_role} ({sender}) at {self.sent_at:%Y-%m-%d %H:%M}"
+
+    def save(self, *args, **kwargs):
+        self.body = capitalize_first(self.body)
+        super().save(*args, **kwargs)
 
 
 # ───────────── AI story generation (background job tracking) ─────────────

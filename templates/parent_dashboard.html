@@ -1,12 +1,16 @@
 {% extends 'base.html' %}
+{% load static %}
 {% block title %}Parent Dashboard - SGILA{% endblock %}
 {% block content %}
 <section class="parent-picker-page">
   <header class="pd-hero">
-    <div>
-      <p class="eyebrow">Parent dashboard</p>
-      <h1>Hello, {{ parent.full_name }}!</h1>
-      <p>Choose a child to open their learner progress report.</p>
+    <div class="pd-hero-main">
+      <div class="pd-greeting-copy">
+        <p class="eyebrow">Parent dashboard</p>
+        <h1>Hello, {{ parent.full_name }}!</h1>
+        <p>Choose a child to open their learner progress report.</p>
+      </div>
+      <img class="pd-hero-koaly" src="{% static 'img/koaly_cutout.png' %}" alt="Koaly mascot" aria-label="Koaly mascot">
     </div>
     <a href="/parent/add-child" class="pd-add-child">Add child</a>
   </header>
@@ -48,7 +52,7 @@
             <div class="lr-bar-top"><span>Lessons</span><span>{{ card.lessons_done }}/{{ card.total_lessons }}</span></div>
             <div class="lr-bar-track">
               <div class="lr-bar-fill {% if card.average >= 70 %}green{% elif card.average >= 50 %}amber{% else %}red{% endif %}"
-                   style="width: {{ card.progress_percent }}%;"></div>
+                   style="--progress: {{ card.progress_percent }}%;"></div>
             </div>
           </div>
 
