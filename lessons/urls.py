@@ -23,6 +23,7 @@ urlpatterns = [
     path('grade/<int:grade>/generate-ai-story', views.generate_ai_story_ajax, name='generate-ai-story'),
     path('ai-story-job/<int:job_id>/status', views.ai_story_job_status, name='ai-story-job-status'),
     path('lessons/<int:lesson_id>/story', views.story_page, name='story-page'),
+    path('lessons/<int:lesson_id>/activity-pause', views.activity_pause, name='activity-pause'),
     path('lessons/<int:lesson_id>/questions', views.questions_page, name='questions-page'),
     path('lessons/<int:lesson_id>/visual-activity', views.visual_activity_page, name='visual-activity-page'),
     path('lessons/<int:lesson_id>/pronunciation', views.pronunciation_page, name='pronunciation-page'),

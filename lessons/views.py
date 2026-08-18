@@ -26,6 +26,7 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
 from django.utils.dateparse import parse_date
 from django.views.decorators.http import require_http_methods
+from django.views.decorators.csrf import ensure_csrf_cookie
 
 from api.models import (
     AIStoryJob,
@@ -85,6 +86,52 @@ def learner_required(request):
     # so it rolls over on the child's birthday without needing a scheduled task.
     child.refresh_age_if_stale()
     return child, None
+
+
+def activity_choices_for(lesson):
+    """Return the learner-facing activity menu for a lesson."""
+    base = f'/lessons/{lesson.id}'
+    choices = [{'label': 'Read the story', 'url': f'{base}/story'}]
+    if lesson.grade == 4:
+        choices.extend([
+            {'label': 'Comprehension', 'url': f'{base}/questions'},
+            {'label': 'Sequencing', 'url': f'{base}/sequencing'},
+            {'label': 'Inference', 'url': f'{base}/inference'},
+            {'label': 'Feelings', 'url': f'{base}/feelings'},
+            {'label': 'Cause and effect', 'url': f'{base}/cause-effect'},
+            {'label': 'Main lesson', 'url': f'{base}/theme'},
+        ])
+    else:
+        choices.extend([
+            {'label': 'Comprehension', 'url': f'{base}/questions'},
+            {'label': 'Visual matching', 'url': f'{base}/visual-activity'},
+            {'label': 'Pronunciation', 'url': f'{base}/pronunciation'},
+            {'label': 'Spelling', 'url': f'{base}/spelling'},
+        ])
+    return choices
+
+
+def activity_score_summary(request, lesson):
+    """Summarise the in-progress attempt stored in the learner session."""
+    prefix = f'lesson_{lesson.id}_'
+    if lesson.grade == 4:
+        fields = [
+            ('comprehension_score', 'comprehension_total', lesson.questions.count()),
+            ('seq_score', 'seq_total', 1),
+            ('inference_score', 'inference_total', lesson.inference_questions.count()),
+            ('feelings_score', 'feelings_total', lesson.feelings_questions.count()),
+            ('ce_score', 'ce_total', lesson.cause_effect_pairs.count()),
+            ('theme_score', 'theme_total', 1),
+        ]
+    else:
+        fields = [
+            ('comprehension_score', 'comprehension_total', lesson.questions.count()),
+            ('visual_score', 'visual_total', lesson.visual_items.count()),
+            ('spelling_score', 'spelling_total', lesson.spelling_activities.count()),
+        ]
+    score = sum(int(request.session.get(prefix + score_key, 0)) for score_key, _, _ in fields)
+    possible = sum(int(request.session.get(prefix + total_key, default)) for _, total_key, default in fields)
+    return score, possible
 
 
 def parse_grades(grades_taught):
@@ -1294,6 +1341,8 @@ def grade_home(request, grade):
             'completed': bool(record),
             'stars': range(record.stars_earned) if record else range(0),
             'is_current_ai_story': lesson.is_ai_generated and lesson.id == getattr(latest_ai_lesson, 'id', None),
+            'activities': activity_choices_for(lesson),
+            'resume_url': request.session.get(f'lesson_{lesson.id}_resume_url'),
         })
 
     required_lessons = curated_lessons + public_ai_stories
@@ -1320,6 +1369,31 @@ def grade_home(request, grade):
         'ai_story_job_id': active_ai_job.id if active_ai_job else None,
         'grades_with_ai': (1, 2, 3, 4),
     })
+
+
+@ensure_csrf_cookie
+@require_http_methods(["GET", "POST"])
+def activity_pause(request, lesson_id):
+    """Provide the running score and save a safe resume destination for a learner."""
+    child, response = learner_required(request)
+    if response:
+        return response
+    lesson = get_object_or_404(Lesson, id=lesson_id, grade=child.grade)
+
+    if request.method == 'POST':
+        try:
+            data = json.loads(request.body or '{}')
+        except json.JSONDecodeError:
+            data = {}
+        resume_url = data.get('resume_url', '')
+        allowed_urls = {item['url'] for item in activity_choices_for(lesson)}
+        if resume_url not in allowed_urls:
+            return JsonResponse({'error': 'Invalid activity to resume.'}, status=400)
+        request.session[f'lesson_{lesson.id}_resume_url'] = resume_url
+        request.session.modified = True
+
+    score, possible = activity_score_summary(request, lesson)
+    return JsonResponse({'score': score, 'total': possible})
 
 
 def story_page(request, lesson_id):
@@ -1451,6 +1525,8 @@ def results_page(request, lesson_id):
         return response
     lesson = get_object_or_404(Lesson, id=lesson_id)
     prefix = f'lesson_{lesson_id}'
+    # A completed lesson no longer needs its "continue later" marker.
+    request.session.pop(f'{prefix}_resume_url', None)
 
     # ── Grade 4 results path ──────────────────────────────────────────────────
     if lesson.grade == 4:

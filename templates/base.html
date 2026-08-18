@@ -87,5 +87,48 @@
   })();
   </script>
   {% endif %}
+  {% if request.session.account_role == 'learner' %}
+  <div class="learner-modal hidden" id="activity-pause-modal" role="dialog" aria-modal="true" aria-labelledby="activity-pause-title">
+    <div class="learner-modal-card">
+      <h2 id="activity-pause-title">Ready for the next activity?</h2>
+      <p id="activity-pause-score">Your score so far: loading…</p>
+      <p>You can keep going now, or take a break and return to this activity later.</p>
+      <div class="learner-modal-options">
+        <button type="button" class="btn btn-primary" id="activity-continue">Continue</button>
+        <button type="button" class="btn btn-light" id="activity-pause">Pause for later</button>
+      </div>
+    </div>
+  </div>
+  <script>
+  (function () {
+    const modal = document.getElementById('activity-pause-modal');
+    if (!modal) return;
+    let nextUrl = '';
+    const score = document.getElementById('activity-pause-score');
+    const csrfToken = (document.cookie.match(/(?:^|; )csrftoken=([^;]*)/) || [])[1] || '';
+    document.addEventListener('click', async (event) => {
+      const link = event.target.closest('a.btn');
+      if (!link || !/\/lessons\/\d+\/(questions|visual-activity|pronunciation|spelling|sequencing|inference|prediction|feelings|cause-effect|theme|written-response)$/.test(link.pathname)) return;
+      const current = location.pathname.match(/^\/lessons\/(\d+)\//);
+      if (!current || link.pathname === location.pathname) return;
+      event.preventDefault(); nextUrl = link.pathname;
+      score.textContent = 'Your score so far: loading…'; modal.classList.remove('hidden');
+      try {
+        const response = await fetch(`/lessons/${current[1]}/activity-pause`);
+        const data = await response.json();
+        score.textContent = `Your score so far: ${data.score} out of ${data.total}`;
+      } catch (_) { score.textContent = 'Your score so far is safely saved.'; }
+    });
+    document.getElementById('activity-continue').addEventListener('click', () => { location.href = nextUrl; });
+    document.getElementById('activity-pause').addEventListener('click', async () => {
+      const current = location.pathname.match(/^\/lessons\/(\d+)\//);
+      if (!current) return;
+      try {
+        await fetch(`/lessons/${current[1]}/activity-pause`, {method: 'POST', headers: {'Content-Type': 'application/json', 'X-CSRFToken': decodeURIComponent(csrfToken)}, body: JSON.stringify({resume_url: nextUrl})});
+      } finally { location.href = `/grade/{{ request.session.child_grade }}`; }
+    });
+  })();
+  </script>
+  {% endif %}
 </body>
 </html>

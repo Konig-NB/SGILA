@@ -33,7 +33,9 @@
 
 <section class="lesson-grid">
   {% for lesson in lessons %}
-    <a href="/lessons/{{ lesson.id }}/story" class="lesson-card{% if lesson.is_current_ai_story %} current-ai-story{% endif %}">
+    <a href="/lessons/{{ lesson.id }}/story" class="lesson-card{% if lesson.is_current_ai_story %} current-ai-story{% endif %}"
+       data-lesson-title="{{ lesson.title }}" data-activities='[{% for activity in lesson.activities %}{"label":"{{ activity.label }}","url":"{{ activity.url }}"}{% if not forloop.last %},{% endif %}{% endfor %}]'
+       {% if lesson.resume_url %}data-resume-url="{{ lesson.resume_url }}"{% endif %}>
       <div class="lesson-cover">
         {% if lesson.thumbnail_image %}
           <img src="{{ lesson.thumbnail_image }}" alt="{{ lesson.title }} cover">
@@ -56,6 +58,15 @@
   {% endfor %}
 </section>
 
+<div class="learner-modal hidden" id="activity-picker" role="dialog" aria-modal="true" aria-labelledby="activity-picker-title">
+  <div class="learner-modal-card">
+    <h2 id="activity-picker-title">Which activity do you want to start with?</h2>
+    <p id="activity-picker-detail">Choose what feels right for you today.</p>
+    <div id="activity-picker-options" class="learner-modal-options"></div>
+    <button type="button" class="btn btn-light" id="activity-picker-cancel">Not now</button>
+  </div>
+</div>
+
 {% if grade in grades_with_ai %}
 <section class="ai-story-panel" id="ai-story-panel">
   <div>
@@ -70,6 +81,33 @@
 </section>
 
 <script>
+(function () {
+  const modal = document.getElementById('activity-picker');
+  const options = document.getElementById('activity-picker-options');
+  const detail = document.getElementById('activity-picker-detail');
+  document.querySelectorAll('.lesson-card[data-activities]').forEach((card) => {
+    card.addEventListener('click', (event) => {
+      event.preventDefault();
+      const activities = JSON.parse(card.dataset.activities);
+      options.innerHTML = '';
+      if (card.dataset.resumeUrl) {
+        const resume = document.createElement('a');
+        resume.className = 'btn btn-primary'; resume.href = card.dataset.resumeUrl;
+        resume.textContent = 'Continue where I paused'; options.appendChild(resume);
+        detail.textContent = `You have a saved place in ${card.dataset.lessonTitle}. Or choose another activity.`;
+      } else {
+        detail.textContent = `Choose an activity from ${card.dataset.lessonTitle}.`;
+      }
+      activities.forEach((activity) => {
+        const link = document.createElement('a'); link.className = 'btn btn-light';
+        link.href = activity.url; link.textContent = activity.label; options.appendChild(link);
+      });
+      modal.classList.remove('hidden');
+    });
+  });
+  document.getElementById('activity-picker-cancel').addEventListener('click', () => modal.classList.add('hidden'));
+})();
+
 (function () {
   function getCookie(name) {
     const match = document.cookie.match('(^|;)\\s*' + name + '\\s*=\\s*([^;]+)');
