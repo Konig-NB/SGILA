@@ -9729,3 +9729,53 @@ body:not(.diagram-body) .story-diary-signature {
   margin-top: 1.4rem;
   flex-wrap: wrap;
 }
+
+/* ─── Kid-friendly trial-expired visual (learner view) ──────────────── */
+.trial-kid-visual {
+  position: relative;
+  width: 140px;
+  margin: 0 auto 1.2rem;
+}
+
+.trial-kid-koaly {
+  width: 140px;
+  margin: 0;
+  filter: grayscale(.15);
+}
+
+.trial-kid-stop {
+  position: absolute;
+  bottom: -6px;
+  right: -14px;
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  background: #e6453f;
+  border: 5px solid var(--white);
+  box-shadow: 0 6px 14px rgba(230, 69, 63, .35);
+}
+
+.trial-kid-stop::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 34px;
+  height: 6px;
+  background: var(--white);
+  border-radius: 3px;
+  transform: translate(-50%, -50%) rotate(-45deg);
+}
+
+.trial-kid-headline {
+  font-size: 2.4rem;
+  margin-bottom: .6rem;
+  color: #e6453f;
+}
+
+.trial-kid-message {
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: var(--ink);
+  margin-bottom: 0;
+}

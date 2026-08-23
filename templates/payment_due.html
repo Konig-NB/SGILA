@@ -6,19 +6,19 @@
 
 <div class="payment-due-overlay">
   <div class="payment-due-modal">
-    <img class="payment-due-koaly" src="{% static 'img/koaly_cutout.png' %}" alt="" aria-hidden="true">
-    <h1>Your free trial has ended</h1>
-
     {% if role == 'learner' %}
-      <p>
-        Hi {{ child.name }}! Your grown-up's 30-day free trial on SGILA has come to an end.
-        Ask them to renew the subscription so you can keep reading your stories.
-      </p>
-      <p class="payment-due-sub">Once payment is sorted, come straight back and pick up where you left off.</p>
+      <div class="trial-kid-visual">
+        <img class="payment-due-koaly trial-kid-koaly" src="{% static 'img/sad-bigK.png' %}" alt="" aria-hidden="true">
+        <span class="trial-kid-stop" aria-hidden="true"></span>
+      </div>
+      <h1 class="trial-kid-headline">Oh no!</h1>
+      <p class="trial-kid-message">Ask a grown-up to help with subscription renewal</p>
       <div class="payment-due-actions">
         <a class="btn btn-primary" href="/logout">Back to sign in</a>
       </div>
     {% else %}
+      <img class="payment-due-koaly" src="{% static 'img/koaly_cutout.png' %}" alt="" aria-hidden="true">
+      <h1>Your free trial has ended</h1>
       <p>
         Your 30-day free trial has ended and payment is now due to keep full access to your
         {% if role == 'teacher' %}class dashboard{% else %}dashboard{% endif %} and your
