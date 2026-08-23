@@ -25,15 +25,15 @@
   {% if grade_confirmation_cards %}
     <section class="gc-banner" aria-label="Grade confirmation needed">
       <div class="gc-banner-head">
-        <strong>New school year, please confirm each child's grade</strong>
-        <p>SGILA never moves a learner up a grade by itself. Tell us what grade they're really in at school now. The same grade again is fine if they're repeating it.</p>
+        <strong>New school year — please confirm each child's grade</strong>
+        <p>SGILA never moves a learner up a grade by itself. Tell us what grade they're really in at school now — the same grade again is fine if they're repeating it.</p>
       </div>
       <div class="gc-banner-list">
         {% for card in grade_confirmation_cards %}
           <form action="/confirm-grade/{{ card.child.id }}" method="post" class="gc-confirm-row">
             {% csrf_token %}
             <span class="gc-confirm-name">{{ card.child.name }}</span>
-            <span class="gc-confirm-current">Was In Grade {{ card.child.grade }}</span>
+            <span class="gc-confirm-current">Was Grade {{ card.child.grade }}</span>
             <label class="gc-confirm-label" for="gc-grade-{{ card.child.id }}">Now in</label>
             <select id="gc-grade-{{ card.child.id }}" name="grade" class="gc-confirm-select">
               <option value="1" {% if card.suggested_grade == 1 %}selected{% endif %}>Grade 1</option>

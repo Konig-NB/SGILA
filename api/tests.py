@@ -4,6 +4,7 @@ from pathlib import Path
 
 from django.contrib.auth.hashers import make_password
 from django.core.management import call_command
+from django.core import mail
 from django.test import Client, TestCase
 
 from api.curriculum_enrichment import (
@@ -1167,3 +1168,83 @@ class GradeConfirmationTests(TestCase):
         self.child.refresh_from_db()
         self.assertEqual(self.child.grade, 2)
         self.assertTrue(self.child.needs_grade_confirmation())
+
+
+class GradeReminderEmailTests(TestCase):
+    """Covers the send_grade_reminders management command: who gets emailed,
+    grouping multiple children per parent, and not spamming on re-runs."""
+
+    def setUp(self):
+        self.parent = Parent.objects.create(
+            full_name='Reminder Parent', email='reminder-parent@example.com',
+            password=make_password('password123'), accepted_popia=True,
+        )
+        self.child = Child.objects.create(
+            name='Reminder Kid', username='remindkid', grade=2,
+            parent=self.parent, parent_email=self.parent.email,
+            password=make_password('x'),
+        )
+
+    def backdate(self, child, years=1):
+        child.grade_confirmed_year = current_school_year() - years
+        child.save(update_fields=['grade_confirmed_year'])
+
+    def test_no_email_when_already_confirmed(self):
+        self.child.grade_confirmed_year = current_school_year()
+        self.child.save(update_fields=['grade_confirmed_year'])
+        call_command('send_grade_reminders')
+        self.assertEqual(len(mail.outbox), 0)
+
+    def test_emails_parent_when_confirmation_due(self):
+        self.backdate(self.child)
+        call_command('send_grade_reminders')
+        self.assertEqual(len(mail.outbox), 1)
+        sent = mail.outbox[0]
+        self.assertEqual(sent.to, [self.parent.email])
+        self.assertIn('Reminder Kid', sent.body)
+        self.assertIn('/login', sent.body)
+        # No one-click grade-change link — must not embed a confirm-grade URL.
+        self.assertNotIn('/confirm-grade/', sent.body)
+
+        self.child.refresh_from_db()
+        self.assertTrue(self.child.reminder_already_sent_this_year())
+
+    def test_does_not_resend_within_the_same_year(self):
+        self.backdate(self.child)
+        call_command('send_grade_reminders')
+        call_command('send_grade_reminders')
+        self.assertEqual(len(mail.outbox), 1)  # still just one email total
+
+    def test_dry_run_sends_nothing(self):
+        self.backdate(self.child)
+        call_command('send_grade_reminders', '--dry-run')
+        self.assertEqual(len(mail.outbox), 0)
+        self.child.refresh_from_db()
+        self.assertFalse(self.child.reminder_already_sent_this_year())
+
+    def test_multiple_children_same_parent_get_one_combined_email(self):
+        second_child = Child.objects.create(
+            name='Second Kid', username='secondkid', grade=1,
+            parent=self.parent, parent_email=self.parent.email,
+            password=make_password('x'),
+        )
+        self.backdate(self.child)
+        self.backdate(second_child)
+
+        call_command('send_grade_reminders')
+
+        self.assertEqual(len(mail.outbox), 1)
+        body = mail.outbox[0].body
+        self.assertIn('Reminder Kid', body)
+        self.assertIn('Second Kid', body)
+
+    def test_confirming_stops_further_reminders(self):
+        self.backdate(self.child)
+        call_command('send_grade_reminders')
+        self.assertEqual(len(mail.outbox), 1)
+
+        self.child.record_grade_confirmation(3, confirmed_by=GradeHistory.PARENT, confirmed_by_name='Reminder Parent')
+
+        # Confirmed for this year now — running the reminder job again must not re-email.
+        call_command('send_grade_reminders')
+        self.assertEqual(len(mail.outbox), 1)

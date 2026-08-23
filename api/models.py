@@ -90,6 +90,10 @@ class Child(models.Model):
     # something the app infers from app usage — see needs_grade_confirmation() below and
     # GradeHistory for the full record of what was confirmed each year.
     grade_confirmed_year = models.IntegerField(null=True, blank=True)
+    # The school year we last emailed the parent a "please confirm the grade"
+    # reminder for. Separate from grade_confirmed_year so the reminder job can
+    # tell "already reminded, don't spam" apart from "already confirmed, don't remind".
+    grade_reminder_sent_year = models.IntegerField(null=True, blank=True)
     school_name = models.CharField(max_length=160, blank=True)
     parent_email = models.EmailField()
     photo = models.FileField(upload_to='child_photos/', blank=True)
@@ -148,6 +152,15 @@ class Child(models.Model):
         dashboard can ask a human: 'What grade is <name> actually in now?'
         """
         return self.grade_confirmed_year is None or self.grade_confirmed_year < current_school_year()
+
+    def reminder_already_sent_this_year(self):
+        """True if send_grade_reminders already emailed this child's parent for
+        the current school year — keeps the reminder to one email per year."""
+        return self.grade_reminder_sent_year == current_school_year()
+
+    def mark_reminder_sent(self):
+        self.grade_reminder_sent_year = current_school_year()
+        self.save(update_fields=['grade_reminder_sent_year'])
 
     def suggested_next_grade(self):
         """Default suggestion shown alongside the confirmation prompt — the parent
