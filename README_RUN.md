@@ -45,8 +45,10 @@ intentionally want to reset the app to its original demo accounts.
 ## Email and OTP Testing
 
 The clean-machine package uses Django's console email backend by default. OTP and
-password-reset messages appear in the terminal. SMTP credentials are optional and
-must be supplied through a local `.env` file based on `.env.example`.
+password-reset messages appear in the terminal. For inbox delivery, copy
+`.env.example` to `.env`, set `EMAIL_HOST_USER` and `EMAIL_HOST_PASSWORD`, then
+restart the server. Gmail requires an app password rather than the normal account
+password. SMTP is selected automatically when both values are configured.
 
 ## Stop the Server
 
