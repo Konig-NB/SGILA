@@ -5793,6 +5793,76 @@ body:not(.diagram-body) .pd-section-hdr {
   padding: 2px 12px 0;
 }
 
+body:not(.diagram-body) .gc-banner {
+  display: grid;
+  gap: 14px;
+  max-width: 960px;
+  margin: 0 auto 18px;
+  padding: clamp(16px, 2.6vw, 24px);
+  border: 1px solid rgba(248, 200, 75, .55);
+  border-radius: 20px;
+  background: linear-gradient(135deg, rgba(255, 244, 199, .9), rgba(255, 255, 255, .92));
+  box-shadow: 0 14px 34px rgba(191, 148, 22, .14);
+}
+
+body:not(.diagram-body) .gc-banner-head strong {
+  display: block;
+  color: #7a5411;
+  font-size: 1.05rem;
+}
+
+body:not(.diagram-body) .gc-banner-head p {
+  margin: 4px 0 0;
+  color: #6d7482;
+  font-size: .92rem;
+}
+
+body:not(.diagram-body) .gc-banner-list {
+  display: grid;
+  gap: 10px;
+}
+
+body:not(.diagram-body) .gc-confirm-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  border: 1px solid rgba(220, 225, 238, .84);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, .86);
+}
+
+body:not(.diagram-body) .gc-confirm-name {
+  font-weight: 900;
+  color: #17233a;
+}
+
+body:not(.diagram-body) .gc-confirm-current {
+  color: #6d7482;
+  font-size: .86rem;
+}
+
+body:not(.diagram-body) .gc-confirm-label {
+  margin-left: auto;
+  color: #6d7482;
+  font-size: .86rem;
+  font-weight: 700;
+}
+
+body:not(.diagram-body) .gc-confirm-select {
+  padding: 8px 10px;
+  border: 1px solid rgba(220, 225, 238, .9);
+  border-radius: 10px;
+  background: #fff;
+  font-weight: 700;
+  color: #17233a;
+}
+
+body:not(.diagram-body) .gc-confirm-btn {
+  white-space: nowrap;
+}
+
 body:not(.diagram-body) .lr-rows {
   display: grid;
   gap: 12px;
