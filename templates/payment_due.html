@@ -1,0 +1,36 @@
+{% extends 'base.html' %}
+{% load static %}
+{% block title %}Payment due - SGILA{% endblock %}
+{% block body_class %}payment-due-body{% endblock %}
+{% block content %}
+
+<div class="payment-due-overlay">
+  <div class="payment-due-modal">
+    {% if role == 'learner' %}
+      <div class="trial-kid-visual">
+        <img class="payment-due-koaly trial-kid-koaly" src="{% static 'img/saad_koala.png' %}" alt="" aria-hidden="true">
+        <span class="trial-kid-stop" aria-hidden="true"></span>
+      </div>
+      <h1 class="trial-kid-headline">Oh no!</h1>
+      <p class="trial-kid-message">Ask a grown-up to help with subscription renewal</p>
+      <div class="payment-due-actions">
+        <a class="btn btn-primary" href="/logout">Back to sign in</a>
+      </div>
+    {% else %}
+      <img class="payment-due-koaly" src="{% static 'img/koaly_cutout.png' %}" alt="" aria-hidden="true">
+      <h1>Your free trial has ended</h1>
+      <p>
+        Your 30-day free trial has ended and payment is now due to keep full access to your
+        {% if role == 'teacher' %}class dashboard{% else %}dashboard{% endif %} and your
+        {% if role == 'teacher' %}learners'{% else %}child's{% endif %} lessons.
+      </p>
+      <p class="payment-due-sub">Choose a plan below to pick up right where you left off.</p>
+      <div class="payment-due-actions">
+        <a class="btn btn-primary" href="/subscription">Subscribe now</a>
+        <a class="btn btn-light" href="/logout">Log out</a>
+      </div>
+    {% endif %}
+  </div>
+</div>
+
+{% endblock %}

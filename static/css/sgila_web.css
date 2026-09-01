@@ -9811,3 +9811,103 @@ body:not(.diagram-body) .story-diary-signature {
 /* State utilities intentionally sit above component layers. */
 .hidden { display: none; }
 .is-hidden { display: none; }
+
+/* ─── Trial-expired "payment due" screen ────────────────────────────── */
+.payment-due-overlay {
+  min-height: 60vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem 1rem;
+}
+
+.payment-due-modal {
+  background: var(--white);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: 0 12px 32px rgba(36, 48, 68, .12);
+  max-width: 480px;
+  width: 100%;
+  padding: 2.4rem 2rem;
+  text-align: center;
+}
+
+.payment-due-koaly {
+  width: 72px;
+  height: auto;
+  margin: 0 auto 1rem;
+}
+
+.payment-due-modal h1 {
+  font-size: 1.5rem;
+  margin-bottom: .8rem;
+  color: var(--ink);
+}
+
+.payment-due-modal p {
+  color: var(--muted);
+  line-height: 1.5;
+  margin-bottom: .6rem;
+}
+
+.payment-due-sub {
+  font-size: .92rem;
+}
+
+.payment-due-actions {
+  display: flex;
+  gap: .8rem;
+  justify-content: center;
+  margin-top: 1.4rem;
+  flex-wrap: wrap;
+}
+
+/* ─── Kid-friendly trial-expired visual (learner view) ──────────────── */
+.trial-kid-visual {
+  position: relative;
+  width: 140px;
+  margin: 0 auto 1.2rem;
+}
+
+.trial-kid-koaly {
+  width: 140px;
+  margin: 0;
+  filter: grayscale(.15);
+}
+
+.trial-kid-stop {
+  position: absolute;
+  bottom: -6px;
+  right: -14px;
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  background: #e6453f;
+  border: 5px solid var(--white);
+  box-shadow: 0 6px 14px rgba(230, 69, 63, .35);
+}
+
+.trial-kid-stop::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 34px;
+  height: 6px;
+  background: var(--white);
+  border-radius: 3px;
+  transform: translate(-50%, -50%) rotate(-45deg);
+}
+
+.trial-kid-headline {
+  font-size: 2.4rem;
+  margin-bottom: .6rem;
+  color: #e6453f;
+}
+
+.trial-kid-message {
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: var(--ink);
+  margin-bottom: 0;
+}
