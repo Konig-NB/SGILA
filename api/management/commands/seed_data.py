@@ -1,8 +1,10 @@
 import random
 import re
+from datetime import timedelta
 
 from django.contrib.auth.hashers import make_password
 from django.core.management.base import BaseCommand
+from django.utils import timezone
 
 from api.curriculum_enrichment import (
     LESSON_WORDS,
@@ -33,6 +35,7 @@ from api.models import (
     SequencingActivity,
     SpellingActivity,
     StoryPage,
+    Subscription,
     Teacher,
     TeacherClass,
     ThemeQuestion,
@@ -51,6 +54,7 @@ class Command(BaseCommand):
         Child.objects.all().delete()
         Parent.objects.all().delete()
         Teacher.objects.all().delete()
+        Subscription.objects.all().delete()
         self.stdout.write('Cleared existing SGILA demo data...')
 
         parent = Parent.objects.create(
@@ -172,8 +176,42 @@ class Command(BaseCommand):
 
         self.create_big_book_lessons()
 
+    #-------------------------------------EXPIRED TRIAL DEMO ACCOUNT-------------------------------------------------------------------------------------
+        parent3 = Parent.objects.create(
+            full_name='Thandi Nkosi',
+            email='parent3@sgila.test',
+            phone='0710000099',
+            password=make_password('password123'),
+            accepted_popia=True,
+        )
+        child3 = Child.objects.create(
+            parent=parent3,
+            username='lindiwe_n',
+            first_name='Lindiwe',
+            last_name='Nkosi',
+            name='Lindiwe Nkosi',
+            age=8,
+            grade=2,
+            parent_email='parent3@sgila.test',
+            photo='child_photos/demo_child_photo.jpeg',
+            password=make_password('password123'),
+        )
+        expired_subscription = Subscription.objects.create(
+            parent=parent3,
+            plan_type='individual',
+            billing_cycle='monthly',
+            status='trial',
+        )
+        # created_at is auto_now_add, so it's set on .create() above — back it up
+        # past the 30-day window with a queryset .update(), which bypasses
+        # auto_now_add since it skips model.save().
+        Subscription.objects.filter(id=expired_subscription.id).update(
+            created_at=timezone.now() - timedelta(days=40),
+        )
+
         self.stdout.write(self.style.SUCCESS(
-            "Demo data loaded. Logins: sipho_d / parent@sgila.test / teacher@sgila.test, password password123. Class code RAINB1."
+            "Demo data loaded. Logins: sipho_d / parent@sgila.test / teacher@sgila.test, password password123. Class code RAINB1. "
+            "Expired-trial demo: parent3@sgila.test / lindiwe_n, password password123 (trial started 40 days ago, payment is due)."
         ))
         self.stdout.write(
             "Both demo learners are marked as grade-confirmed for this school year, same as real "

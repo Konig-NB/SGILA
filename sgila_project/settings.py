@@ -16,7 +16,14 @@ def load_local_env(path):
         os.environ.setdefault(key.strip(), value.strip().strip('"').strip("'"))
 
 
-load_local_env(BASE_DIR / '.env')
+dot_env_path = BASE_DIR / '.env'
+load_local_env(dot_env_path)
+
+# Older local copies of SGILA used a file named ``env``. Keep it as a
+# backwards-compatible fallback so existing installations do not silently
+# lose their mail and API configuration. A real .env always takes precedence.
+if not dot_env_path.exists():
+    load_local_env(BASE_DIR / 'env')
 
 SECRET_KEY = os.environ.get(
     'DJANGO_SECRET_KEY',
@@ -117,11 +124,8 @@ REST_FRAMEWORK = {
 }
 
 # EMAIL (OTP delivery)
-# Clean-machine default: print OTPs to the terminal, with no account required.
-EMAIL_BACKEND = os.environ.get(
-    'EMAIL_BACKEND',
-    'django.core.mail.backends.console.EmailBackend',
-)
+# Use SMTP automatically when credentials are present. Otherwise, keep the
+# clean-machine behaviour of printing messages to the terminal.
 EMAIL_HOST = os.environ.get('EMAIL_HOST', 'smtp.gmail.com')
 EMAIL_PORT = int(os.environ.get('EMAIL_PORT', '587'))
 EMAIL_USE_TLS = os.environ.get('EMAIL_USE_TLS', 'True').lower() in {
@@ -129,7 +133,25 @@ EMAIL_USE_TLS = os.environ.get('EMAIL_USE_TLS', 'True').lower() in {
 }
 EMAIL_HOST_USER = os.environ.get('EMAIL_HOST_USER', '')
 EMAIL_HOST_PASSWORD = os.environ.get('EMAIL_HOST_PASSWORD', '')
-DEFAULT_FROM_EMAIL = os.environ.get('DEFAULT_FROM_EMAIL', 'SGILA <noreply@localhost>')
+_email_password_is_placeholder = any(
+    marker in EMAIL_HOST_PASSWORD.lower()
+    for marker in ('paste-your', 'app-password', 'replace', 'placeholder')
+)
+_smtp_is_configured = bool(
+    EMAIL_HOST_USER and EMAIL_HOST_PASSWORD and not _email_password_is_placeholder
+)
+EMAIL_BACKEND = os.environ.get(
+    'EMAIL_BACKEND',
+    (
+        'django.core.mail.backends.smtp.EmailBackend'
+        if _smtp_is_configured
+        else 'django.core.mail.backends.console.EmailBackend'
+    ),
+)
+DEFAULT_FROM_EMAIL = os.environ.get(
+    'DEFAULT_FROM_EMAIL',
+    f'SGILA <{EMAIL_HOST_USER}>' if EMAIL_HOST_USER else 'SGILA <noreply@localhost>',
+)
 
 # ─── JWT ───────────────────────────────────────────────────────────────────────
 # Access tokens are signed with SECRET_KEY via HS256.

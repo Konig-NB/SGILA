@@ -764,6 +764,10 @@ class Subscription(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
+    # Free trial window, counted from created_at (the moment the subscription
+    # row was first created, i.e. the moment the trial started).
+    TRIAL_DAYS = 30
+
     def __str__(self):
         owner = self.parent or self.teacher
         return f"{self.get_plan_type_display()} - {owner} ({self.status})"
@@ -773,6 +777,33 @@ class Subscription(models.Model):
         for field in ('district_or_province', 'contact_name', 'funding_source', 'notes', 'payer_name', 'bank_name'):
             setattr(self, field, capitalize_first(getattr(self, field)))
         super().save(*args, **kwargs)
+
+    @property
+    def trial_ends_at(self):
+        """The datetime the 30-day free trial lapses, counted from created_at."""
+        from datetime import timedelta
+        return self.created_at + timedelta(days=self.TRIAL_DAYS)
+
+    @property
+    def is_trial_expired(self):
+        """True once a subscription still sitting in 'trial' status has passed
+        its 30-day window. Subscriptions that have moved to 'active' (paid),
+        'pending' (school awaiting approval), or 'cancelled' are never
+        considered trial-expired here — enterprise/school subscriptions are
+        redeemed via a package code straight into 'active', so this only ever
+        bites individual/family plans that haven't paid.
+        """
+        if self.status != 'trial':
+            return False
+        return timezone.now() >= self.trial_ends_at
+
+    @property
+    def trial_days_left(self):
+        """Whole days left in the trial, floored at 0. None if not on trial."""
+        if self.status != 'trial':
+            return None
+        remaining = self.trial_ends_at - timezone.now()
+        return max(0, remaining.days)
 
 
 class OTPToken(models.Model):
