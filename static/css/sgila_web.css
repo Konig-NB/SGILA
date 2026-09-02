@@ -18,6 +18,66 @@
   --success: #229b74;
   --surface-rgb: 255, 255, 255;
   --surface: #ffffff;
+  --auto-rgb-169-150-238: 169, 150, 238;
+  --auto-rgb-255-253-245: 255, 253, 245;
+  --auto-rgb-255-244-199: 255, 244, 199;
+  --auto-rgb-215-248-246: 215, 248, 246;
+  --auto-rgb-231-239-255: 231, 239, 255;
+  --auto-rgb-236-231-255: 236, 231, 255;
+  --auto-rgb-255-228-240: 255, 228, 240;
+  --auto-rgb-255-248-239: 255, 248, 239;
+  --auto-rgb-232-241-255: 232, 241, 255;
+  --auto-rgb-221-250-239: 221, 250, 239;
+  --auto-rgb-239-255-247: 239, 255, 247;
+  --auto-rgb-255-245-245: 255, 245, 245;
+  --auto-rgb-239-245-255: 239, 245, 255;
+  --auto-rgb-214-247-245: 214, 247, 245;
+  --auto-rgb-221-251-243: 221, 251, 243;
+  --auto-rgb-248-251-255: 248, 251, 255;
+  --auto-rgb-213-249-247: 213, 249, 247;
+  --auto-rgb-255-238-228: 255, 238, 228;
+  --auto-rgb-225-248-255: 225, 248, 255;
+  --auto-rgb-234-255-228: 234, 255, 228;
+  --auto-rgb-242-232-255: 242, 232, 255;
+  --auto-rgb-255-247-207: 255, 247, 207;
+  --auto-rgb-238-248-255: 238, 248, 255;
+  --auto-rgb-189-168-243: 189, 168, 243;
+  --auto-rgb-177-222-214: 177, 222, 214;
+  --auto-rgb-208-192-245: 208, 192, 245;
+  --auto-rgb-232-255-255: 232, 255, 255;
+  --auto-rgb-255-244-232: 255, 244, 232;
+  --auto-rgb-235-250-255: 235, 250, 255;
+  --auto-rgb-225-236-254: 225, 236, 254;
+  --auto-rgb-255-249-220: 255, 249, 220;
+  --auto-rgb-224-250-248: 224, 250, 248;
+  --auto-rgb-220-248-255: 220, 248, 255;
+  --auto-rgb-232-244-255: 232, 244, 255;
+  --auto-rgb-248-250-252: 248, 250, 252;
+  --auto-rgb-247-250-252: 247, 250, 252;
+  --auto-rgb-245-241-255: 245, 241, 255;
+  --auto-rgb-232-248-255: 232, 248, 255;
+  --auto-rgb-232-251-239: 232, 251, 239;
+  --auto-rgb-255-248-220: 255, 248, 220;
+  --auto-rgb-255-237-247: 255, 237, 247;
+  --auto-rgb-255-239-235: 255, 239, 235;
+  --scrim-78: .78;
+  --scrim-86: .86;
+  --scrim-65: .65;
+  --scrim-82: .82;
+  --scrim-66: .66;
+  --scrim-70: .70;
+  --scrim-74: .74;
+  --scrim-68: .68;
+  --scrim-76: .76;
+  --scrim-80: .80;
+  --scrim-72: .72;
+  --scrim-58: .58;
+  --scrim-88: .88;
+  --scrim-84: .84;
+  --scrim-60: .60;
+  --scrim-64: .64;
+  --scrim-62: .62;
+  --scrim-56: .56;
   --radius: 18px;
   --auto-ffe5e5-bg: #ffe5e5;
   --auto-d6f7f5-bg: #d6f7f5;
@@ -252,7 +312,7 @@ body {
   font-family: "Segoe UI", Arial, sans-serif;
   color: var(--ink);
   background: radial-gradient(circle at 14% 8%, rgba(110, 224, 194, .24), transparent 28%),
-    radial-gradient(circle at 88% 10%, rgba(169, 150, 238, .22), transparent 24%),
+    radial-gradient(circle at 88% 10%, rgba(var(--auto-rgb-169-150-238), .22), transparent 24%),
     var(--paper);
 }
 
@@ -267,7 +327,7 @@ a { color: inherit; }
   justify-content: space-between;
   gap: 16px;
   padding: 14px clamp(18px, 4vw, 54px);
-  background: rgba(255, 253, 245, .92);
+  background: rgba(var(--auto-rgb-255-253-245), .92);
   border-bottom: 1px solid var(--line);
   backdrop-filter: blur(12px);
 }
@@ -447,7 +507,7 @@ a { color: inherit; }
   padding: 20px;
   border: 1px solid var(--line);
   border-radius: var(--radius);
-  background: rgba(var(--surface-rgb), .78);
+  background: rgba(var(--surface-rgb), var(--scrim-78));
   text-decoration: none;
 }
 
@@ -482,7 +542,7 @@ a { color: inherit; }
   padding: clamp(20px, 4vw, 34px);
   border: 1px solid var(--line);
   border-radius: 24px;
-  background: rgba(var(--surface-rgb), .86);
+  background: rgba(var(--surface-rgb), var(--scrim-86));
   box-shadow: 0 22px 50px rgba(36, 48, 68, .08);
 }
 
@@ -512,7 +572,7 @@ a { color: inherit; }
 .dashboard-hero {
   padding: clamp(22px, 4vw, 36px);
   border-radius: 28px;
-  background: linear-gradient(135deg, var(--sun-soft), rgba(var(--surface-rgb),.65));
+  background: linear-gradient(135deg, var(--sun-soft), rgba(var(--surface-rgb), var(--scrim-65)));
   margin-bottom: 18px;
 }
 
@@ -568,7 +628,7 @@ a { color: inherit; }
   margin: 0 auto;
   padding: clamp(20px, 4vw, 34px);
   border-radius: 28px;
-  background: rgba(var(--surface-rgb), .82);
+  background: rgba(var(--surface-rgb), var(--scrim-82));
   border: 1px solid var(--line);
 }
 
@@ -955,23 +1015,23 @@ a { color: inherit; }
   overflow: hidden;
   border-radius: 0;
   padding: 34px 30px;
-  background-color: rgba(var(--surface-rgb),.78);
+  background-color: rgba(var(--surface-rgb), var(--scrim-78));
 }
 
 .doodle-body {
-  background-image: linear-gradient(rgba(var(--surface-rgb),.66), rgba(var(--surface-rgb),.66)), url("../img/welcome_back/page05_img01.png");
+  background-image: linear-gradient(rgba(var(--surface-rgb), var(--scrim-66)), rgba(var(--surface-rgb), var(--scrim-66))), url("../img/welcome_back/page05_img01.png");
   background-size: cover;
   background-position: center;
 }
 
 .cloud-body {
-  background-image: linear-gradient(rgba(var(--surface-rgb),.70), rgba(var(--surface-rgb),.70)), url("../img/welcome_back/page01_img01.png");
+  background-image: linear-gradient(rgba(var(--surface-rgb), var(--scrim-70)), rgba(var(--surface-rgb), var(--scrim-70))), url("../img/welcome_back/page01_img01.png");
   background-size: cover;
   background-position: center;
 }
 
 .balloon-body {
-  background-image: linear-gradient(rgba(var(--surface-rgb),.65), rgba(var(--surface-rgb),.65)), url("../img/welcome_back/page08_img01.png");
+  background-image: linear-gradient(rgba(var(--surface-rgb), var(--scrim-65)), rgba(var(--surface-rgb), var(--scrim-65))), url("../img/welcome_back/page08_img01.png");
   background-size: cover;
   background-position: center;
 }
@@ -1463,26 +1523,26 @@ a { color: inherit; }
   padding: 38px 36px;
   border: 1px solid rgba(112, 126, 161, .22);
   border-radius: 34px;
-  background: rgba(var(--surface-rgb), .74);
+  background: rgba(var(--surface-rgb), var(--scrim-74));
   box-shadow: 0 24px 54px rgba(72, 86, 112, .10);
   z-index: 3;
 }
 
 .learner-lane {
   top: 310px;
-  background: linear-gradient(90deg, rgba(255, 244, 199, .82), rgba(var(--surface-rgb),.78) 44%, rgba(215, 248, 246, .76));
+  background: linear-gradient(90deg, rgba(var(--auto-rgb-255-244-199), .82), rgba(var(--surface-rgb), var(--scrim-78)) 44%, rgba(var(--auto-rgb-215-248-246), .76));
   border-left: 12px solid #ffd22e;
 }
 
 .teacher-lane {
   top: 850px;
-  background: linear-gradient(90deg, rgba(215, 248, 246, .86), rgba(var(--surface-rgb),.78) 44%, rgba(231, 239, 255, .82));
+  background: linear-gradient(90deg, rgba(var(--auto-rgb-215-248-246), .86), rgba(var(--surface-rgb), var(--scrim-78)) 44%, rgba(var(--auto-rgb-231-239-255), .82));
   border-left: 12px solid #5bdad4;
 }
 
 .parent-lane {
   top: 1390px;
-  background: linear-gradient(90deg, rgba(236, 231, 255, .88), rgba(var(--surface-rgb),.78) 46%, rgba(255, 228, 240, .78));
+  background: linear-gradient(90deg, rgba(var(--auto-rgb-236-231-255), .88), rgba(var(--surface-rgb), var(--scrim-78)) 46%, rgba(var(--auto-rgb-255-228-240), .78));
   border-left: 12px solid #a37cf3;
 }
 
@@ -1490,7 +1550,7 @@ a { color: inherit; }
   height: 330px;
   padding: 30px 26px;
   border-radius: 26px;
-  background: rgba(var(--surface-rgb),.86);
+  background: rgba(var(--surface-rgb), var(--scrim-86));
   box-shadow: inset 0 0 0 1px rgba(112, 126, 161, .18);
 }
 
@@ -1643,19 +1703,19 @@ a { color: inherit; }
 }
 
 .cloud-panel main {
-  background-image: linear-gradient(rgba(var(--surface-rgb),.70), rgba(var(--surface-rgb),.70)), url("../img/welcome_back/page01_img01.png");
+  background-image: linear-gradient(rgba(var(--surface-rgb), var(--scrim-70)), rgba(var(--surface-rgb), var(--scrim-70))), url("../img/welcome_back/page01_img01.png");
   background-size: cover;
   background-position: center;
 }
 
 .doodle-panel main {
-  background-image: linear-gradient(rgba(var(--surface-rgb),.68), rgba(var(--surface-rgb),.68)), url("../img/welcome_back/page05_img01.png");
+  background-image: linear-gradient(rgba(var(--surface-rgb), var(--scrim-68)), rgba(var(--surface-rgb), var(--scrim-68))), url("../img/welcome_back/page05_img01.png");
   background-size: cover;
   background-position: center;
 }
 
 .balloon-panel main {
-  background-image: linear-gradient(rgba(var(--surface-rgb),.66), rgba(var(--surface-rgb),.66)), url("../img/welcome_back/page08_img01.png");
+  background-image: linear-gradient(rgba(var(--surface-rgb), var(--scrim-66)), rgba(var(--surface-rgb), var(--scrim-66))), url("../img/welcome_back/page08_img01.png");
   background-size: cover;
   background-position: center;
 }
@@ -1902,7 +1962,7 @@ a { color: inherit; }
   padding: 12px;
   border: 1px solid rgba(255, 210, 46, .88);
   border-radius: 20px;
-  background: rgba(255, 244, 199, .92);
+  background: rgba(var(--auto-rgb-255-244-199), .92);
 }
 
 .multiplier-panel strong {
@@ -2205,26 +2265,26 @@ a { color: inherit; }
   padding: 40px 38px;
   border: 1px solid rgba(112, 126, 161, .22);
   border-radius: 38px;
-  background: rgba(var(--surface-rgb), .76);
+  background: rgba(var(--surface-rgb), var(--scrim-76));
   box-shadow: 0 28px 64px rgba(72, 86, 112, .11);
   z-index: 3;
 }
 
 .learner-android-lane {
   top: 315px;
-  background: linear-gradient(90deg, rgba(255, 244, 199, .88), rgba(var(--surface-rgb),.80) 44%, rgba(215, 248, 246, .80));
+  background: linear-gradient(90deg, rgba(var(--auto-rgb-255-244-199), .88), rgba(var(--surface-rgb), var(--scrim-80)) 44%, rgba(var(--auto-rgb-215-248-246), .80));
   border-left: 14px solid #ffd22e;
 }
 
 .teacher-android-lane {
   top: 1260px;
-  background: linear-gradient(90deg, rgba(215, 248, 246, .88), rgba(var(--surface-rgb),.80) 44%, rgba(231, 239, 255, .84));
+  background: linear-gradient(90deg, rgba(var(--auto-rgb-215-248-246), .88), rgba(var(--surface-rgb), var(--scrim-80)) 44%, rgba(var(--auto-rgb-231-239-255), .84));
   border-left: 14px solid #5bdad4;
 }
 
 .parent-android-lane {
   top: 2205px;
-  background: linear-gradient(90deg, rgba(236, 231, 255, .90), rgba(var(--surface-rgb),.80) 46%, rgba(255, 228, 240, .82));
+  background: linear-gradient(90deg, rgba(var(--auto-rgb-236-231-255), .90), rgba(var(--surface-rgb), var(--scrim-80)) 46%, rgba(var(--auto-rgb-255-228-240), .82));
   border-left: 14px solid #a37cf3;
 }
 
@@ -2288,7 +2348,7 @@ a { color: inherit; }
   display: grid;
   place-items: center;
   border-radius: 999px;
-  background: rgba(var(--surface-rgb),.86);
+  background: rgba(var(--surface-rgb), var(--scrim-86));
   color: var(--auto-59647f-t);
   font-size: 10px;
   font-weight: 950;
@@ -2354,23 +2414,23 @@ a { color: inherit; }
   bottom: 70px;
   overflow: hidden;
   padding: 42px 30px;
-  background-color: rgba(var(--surface-rgb),.72);
+  background-color: rgba(var(--surface-rgb), var(--scrim-72));
 }
 
 .cloud-phone {
-  background-image: linear-gradient(rgba(var(--surface-rgb),.72), rgba(var(--surface-rgb),.72)), url("../img/welcome_back/page01_img01.png");
+  background-image: linear-gradient(rgba(var(--surface-rgb), var(--scrim-72)), rgba(var(--surface-rgb), var(--scrim-72))), url("../img/welcome_back/page01_img01.png");
   background-size: cover;
   background-position: center;
 }
 
 .doodle-phone {
-  background-image: linear-gradient(rgba(var(--surface-rgb),.70), rgba(var(--surface-rgb),.70)), url("../img/welcome_back/page05_img01.png");
+  background-image: linear-gradient(rgba(var(--surface-rgb), var(--scrim-70)), rgba(var(--surface-rgb), var(--scrim-70))), url("../img/welcome_back/page05_img01.png");
   background-size: cover;
   background-position: center;
 }
 
 .balloon-phone {
-  background-image: linear-gradient(rgba(var(--surface-rgb),.68), rgba(var(--surface-rgb),.68)), url("../img/welcome_back/page08_img01.png");
+  background-image: linear-gradient(rgba(var(--surface-rgb), var(--scrim-68)), rgba(var(--surface-rgb), var(--scrim-68))), url("../img/welcome_back/page08_img01.png");
   background-size: cover;
   background-position: center;
 }
@@ -2608,7 +2668,7 @@ a { color: inherit; }
   padding: 18px;
   border: 2px solid rgba(255, 210, 46, .88);
   border-radius: 26px;
-  background: rgba(255, 244, 199, .94);
+  background: rgba(var(--auto-rgb-255-244-199), .94);
 }
 
 .mobile-multiplier strong {
@@ -2769,7 +2829,7 @@ a { color: inherit; }
 
 /* Mobile app redesign based on the Android Large SGILA flow. */
 body:not(.diagram-body) {
-  background: linear-gradient(rgba(255, 248, 239, .62), rgba(255, 248, 239, .74)),
+  background: linear-gradient(rgba(var(--auto-rgb-255-248-239), .62), rgba(var(--auto-rgb-255-248-239), .74)),
     url("../img/welcome_back/page08_img01.png") center top / cover fixed,
     var(--auto-fff8ef-bg);
 }
@@ -2857,7 +2917,7 @@ body:not(.diagram-body) .hero {
   padding: 28px 24px 24px;
   overflow: hidden;
   border-radius: 34px;
-  background: linear-gradient(rgba(var(--surface-rgb),.70), rgba(var(--surface-rgb),.70)),
+  background: linear-gradient(rgba(var(--surface-rgb), var(--scrim-70)), rgba(var(--surface-rgb), var(--scrim-70))),
     url("../img/welcome_back/page01_img01.png") center / cover;
 }
 
@@ -2883,7 +2943,7 @@ body:not(.diagram-body) .hero-mascot {
   min-height: 390px;
   padding: 14px;
   border-radius: 34px;
-  background: linear-gradient(rgba(var(--surface-rgb),.58), rgba(var(--surface-rgb),.58)),
+  background: linear-gradient(rgba(var(--surface-rgb), var(--scrim-58)), rgba(var(--surface-rgb), var(--scrim-58))),
     url("../img/welcome_back/page05_img01.png") center / cover;
   border: 2px solid rgba(255, 255, 255, .7);
 }
@@ -2896,7 +2956,7 @@ body:not(.diagram-body) .hero-mascot {
   overflow: hidden;
   border: 3px solid #202638;
   border-radius: 36px;
-  background: linear-gradient(rgba(var(--surface-rgb),.68), rgba(var(--surface-rgb),.68)),
+  background: linear-gradient(rgba(var(--surface-rgb), var(--scrim-68)), rgba(var(--surface-rgb), var(--scrim-68))),
     url("../img/welcome_back/page08_img01.png") center / cover;
   box-shadow: 12px 14px 0 rgba(95, 108, 135, .24);
 }
@@ -3033,7 +3093,7 @@ body:not(.diagram-body) .role-tile {
   gap: 8px 14px;
   align-items: center;
   border-radius: 24px;
-  background: rgba(var(--surface-rgb),.88);
+  background: rgba(var(--surface-rgb), var(--scrim-88));
 }
 
 body:not(.diagram-body) .role-tile span {
@@ -3059,7 +3119,7 @@ body:not(.diagram-body) .form-card {
 }
 
 body:not(.diagram-body) .auth-intro {
-  background: linear-gradient(rgba(var(--surface-rgb),.76), rgba(var(--surface-rgb),.76)),
+  background: linear-gradient(rgba(var(--surface-rgb), var(--scrim-76)), rgba(var(--surface-rgb), var(--scrim-76))),
     url("../img/welcome_back/page01_img01.png") center / cover;
 }
 
@@ -3098,23 +3158,23 @@ body:not(.diagram-body) .dashboard-hero {
   padding: 26px 22px;
   border-radius: 32px;
   overflow: hidden;
-  background: linear-gradient(rgba(var(--surface-rgb),.66), rgba(var(--surface-rgb),.66)),
+  background: linear-gradient(rgba(var(--surface-rgb), var(--scrim-66)), rgba(var(--surface-rgb), var(--scrim-66))),
     url("../img/welcome_back/page08_img01.png") center / cover;
 }
 
 body:not(.diagram-body) .learner-hero {
   grid-template-columns: 1fr 118px;
-  background: linear-gradient(rgba(var(--surface-rgb),.66), rgba(var(--surface-rgb),.66)),
+  background: linear-gradient(rgba(var(--surface-rgb), var(--scrim-66)), rgba(var(--surface-rgb), var(--scrim-66))),
     url("../img/welcome_back/page08_img01.png") center / cover;
 }
 
 body:not(.diagram-body) .parent-hero {
-  background: linear-gradient(rgba(var(--surface-rgb),.70), rgba(var(--surface-rgb),.70)),
+  background: linear-gradient(rgba(var(--surface-rgb), var(--scrim-70)), rgba(var(--surface-rgb), var(--scrim-70))),
     url("../img/welcome_back/page05_img01.png") center / cover;
 }
 
 body:not(.diagram-body) .teacher-hero {
-  background: linear-gradient(rgba(var(--surface-rgb),.70), rgba(var(--surface-rgb),.70)),
+  background: linear-gradient(rgba(var(--surface-rgb), var(--scrim-70)), rgba(var(--surface-rgb), var(--scrim-70))),
     url("../img/welcome_back/page01_img01.png") center / cover;
 }
 
@@ -3158,7 +3218,7 @@ body:not(.diagram-body) .lesson-grid {
 body:not(.diagram-body) .lesson-card {
   grid-template-columns: 78px 1fr;
   border-radius: 26px;
-  background: linear-gradient(rgba(var(--surface-rgb),.82), rgba(var(--surface-rgb),.82)),
+  background: linear-gradient(rgba(var(--surface-rgb), var(--scrim-82)), rgba(var(--surface-rgb), var(--scrim-82))),
     url("../img/welcome_back/page05_img01.png") center / cover;
   box-shadow: 0 16px 34px rgba(36, 48, 68, .08);
 }
@@ -3181,7 +3241,7 @@ body:not(.diagram-body) .badge-done {
 
 body:not(.diagram-body) .activity-shell {
   border-radius: 32px;
-  background: linear-gradient(rgba(var(--surface-rgb),.76), rgba(var(--surface-rgb),.76)),
+  background: linear-gradient(rgba(var(--surface-rgb), var(--scrim-76)), rgba(var(--surface-rgb), var(--scrim-76))),
     url("../img/welcome_back/page01_img01.png") center / cover;
 }
 
@@ -3256,7 +3316,7 @@ body:not(.diagram-body) .audio-actions {
 }
 
 body:not(.diagram-body) .result-screen {
-  background: linear-gradient(rgba(var(--surface-rgb),.68), rgba(var(--surface-rgb),.68)),
+  background: linear-gradient(rgba(var(--surface-rgb), var(--scrim-68)), rgba(var(--surface-rgb), var(--scrim-68))),
     url("../img/welcome_back/page08_img01.png") center / cover;
 }
 
@@ -3269,7 +3329,7 @@ body:not(.diagram-body) .result-screen {
   gap: 14px;
   padding: 16px;
   border-radius: 28px;
-  background: rgba(255, 244, 199, .94);
+  background: rgba(var(--auto-rgb-255-244-199), .94);
   border: 2px solid rgba(255, 210, 46, .78);
 }
 
@@ -3300,7 +3360,7 @@ body:not(.diagram-body) .result-screen {
   gap: 16px;
   padding: 16px 18px;
   border-radius: 28px;
-  background: rgba(var(--surface-rgb), .78);
+  background: rgba(var(--surface-rgb), var(--scrim-78));
   border: 2px solid rgba(168, 197, 242, .78);
   box-shadow: 0 18px 38px rgba(36, 48, 68, .12);
 }
@@ -3333,12 +3393,12 @@ body:not(.diagram-body) .result-screen {
 }
 
 .result-koaly-reaction.is-sad {
-  background: rgba(232, 241, 255, .86);
+  background: rgba(var(--auto-rgb-232-241-255), .86);
   border-color: rgba(131, 168, 246, .74);
 }
 
 .result-koaly-reaction.is-happy {
-  background: rgba(221, 250, 239, .86);
+  background: rgba(var(--auto-rgb-221-250-239), .86);
   border-color: rgba(91, 218, 212, .74);
 }
 
@@ -3396,7 +3456,7 @@ body:not(.diagram-body) .row-stat {
 
 body:not(.diagram-body) .needs-help {
   border-color: rgba(255, 90, 102, .38);
-  background: rgba(255, 228, 240, .82);
+  background: rgba(var(--auto-rgb-255-228-240), .82);
 }
 
 .mobile-bottom-nav {
@@ -3810,7 +3870,7 @@ body:not(.diagram-body) .hero-mascot {
   min-height: 78px;
   padding: 12px;
   border-radius: 18px;
-  background: rgba(var(--surface-rgb), .78);
+  background: rgba(var(--surface-rgb), var(--scrim-78));
   color: var(--auto-59647f-t);
   font-weight: 850;
   box-shadow: inset 0 0 0 1px rgba(217, 224, 238, .72);
@@ -3856,7 +3916,7 @@ body:not(.diagram-body) .hero-mascot {
   width: 100%;
   padding: 18px;
   border-radius: 22px;
-  background: rgba(var(--surface-rgb), .86);
+  background: rgba(var(--surface-rgb), var(--scrim-86));
   box-shadow: 0 18px 42px rgba(36, 48, 68, .10);
 }
 
@@ -4209,7 +4269,7 @@ body:not(.diagram-body) .comprehension-finish p:last-child {
 body:not(.diagram-body) {
   display: block;
   min-width: 0;
-  background: linear-gradient(90deg, rgba(var(--surface-rgb), .84), rgba(var(--surface-rgb), .60)),
+  background: linear-gradient(90deg, rgba(var(--surface-rgb), var(--scrim-84)), rgba(var(--surface-rgb), var(--scrim-60))),
     url("../img/welcome_back/page08_img01.png") center / cover fixed,
     var(--paper);
 }
@@ -4290,7 +4350,7 @@ body:not(.diagram-body) .hero {
   min-height: auto;
   padding: clamp(34px, 5vw, 58px);
   overflow: visible;
-  background: linear-gradient(135deg, rgba(var(--surface-rgb), .82), rgba(var(--surface-rgb), .64)),
+  background: linear-gradient(135deg, rgba(var(--surface-rgb), var(--scrim-82)), rgba(var(--surface-rgb), var(--scrim-64))),
     url("../img/welcome_back/page01_img01.png") center / cover;
 }
 
@@ -4388,7 +4448,7 @@ body:not(.diagram-body) .dashboard-hero {
   padding: clamp(28px, 4vw, 42px);
   margin-bottom: 20px;
   overflow: hidden;
-  background: linear-gradient(135deg, rgba(var(--surface-rgb), .82), rgba(var(--surface-rgb), .66)),
+  background: linear-gradient(135deg, rgba(var(--surface-rgb), var(--scrim-82)), rgba(var(--surface-rgb), var(--scrim-66))),
     url("../img/welcome_back/page08_img01.png") center / cover;
 }
 
@@ -4570,12 +4630,12 @@ body:not(.diagram-body) .spelling-feedback {
 
 body:not(.diagram-body) .spelling-card.is-correct {
   border-color: rgba(34, 155, 116, .42);
-  background: rgba(239, 255, 247, .96);
+  background: rgba(var(--auto-rgb-239-255-247), .96);
 }
 
 body:not(.diagram-body) .spelling-card.is-wrong {
   border-color: rgba(217, 93, 93, .42);
-  background: rgba(255, 245, 245, .96);
+  background: rgba(var(--auto-rgb-255-245-245), .96);
 }
 
 body:not(.diagram-body) .learner-list {
@@ -4786,7 +4846,7 @@ body:not(.diagram-body) .reactive-koaly.koaly-listening img {
 body:not(.diagram-body) .reactive-koaly.koaly-happy,
 body:not(.diagram-body) .reactive-koaly.koaly-celebrating {
   background: radial-gradient(circle at 62px 48px, rgba(255, 210, 46, .38), transparent 70px),
-    linear-gradient(135deg, rgba(239, 255, 247, .96), rgba(255, 244, 199, .92));
+    linear-gradient(135deg, rgba(var(--auto-rgb-239-255-247), .96), rgba(var(--auto-rgb-255-244-199), .92));
   border-color: rgba(48, 203, 127, .54);
 }
 
@@ -4808,7 +4868,7 @@ body:not(.diagram-body) .reactive-koaly.koaly-celebrating img {
 body:not(.diagram-body) .reactive-koaly.koaly-sad,
 body:not(.diagram-body) .reactive-koaly.koaly-encouraging {
   background: radial-gradient(circle at 62px 46px, rgba(131, 168, 246, .35), transparent 70px),
-    linear-gradient(135deg, rgba(239, 245, 255, .96), rgba(236, 231, 255, .92));
+    linear-gradient(135deg, rgba(var(--auto-rgb-239-245-255), .96), rgba(var(--auto-rgb-236-231-255), .92));
   border-color: rgba(74, 144, 226, .48);
 }
 
@@ -4842,13 +4902,13 @@ body:not(.diagram-body) .portal-hero {
   border: 1px solid rgba(217, 224, 238, .78);
   border-radius: 30px;
   overflow: hidden;
-  background: linear-gradient(135deg, rgba(var(--surface-rgb), .86), rgba(var(--surface-rgb), .64)),
+  background: linear-gradient(135deg, rgba(var(--surface-rgb), var(--scrim-86)), rgba(var(--surface-rgb), var(--scrim-64))),
     url("../img/welcome_back/page08_img01.png") center / cover;
   box-shadow: 0 18px 44px rgba(36, 48, 68, .08);
 }
 
 body:not(.diagram-body) .teacher-portal .portal-hero {
-  background: linear-gradient(135deg, rgba(214, 247, 245, .90), rgba(var(--surface-rgb), .68)),
+  background: linear-gradient(135deg, rgba(var(--auto-rgb-214-247-245), .90), rgba(var(--surface-rgb), var(--scrim-68))),
     url("../img/welcome_back/page01_img01.png") center / cover;
 }
 
@@ -4918,7 +4978,7 @@ body:not(.diagram-body) .class-code-panel {
   margin-top: 1.5rem;
   border: 1px solid rgba(217, 224, 238, .78);
   border-radius: 28px;
-  background: linear-gradient(135deg, rgba(255, 244, 199, .82), rgba(221, 251, 243, .78)),
+  background: linear-gradient(135deg, rgba(var(--auto-rgb-255-244-199), .82), rgba(var(--auto-rgb-221-251-243), .78)),
     rgba(var(--surface-rgb), .9);
   box-shadow: 0 18px 44px rgba(36, 48, 68, .08);
 }
@@ -5002,7 +5062,7 @@ body:not(.diagram-body) .portal-section {
   padding: clamp(18px, 3vw, 26px);
   border: 1px solid rgba(217, 224, 238, .78);
   border-radius: 28px;
-  background: rgba(var(--surface-rgb), .88);
+  background: rgba(var(--surface-rgb), var(--scrim-88));
   box-shadow: 0 18px 44px rgba(36, 48, 68, .08);
 }
 
@@ -5153,7 +5213,7 @@ body:not(.diagram-body) .portal-stat {
   justify-items: center;
   padding: 12px;
   border-radius: 20px;
-  background: rgba(var(--surface-rgb), .80);
+  background: rgba(var(--surface-rgb), var(--scrim-80));
   text-align: center;
   box-shadow: inset 0 0 0 1px rgba(217, 224, 238, .70);
 }
@@ -5188,7 +5248,7 @@ body:not(.diagram-body) .portal-empty {
   padding: 42px 22px;
   border: 1px dashed rgba(169, 150, 238, .7);
   border-radius: 24px;
-  background: rgba(var(--surface-rgb), .78);
+  background: rgba(var(--surface-rgb), var(--scrim-78));
   text-align: center;
 }
 
@@ -5288,7 +5348,7 @@ body:not(.diagram-body) .report-focus {
   width: 100%;
   padding: 14px;
   border-radius: 20px;
-  background: rgba(var(--surface-rgb), .78);
+  background: rgba(var(--surface-rgb), var(--scrim-78));
 }
 
 body:not(.diagram-body) .report-focus strong {
@@ -5360,7 +5420,7 @@ body:not(.diagram-body) .report-history {
   gap: 12px;
   padding: 18px;
   border-radius: 24px;
-  background: rgba(248, 251, 255, .82);
+  background: rgba(var(--auto-rgb-248-251-255), .82);
 }
 
 body:not(.diagram-body) .report-bars h3,
@@ -5450,7 +5510,7 @@ body:not(.diagram-body) .parent-report-top {
   padding: clamp(28px, 4vw, 56px);
   border: 1px solid rgba(116, 204, 220, .35);
   border-radius: 28px;
-  background: linear-gradient(135deg, rgba(var(--surface-rgb), .82), rgba(213, 249, 247, .70)),
+  background: linear-gradient(135deg, rgba(var(--surface-rgb), var(--scrim-82)), rgba(var(--auto-rgb-213-249-247), .70)),
     url('/static/img/welcome_back/page01_img01.png') center / cover;
   box-shadow: 0 24px 70px rgba(50, 67, 95, .12);
 }
@@ -5488,7 +5548,7 @@ body:not(.diagram-body) .parent-summary-strip article {
   padding: 18px;
   border: 1px solid rgba(202, 212, 231, .8);
   border-radius: 22px;
-  background: rgba(var(--surface-rgb), .72);
+  background: rgba(var(--surface-rgb), var(--scrim-72));
   box-shadow: 0 18px 45px rgba(50, 67, 95, .10);
 }
 
@@ -5528,15 +5588,15 @@ body:not(.diagram-body) .parent-report-card {
   padding: clamp(18px, 2.4vw, 34px);
   border: 1px solid rgba(255, 255, 255, .8);
   border-radius: 34px;
-  background: linear-gradient(135deg, rgba(var(--surface-rgb), .72), rgba(var(--surface-rgb), .48));
+  background: linear-gradient(135deg, rgba(var(--surface-rgb), var(--scrim-72)), rgba(var(--surface-rgb), .48));
   box-shadow: 0 28px 80px rgba(50, 67, 95, .16);
   backdrop-filter: blur(16px);
 }
 
-body:not(.diagram-body) .parent-report-card.tone-coral { background-color: rgba(255, 238, 228, .72); }
-body:not(.diagram-body) .parent-report-card.tone-sky { background-color: rgba(225, 248, 255, .72); }
-body:not(.diagram-body) .parent-report-card.tone-lime { background-color: rgba(234, 255, 228, .72); }
-body:not(.diagram-body) .parent-report-card.tone-violet { background-color: rgba(242, 232, 255, .72); }
+body:not(.diagram-body) .parent-report-card.tone-coral { background-color: rgba(var(--auto-rgb-255-238-228), .72); }
+body:not(.diagram-body) .parent-report-card.tone-sky { background-color: rgba(var(--auto-rgb-225-248-255), .72); }
+body:not(.diagram-body) .parent-report-card.tone-lime { background-color: rgba(var(--auto-rgb-234-255-228), .72); }
+body:not(.diagram-body) .parent-report-card.tone-violet { background-color: rgba(var(--auto-rgb-242-232-255), .72); }
 
 body:not(.diagram-body) .parent-report-rail {
   display: grid;
@@ -5625,7 +5685,7 @@ body:not(.diagram-body) .parent-report-main {
   gap: 18px;
   padding: clamp(14px, 2vw, 28px);
   border-radius: 28px;
-  background: rgba(var(--surface-rgb), .82);
+  background: rgba(var(--surface-rgb), var(--scrim-82));
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, .8);
 }
 
@@ -5700,7 +5760,7 @@ body:not(.diagram-body) .parent-mini-grid article {
   padding: 14px 18px;
   border: 1px solid rgba(202, 212, 231, .8);
   border-radius: 16px;
-  background: rgba(var(--surface-rgb), .78);
+  background: rgba(var(--surface-rgb), var(--scrim-78));
 }
 
 body:not(.diagram-body) .parent-mini-grid strong {
@@ -5715,7 +5775,7 @@ body:not(.diagram-body) .parent-focus-banner {
   padding: 18px 22px;
   border: 1px solid rgba(255, 204, 41, .62);
   border-radius: 18px;
-  background: linear-gradient(135deg, rgba(255, 247, 207, .92), rgba(var(--surface-rgb), .84));
+  background: linear-gradient(135deg, rgba(var(--auto-rgb-255-247-207), .92), rgba(var(--surface-rgb), var(--scrim-84)));
 }
 
 body:not(.diagram-body) .parent-focus-banner span {
@@ -5783,7 +5843,7 @@ body:not(.diagram-body) .parent-history-row {
   padding: 12px 14px;
   border: 1px solid rgba(202, 212, 231, .70);
   border-radius: 16px;
-  background: rgba(var(--surface-rgb), .82);
+  background: rgba(var(--surface-rgb), var(--scrim-82));
   color: var(--ink);
   font-weight: 850;
 }
@@ -5806,7 +5866,7 @@ body:not(.diagram-body) .parent-empty-card {
   padding: 32px;
   border: 1px solid rgba(202, 212, 231, .8);
   border-radius: 24px;
-  background: rgba(var(--surface-rgb), .84);
+  background: rgba(var(--surface-rgb), var(--scrim-84));
 }
 
 body:not(.diagram-body) .parent-picker-page {
@@ -5817,7 +5877,7 @@ body:not(.diagram-body) .parent-picker-page {
   padding: clamp(18px, 3vw, 28px);
   border: 1px solid rgba(255, 255, 255, .74);
   border-radius: 30px;
-  background: linear-gradient(135deg, rgba(var(--surface-rgb), .58), rgba(238, 248, 255, .50)),
+  background: linear-gradient(135deg, rgba(var(--surface-rgb), var(--scrim-58)), rgba(var(--auto-rgb-238-248-255), .50)),
     url("../img/welcome_back/page08_img01.png") center / cover;
   box-shadow: 0 28px 80px rgba(50, 67, 95, .16);
 }
@@ -5869,7 +5929,7 @@ body:not(.diagram-body) .pd-summary-strip article {
   padding: 16px;
   border: 1px solid rgba(220, 225, 238, .84);
   border-radius: 14px;
-  background: rgba(var(--surface-rgb), .82);
+  background: rgba(var(--surface-rgb), var(--scrim-82));
 }
 
 body:not(.diagram-body) .pd-summary-strip span,
@@ -5924,7 +5984,7 @@ body:not(.diagram-body) .lr-avatar {
   border-radius: 50%;
   color: var(--auto-17233a-t);
   font-weight: 950;
-  background: rgba(var(--surface-rgb), .62);
+  background: rgba(var(--surface-rgb), var(--scrim-62));
   box-shadow: inset 0 0 0 1px rgba(36, 48, 68, .10);
 }
 
@@ -5973,7 +6033,7 @@ body:not(.diagram-body) .lr-bar-track {
   height: 9px;
   overflow: hidden;
   border-radius: 999px;
-  background: rgba(var(--surface-rgb), .72);
+  background: rgba(var(--surface-rgb), var(--scrim-72));
 }
 
 body:not(.diagram-body) .lr-bar-fill {
@@ -6002,7 +6062,7 @@ body:not(.diagram-body) .lr-btn {
   color: var(--auto-17233a-t);
   font-weight: 950;
   text-decoration: none;
-  background: rgba(var(--surface-rgb), .62);
+  background: rgba(var(--surface-rgb), var(--scrim-62));
   box-shadow: inset 0 0 0 1px rgba(36, 48, 68, .08);
   border: none;
   cursor: pointer;
@@ -6045,8 +6105,8 @@ body:not(.diagram-body) .main-content:has(.parent-picker-page) {
 
 /* Parent dashboard: warmer smart-dashboard palette inspired by the supplied reference. */
 body:not(.diagram-body):has(.parent-picker-page) {
-  background: radial-gradient(circle at 8% 16%, rgba(var(--surface-rgb), .72), transparent 19%),
-    radial-gradient(circle at 92% 12%, rgba(189, 168, 243, .12), transparent 17%),
+  background: radial-gradient(circle at 8% 16%, rgba(var(--surface-rgb), var(--scrim-72)), transparent 19%),
+    radial-gradient(circle at 92% 12%, rgba(var(--auto-rgb-189-168-243), .12), transparent 17%),
     linear-gradient(135deg, var(--auto-f7f7fb-bg) 0%, var(--auto-f0f6f5-bg) 38%, var(--auto-f9f5f1-bg) 100%) !important;
 }
 
@@ -6076,9 +6136,9 @@ body:not(.diagram-body) .parent-picker-page::before {
   width: clamp(38px, 4vw, 52px);
   height: min(640px, calc(100% - 80px));
   border-radius: 999px;
-  background: radial-gradient(circle at 50% 8%, rgba(var(--surface-rgb),.72) 0 3px, transparent 4px),
-    radial-gradient(circle at 34% 8%, rgba(var(--surface-rgb),.72) 0 3px, transparent 4px),
-    radial-gradient(circle at 66% 8%, rgba(var(--surface-rgb),.72) 0 3px, transparent 4px),
+  background: radial-gradient(circle at 50% 8%, rgba(var(--surface-rgb), var(--scrim-72)) 0 3px, transparent 4px),
+    radial-gradient(circle at 34% 8%, rgba(var(--surface-rgb), var(--scrim-72)) 0 3px, transparent 4px),
+    radial-gradient(circle at 66% 8%, rgba(var(--surface-rgb), var(--scrim-72)) 0 3px, transparent 4px),
     linear-gradient(var(--surface) 0 0) 50% 22% / 34px 3px no-repeat,
     linear-gradient(var(--surface) 0 0) 50% 31% / 34px 3px no-repeat,
     linear-gradient(var(--surface) 0 0) 50% 40% / 34px 3px no-repeat,
@@ -6102,8 +6162,8 @@ body:not(.diagram-body) .pd-hero {
   padding: clamp(28px, 3.5vw, 48px);
   border-radius: 22px;
   color: var(--auto-4e5d73-t);
-  background: radial-gradient(circle at 82% 22%, rgba(177, 222, 214, .42) 0 44px, transparent 45px),
-    radial-gradient(circle at 70% 92%, rgba(208, 192, 245, .38) 0 60px, transparent 61px),
+  background: radial-gradient(circle at 82% 22%, rgba(var(--auto-rgb-177-222-214), .42) 0 44px, transparent 45px),
+    radial-gradient(circle at 70% 92%, rgba(var(--auto-rgb-208-192-245), .38) 0 60px, transparent 61px),
     linear-gradient(135deg, var(--auto-f1f8f6-bg) 0%, var(--auto-edf5ff-bg) 46%, var(--auto-fdf1ea-bg) 100%) !important;
   box-shadow: 0 18px 38px rgba(134, 148, 179, .08);
 }
@@ -6249,7 +6309,7 @@ body:not(.diagram-body) .lr-class-tag.muted {
 
 body:not(.diagram-body) .lr-bar-track {
   height: 12px;
-  background: rgba(var(--surface-rgb), .80);
+  background: rgba(var(--surface-rgb), var(--scrim-80));
 }
 
 body:not(.diagram-body) .lr-bar-fill {
@@ -6316,7 +6376,7 @@ body:not(.diagram-body) .single-learner-report .parent-report-card {
   gap: 34px;
   padding: 36px;
   border-radius: 40px;
-  background: linear-gradient(135deg, rgba(232, 255, 255, .78), rgba(255, 244, 232, .45)),
+  background: linear-gradient(135deg, rgba(var(--auto-rgb-232-255-255), .78), rgba(var(--auto-rgb-255-244-232), .45)),
     url("../img/welcome_back/page08_img01.png") center / cover;
 }
 
@@ -6511,7 +6571,7 @@ body:not(.diagram-body) .result-two-only .parent-report-card {
   padding: 24px;
   border-radius: 34px;
   border: 1px solid rgba(255, 255, 255, .82);
-  background: linear-gradient(135deg, rgba(var(--surface-rgb), .56), rgba(235, 250, 255, .38)),
+  background: linear-gradient(135deg, rgba(var(--surface-rgb), var(--scrim-56)), rgba(var(--auto-rgb-235-250-255), .38)),
     url("../img/welcome_back/page08_img01.png") center / cover;
   box-shadow: 0 30px 90px rgba(50, 67, 95, .18);
 }
@@ -6600,7 +6660,7 @@ body:not(.diagram-body) .result-two-only .parent-report-main {
   padding: 26px;
   border: 1px solid rgba(219, 228, 244, .88);
   border-radius: 28px;
-  background: rgba(var(--surface-rgb), .88);
+  background: rgba(var(--surface-rgb), var(--scrim-88));
   box-shadow: 0 18px 46px rgba(50, 67, 95, .12), inset 0 1px 0 rgba(255, 255, 255, .92);
 }
 
@@ -6630,7 +6690,7 @@ body:not(.diagram-body) .result-two-only .parent-open-report {
   border: 1px solid rgba(126, 160, 232, .35);
   border-radius: 999px;
   color: var(--ink);
-  background: rgba(232, 241, 255, .76);
+  background: rgba(var(--auto-rgb-232-241-255), .76);
   font-size: .88rem;
   font-weight: 950;
   text-decoration: none;
@@ -6761,13 +6821,13 @@ body:not(.diagram-body) .result-two-only .parent-history-row {
   grid-template-columns: 16px minmax(160px, 1fr) 66px 78px 62px;
   min-height: 58px;
   border-radius: 14px;
-  background: rgba(var(--surface-rgb), .72);
+  background: rgba(var(--surface-rgb), var(--scrim-72));
 }
 
 body:not(.diagram-body) .auth-layout .auth-intro,
 body:not(.diagram-body) .auth-card-blue {
   border-color: rgba(168, 197, 242, .72);
-  background: linear-gradient(135deg, rgba(232, 241, 255, .88), rgba(var(--surface-rgb), .82)),
+  background: linear-gradient(135deg, rgba(var(--auto-rgb-232-241-255), .88), rgba(var(--surface-rgb), var(--scrim-82))),
     url("../img/welcome_back/page01_img01.png") center / cover;
   box-shadow: 0 22px 58px rgba(67, 105, 168, .14);
 }
@@ -6833,27 +6893,27 @@ body:not(.diagram-body) .role-teacher .tabs a.active {
 /* Role-specific form card colors */
 body:not(.diagram-body) .role-parent .auth-card-blue {
   border-color: rgba(168, 197, 242, .72);
-  background: linear-gradient(135deg, rgba(232, 241, 255, .88), rgba(var(--surface-rgb), .82)),
+  background: linear-gradient(135deg, rgba(var(--auto-rgb-232-241-255), .88), rgba(var(--surface-rgb), var(--scrim-82))),
     url("../img/welcome_back/page01_img01.png") center / cover;
   box-shadow: 0 22px 58px rgba(67, 105, 168, .14);
 }
 
 body:not(.diagram-body) .role-teacher .auth-card-blue {
   border-color: rgba(91, 218, 212, .72);
-  background: linear-gradient(135deg, rgba(214, 247, 245, .90), rgba(var(--surface-rgb), .82)),
+  background: linear-gradient(135deg, rgba(var(--auto-rgb-214-247-245), .90), rgba(var(--surface-rgb), var(--scrim-82))),
     url("../img/welcome_back/page01_img01.png") center / cover;
   box-shadow: 0 22px 58px rgba(91, 218, 212, .14);
  }
 
 body:not(.diagram-body) .role-teacher .auth-intro {
   border-color: rgba(91, 218, 212, .72);
-  background: linear-gradient(135deg, rgba(214, 247, 245, .90), rgba(var(--surface-rgb), .82)),
+  background: linear-gradient(135deg, rgba(var(--auto-rgb-214-247-245), .90), rgba(var(--surface-rgb), var(--scrim-82))),
     url("../img/welcome_back/page01_img01.png") center / cover;
   box-shadow: 0 22px 58px rgba(91, 218, 212, .14);
 }
 
 body:not(.diagram-body) .teacher-portal .portal-hero {
-  background: linear-gradient(135deg, rgba(214, 247, 245, .90), rgba(var(--surface-rgb), .68)),
+  background: linear-gradient(135deg, rgba(var(--auto-rgb-214-247-245), .90), rgba(var(--surface-rgb), var(--scrim-68))),
     url("../img/welcome_back/page01_img01.png") center / cover;
 }
 
@@ -6862,7 +6922,7 @@ body:not(.diagram-body) .auth-card-blue select,
 body:not(.diagram-body) .auth-card-blue textarea {
   min-height: 56px;
   border-color: rgba(145, 178, 233, .58);
-  background: rgba(225, 236, 254, .92);
+  background: rgba(var(--auto-rgb-225-236-254), .92);
   color: var(--auto-17233a-t);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, .8);
 }
@@ -6878,7 +6938,7 @@ body:not(.diagram-body) .auth-card-blue textarea:focus {
 body:not(.diagram-body) .auth-layout .tabs {
   padding: 8px;
   border: 1px solid rgba(145, 178, 233, .48);
-  background: rgba(var(--surface-rgb), .76);
+  background: rgba(var(--surface-rgb), var(--scrim-76));
 }
 
 body:not(.diagram-body) .auth-layout .tabs.register-tabs {
@@ -6906,7 +6966,7 @@ body:not(.diagram-body) .auth-layout .tabs a {
 body:not(.diagram-body) .role-learner .auth-intro,
 body:not(.diagram-body) .role-learner .auth-card-blue {
   border-color: rgba(255, 210, 46, .74);
-  background: linear-gradient(135deg, rgba(255, 247, 207, .90), rgba(var(--surface-rgb), .82)),
+  background: linear-gradient(135deg, rgba(var(--auto-rgb-255-247-207), .90), rgba(var(--surface-rgb), var(--scrim-82))),
     url("../img/welcome_back/page01_img01.png") center / cover;
   box-shadow: 0 22px 58px rgba(255, 210, 46, .16);
 }
@@ -6914,7 +6974,7 @@ body:not(.diagram-body) .role-learner .auth-card-blue {
 body:not(.diagram-body) .role-parent .auth-intro,
 body:not(.diagram-body) .role-parent .auth-card-blue {
   border-color: rgba(131, 168, 246, .74);
-  background: linear-gradient(135deg, rgba(232, 241, 255, .90), rgba(var(--surface-rgb), .82)),
+  background: linear-gradient(135deg, rgba(var(--auto-rgb-232-241-255), .90), rgba(var(--surface-rgb), var(--scrim-82))),
     url("../img/welcome_back/page01_img01.png") center / cover;
   box-shadow: 0 22px 58px rgba(67, 105, 168, .14);
 }
@@ -6922,7 +6982,7 @@ body:not(.diagram-body) .role-parent .auth-card-blue {
 body:not(.diagram-body) .role-teacher .auth-intro,
 body:not(.diagram-body) .role-teacher .auth-card-blue {
   border-color: rgba(91, 218, 212, .74);
-  background: linear-gradient(135deg, rgba(214, 247, 245, .92), rgba(var(--surface-rgb), .82)),
+  background: linear-gradient(135deg, rgba(var(--auto-rgb-214-247-245), .92), rgba(var(--surface-rgb), var(--scrim-82))),
     url("../img/welcome_back/page01_img01.png") center / cover;
   box-shadow: 0 22px 58px rgba(91, 218, 212, .16);
 }
@@ -6949,21 +7009,21 @@ body:not(.diagram-body) .role-learner .auth-card-blue input,
 body:not(.diagram-body) .role-learner .auth-card-blue select,
 body:not(.diagram-body) .role-learner .auth-card-blue textarea {
   border-color: rgba(255, 210, 46, .62);
-  background: rgba(255, 249, 220, .92);
+  background: rgba(var(--auto-rgb-255-249-220), .92);
 }
 
 body:not(.diagram-body) .role-parent .auth-card-blue input,
 body:not(.diagram-body) .role-parent .auth-card-blue select,
 body:not(.diagram-body) .role-parent .auth-card-blue textarea {
   border-color: rgba(131, 168, 246, .62);
-  background: rgba(232, 241, 255, .92);
+  background: rgba(var(--auto-rgb-232-241-255), .92);
 }
 
 body:not(.diagram-body) .role-teacher .auth-card-blue input,
 body:not(.diagram-body) .role-teacher .auth-card-blue select,
 body:not(.diagram-body) .role-teacher .auth-card-blue textarea {
   border-color: rgba(91, 218, 212, .62);
-  background: rgba(224, 250, 248, .92);
+  background: rgba(var(--auto-rgb-224-250-248), .92);
 }
 
 body:not(.diagram-body) .role-learner .auth-card-blue input:focus,
@@ -6996,7 +7056,7 @@ body:not(.diagram-body) .add-child-intro {
   min-height: 430px;
   padding: clamp(28px, 3.5vw, 48px);
   border-color: rgba(126, 190, 218, .45);
-  background: linear-gradient(135deg, rgba(220, 248, 255, .72), rgba(var(--surface-rgb), .66)),
+  background: linear-gradient(135deg, rgba(var(--auto-rgb-220-248-255), .72), rgba(var(--surface-rgb), var(--scrim-66))),
     url("../img/welcome_back/page01_img01.png") center / cover;
 }
 
@@ -7033,7 +7093,7 @@ body:not(.diagram-body) .add-child-card {
   gap: 18px;
   padding: clamp(26px, 3vw, 42px);
   border-radius: 28px;
-  background: linear-gradient(135deg, rgba(232, 244, 255, .90), rgba(var(--surface-rgb), .86)),
+  background: linear-gradient(135deg, rgba(var(--auto-rgb-232-244-255), .90), rgba(var(--surface-rgb), var(--scrim-86))),
     url("../img/welcome_back/page08_img01.png") center / cover;
 }
 
@@ -7062,12 +7122,12 @@ body:not(.diagram-body) .add-child-card input,
 body:not(.diagram-body) .add-child-card select {
   min-height: 64px;
   border-radius: 18px;
-  background: rgba(var(--surface-rgb), .88);
+  background: rgba(var(--surface-rgb), var(--scrim-88));
 }
 
 body:not(.diagram-body) .add-child-card input[readonly] {
   color: var(--auto-687287-t);
-  background: rgba(232, 241, 255, .76);
+  background: rgba(var(--auto-rgb-232-241-255), .76);
 }
 
 body:not(.diagram-body) .add-child-card input[type="file"] {
@@ -8344,7 +8404,7 @@ body:not(.diagram-body) .story-library-tools {
   align-items: end;
   padding: 18px;
   border-block: 1px solid var(--auto-d9e2ee-bd);
-  background: rgba(var(--surface-rgb), .74);
+  background: rgba(var(--surface-rgb), var(--scrim-74));
 }
 
 body:not(.diagram-body) .story-search-field,
@@ -8441,7 +8501,7 @@ body:not(.diagram-body) a.story-report-row:focus-visible {
 }
 
 body:not(.diagram-body) .story-report-row.is-incomplete {
-  background: rgba(248, 250, 252, .78);
+  background: rgba(var(--auto-rgb-248-250-252), .78);
 }
 
 body:not(.diagram-body) .story-report-row:nth-child(5n + 1) {
@@ -8573,7 +8633,7 @@ body:not(.diagram-body) .story-detail-summary {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   border-block: 1px solid var(--auto-d9e2ee-bd);
-  background: rgba(247, 250, 252, .75);
+  background: rgba(var(--auto-rgb-247-250-252), .75);
 }
 
 body:not(.diagram-body) .story-detail-summary article {
@@ -8692,37 +8752,37 @@ body:not(.diagram-body) .story-skill-row {
 body:not(.diagram-body) .story-skill-row:nth-child(6n + 1) {
   --skill-accent: #8d62e8;
   --skill-accent-end: #2ab9e3;
-  background: rgba(245, 241, 255, .94);
+  background: rgba(var(--auto-rgb-245-241-255), .94);
 }
 
 body:not(.diagram-body) .story-skill-row:nth-child(6n + 2) {
   --skill-accent: #2ab9e3;
   --skill-accent-end: #30cb7f;
-  background: rgba(232, 248, 255, .94);
+  background: rgba(var(--auto-rgb-232-248-255), .94);
 }
 
 body:not(.diagram-body) .story-skill-row:nth-child(6n + 3) {
   --skill-accent: #30cb7f;
   --skill-accent-end: #8d62e8;
-  background: rgba(232, 251, 239, .94);
+  background: rgba(var(--auto-rgb-232-251-239), .94);
 }
 
 body:not(.diagram-body) .story-skill-row:nth-child(6n + 4) {
   --skill-accent: #ffb51d;
   --skill-accent-end: #ff9f1c;
-  background: rgba(255, 248, 220, .94);
+  background: rgba(var(--auto-rgb-255-248-220), .94);
 }
 
 body:not(.diagram-body) .story-skill-row:nth-child(6n + 5) {
   --skill-accent: #ef7ac8;
   --skill-accent-end: #8d62e8;
-  background: rgba(255, 237, 247, .94);
+  background: rgba(var(--auto-rgb-255-237-247), .94);
 }
 
 body:not(.diagram-body) .story-skill-row:nth-child(6n) {
   --skill-accent: #ff5a66;
   --skill-accent-end: #ff9f1c;
-  background: rgba(255, 239, 235, .94);
+  background: rgba(var(--auto-rgb-255-239-235), .94);
 }
 
 body:not(.diagram-body) .story-skill-name {
@@ -10009,6 +10069,66 @@ body:not(.diagram-body) .story-diary-signature {
   --success: #3ddb9b;
   --surface-rgb: 32, 58, 68;
   --surface: #203a44;
+  --auto-rgb-169-150-238: 34, 27, 58;
+  --auto-rgb-255-253-245: 82, 72, 28;
+  --auto-rgb-255-244-199: 75, 65, 25;
+  --auto-rgb-215-248-246: 33, 69, 67;
+  --auto-rgb-231-239-255: 27, 45, 80;
+  --auto-rgb-236-231-255: 38, 27, 80;
+  --auto-rgb-255-228-240: 80, 27, 50;
+  --auto-rgb-255-248-239: 82, 58, 27;
+  --auto-rgb-232-241-255: 27, 48, 80;
+  --auto-rgb-221-250-239: 33, 71, 56;
+  --auto-rgb-239-255-247: 27, 82, 54;
+  --auto-rgb-255-245-245: 82, 28, 28;
+  --auto-rgb-239-245-255: 27, 48, 82;
+  --auto-rgb-214-247-245: 34, 68, 66;
+  --auto-rgb-221-251-243: 31, 72, 61;
+  --auto-rgb-248-251-255: 28, 51, 83;
+  --auto-rgb-213-249-247: 32, 70, 68;
+  --auto-rgb-255-238-228: 80, 46, 27;
+  --auto-rgb-225-248-255: 26, 67, 79;
+  --auto-rgb-234-255-228: 38, 80, 27;
+  --auto-rgb-242-232-255: 50, 27, 80;
+  --auto-rgb-255-247-207: 76, 68, 25;
+  --auto-rgb-238-248-255: 27, 59, 81;
+  --auto-rgb-189-168-243: 38, 28, 62;
+  --auto-rgb-177-222-214: 35, 53, 50;
+  --auto-rgb-208-192-245: 41, 31, 66;
+  --auto-rgb-232-255-255: 27, 80, 80;
+  --auto-rgb-255-244-232: 80, 55, 27;
+  --auto-rgb-235-250-255: 27, 67, 81;
+  --auto-rgb-225-236-254: 28, 47, 77;
+  --auto-rgb-255-249-220: 78, 69, 26;
+  --auto-rgb-224-250-248: 33, 71, 68;
+  --auto-rgb-220-248-255: 26, 68, 78;
+  --auto-rgb-232-244-255: 27, 55, 80;
+  --auto-rgb-248-250-252: 44, 55, 66;
+  --auto-rgb-247-250-252: 42, 57, 67;
+  --auto-rgb-245-241-255: 43, 27, 82;
+  --auto-rgb-232-248-255: 27, 64, 80;
+  --auto-rgb-232-251-239: 34, 72, 48;
+  --auto-rgb-255-248-220: 78, 68, 26;
+  --auto-rgb-255-237-247: 81, 27, 57;
+  --auto-rgb-255-239-235: 81, 38, 27;
+  --scrim-78: .93;
+  --scrim-86: .93;
+  --scrim-65: .93;
+  --scrim-82: .93;
+  --scrim-66: .93;
+  --scrim-70: .93;
+  --scrim-74: .93;
+  --scrim-68: .93;
+  --scrim-76: .93;
+  --scrim-80: .93;
+  --scrim-72: .93;
+  --scrim-58: .93;
+  --scrim-88: .93;
+  --scrim-84: .93;
+  --scrim-60: .93;
+  --scrim-64: .93;
+  --scrim-62: .93;
+  --scrim-56: .93;
   --auto-ffe5e5-bg: #501b1b;
   --auto-d6f7f5-bg: #224442;
   --auto-e5ad1f-t: #d4be87;
@@ -10235,8 +10355,7 @@ body:not(.diagram-body) .story-diary-signature {
 }
 
 [data-theme="dark"] body {
-  background:
-    radial-gradient(circle at 14% 8%, rgba(110, 224, 194, .14), transparent 32%),
+  background: radial-gradient(circle at 14% 8%, rgba(110, 224, 194, .14), transparent 32%),
     radial-gradient(circle at 88% 12%, rgba(150, 210, 230, .10), transparent 26%),
     linear-gradient(160deg, #1c4258 0%, #17394a 45%, #123f42 100%);
   background-attachment: fixed;
