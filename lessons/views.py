@@ -1300,12 +1300,18 @@ def grade_home(request, grade):
     lesson_data = []
     for lesson in lessons:
         record = progress_by_lesson.get(lesson.id)
+        grade3_completed = bool(
+            record
+            and lesson.grade == 3
+            and isinstance(record.assessment_scores, dict)
+            and record.assessment_scores.get('grade3_activities', {}).get('total') == 24
+        )
         lesson_data.append({
             'id': lesson.id,
             'title': lesson.title,
             'grade': lesson.grade,
             'thumbnail_image': lesson.thumbnail_image,
-            'completed': bool(record),
+            'completed': grade3_completed if lesson.grade == 3 else bool(record),
             'stars': range(record.stars_earned) if record else range(0),
             'is_current_ai_story': lesson.is_ai_generated and lesson.id == getattr(latest_ai_lesson, 'id', None),
         })
@@ -1343,6 +1349,14 @@ def story_page(request, lesson_id):
     lesson = get_object_or_404(Lesson, id=lesson_id)
     if lesson.is_ai_generated and lesson.generated_for_id and lesson.generated_for_id != child.id:
         raise Http404('This generated story belongs to another learner.')
+    if lesson.grade == 3:
+        activity_choices = [{
+            'label': 'Post-reading activities',
+            'detail': 'Pictures, facts, words, and spelling',
+            'url': f'/lessons/{lesson_id}/activities',
+        }]
+    else:
+        activity_choices = []
     pages = [{
         'page_number': p.page_number,
         'text': p.text,
@@ -1350,16 +1364,77 @@ def story_page(request, lesson_id):
         'audio_url': p.audio_url,
         'highlighted_words': p.get_highlighted_words(),
     } for p in lesson.pages.all()]
-    if lesson.grade == 4:
-        first_activity_url = f'/lessons/{lesson_id}/questions'
-    else:
-        first_activity_url = f'/lessons/{lesson_id}/questions'
+    if lesson.grade != 3 and (lesson.reading_activities.exists() or lesson.questions.exists()):
+        activity_choices.append({
+            'label': 'Reading questions',
+            'detail': 'Answer questions about the story',
+            'url': f'/lessons/{lesson_id}/questions',
+        })
+    if lesson.grade != 3 and lesson.pronunciation_words.exists():
+        activity_choices.append({
+            'label': 'Pronunciation',
+            'detail': 'Listen and say the story words',
+            'url': f'/lessons/{lesson_id}/pronunciation',
+        })
+    if lesson.grade != 3 and lesson.spelling_activities.exists():
+        activity_choices.append({
+            'label': 'Spelling',
+            'detail': 'Build the story words',
+            'url': f'/lessons/{lesson_id}/spelling',
+        })
+    if lesson.grade != 3 and lesson.visual_items.exists():
+        activity_choices.append({
+            'label': 'Picture matching',
+            'detail': 'Match pictures to story words',
+            'url': f'/lessons/{lesson_id}/visual-activity',
+        })
+    first_activity_url = activity_choices[0]['url'] if activity_choices else f'/grade/{lesson.grade}'
     return render(request, 'story.html', {
         'lesson': lesson,
         'pages': pages,
         'child': child,
         'first_activity_url': first_activity_url,
+        'activity_choices': activity_choices,
     })
+
+
+def grade3_activities_page(request, lesson_id):
+    child, response = learner_required(request)
+    if response:
+        return response
+    lesson = get_object_or_404(Lesson, id=lesson_id, grade=3)
+    return render(request, 'grade3_activities.html', {
+        'lesson': lesson,
+        'child': child,
+    })
+
+
+@require_http_methods(['POST'])
+def complete_grade3_activities(request, lesson_id):
+    child, response = learner_required(request)
+    if response:
+        return response
+    lesson = get_object_or_404(Lesson, id=lesson_id, grade=3)
+    try:
+        scores = json.loads(request.body or '{}')
+        total_score = int(scores.get('total_score', 0))
+        total_possible = int(scores.get('total_possible', 24))
+    except (TypeError, ValueError, json.JSONDecodeError):
+        return JsonResponse({'error': 'Invalid activity score.'}, status=400)
+    Progress.objects.update_or_create(
+        child=child,
+        lesson=lesson,
+        defaults={
+            'comprehension_score': int(scores.get('comprehension_score', 0)),
+            'visual_score': int(scores.get('visual_score', 0)),
+            'spelling_score': int(scores.get('spelling_score', 0)),
+            'total_score': total_score,
+            'total_possible': total_possible,
+            'stars_earned': 3 if total_score / max(total_possible, 1) >= .9 else 2 if total_score / max(total_possible, 1) >= .7 else 1,
+            'assessment_scores': {'grade3_activities': {'score': total_score, 'total': total_possible}},
+        },
+    )
+    return JsonResponse({'completed': True})
 
 
 def questions_page(request, lesson_id):
@@ -1385,6 +1460,7 @@ def questions_page(request, lesson_id):
         'child_id': child.id,
         'total_questions': total_questions,
         'next_activity_url': next_activity_url,
+        'previous_activity_url': f'/lessons/{lesson_id}/story',
     })
 
 
@@ -1403,6 +1479,13 @@ def visual_activity_page(request, lesson_id):
         'lesson': lesson,
         'child': child,
         'items': lesson.visual_items.all(),
+        'next_activity_url': (
+            f'/lessons/{lesson_id}/pronunciation'
+            if lesson.pronunciation_words.exists()
+            else f'/lessons/{lesson_id}/spelling'
+            if lesson.spelling_activities.exists()
+            else f'/lessons/{lesson_id}/results'
+        ),
     })
 
 
@@ -1414,6 +1497,11 @@ def pronunciation_page(request, lesson_id):
     return render(request, 'pronunciation.html', {
         'lesson': lesson,
         'words': lesson.pronunciation_words.all(),
+        'previous_activity_url': (
+            f'/lessons/{lesson_id}/visual-activity'
+            if lesson.visual_items.exists() else f'/lessons/{lesson_id}/questions'
+        ),
+        'next_activity_url': f'/lessons/{lesson_id}/spelling' if lesson.spelling_activities.exists() else f'/lessons/{lesson_id}/results',
     })
 
 
@@ -1461,20 +1549,9 @@ def spelling_page(request, lesson_id):
     if response:
         return response
     lesson = get_object_or_404(Lesson, id=lesson_id)
-    activities = list(lesson.spelling_activities.all())
-
-    if request.method == 'POST':
-        spelling_score = 0
-        for activity in activities:
-            answer = request.POST.get(f'activity_{activity.id}', '').strip()
-            if spelling_answer_is_correct(activity, answer):
-                spelling_score += 1
-
-        request.session[f'lesson_{lesson_id}_spelling_score'] = spelling_score
-        request.session[f'lesson_{lesson_id}_spelling_total'] = len(activities)
-        return redirect(f'/lessons/{lesson_id}/results')
-
-    return render(request, 'spelling.html', {'lesson': lesson, 'activities': activities, 'child': child})
+    if lesson.grade != 3:
+        raise Http404('Listen and spell is available for Grade 3 stories only.')
+    return redirect(f'/lessons/{lesson_id}/activities')
 
 
 def add_assessment_score(scores, key, score, total):

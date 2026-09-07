@@ -211,11 +211,10 @@ PRONUNCIATION_WORDS = {
 LESSON_SPELLING = {
     "Mandu's Secret Diary": [
         ('d_ary', 'diary'),
-        ('s_cret', 'secret'),
-        ('h_de', 'hide'),
-        ('cl_e', 'clue'),
-        ('fl_ur', 'flour'),
+        ('b_d', 'bed'),
         ('d_g', 'dog'),
+        ('tr_p', 'trap'),
+        ('op_n', 'open'),
     ],
 }
 
@@ -384,7 +383,6 @@ MATCHING_ACTIVITY_INDEX = {
     'The School Shed Is on Fire': 1,
     'Spring Day Surprise': 1,
     "Mandu's Secret Diary": 1,
-    'Soccer Trouble': 1,
     'The River Mistake': 1,
     'Stage Fright': 1,
     'Why Mapula Missed School': 2,

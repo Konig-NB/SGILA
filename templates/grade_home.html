@@ -49,6 +49,7 @@
         <h2>{{ lesson.title }}</h2>
         <p>Grade {{ lesson.grade }} story and activities</p>
         <small>{% for star in lesson.stars %}&#9733;{% empty %}Start reading for 2x rewards{% endfor %}</small>
+        {% if lesson.completed %}<strong class="lesson-completed-label">Completed</strong>{% endif %}
       </div>
     </a>
   {% empty %}

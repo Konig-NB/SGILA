@@ -29,7 +29,7 @@
     {% endfor %}
   </div>
   <div class="center">
-    <a id="next-link" href="/lessons/{{ lesson.id }}/pronunciation" class="btn btn-primary {% if items %}disabled-link{% endif %}">Continue</a>
+    <a id="next-link" href="{{ next_activity_url }}" class="btn btn-primary {% if items %}disabled-link{% endif %}">Continue</a>
   </div>
 </section>
 <script>

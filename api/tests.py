@@ -123,7 +123,16 @@ class SgilaFlowTests(TestCase):
             parent_email="sipho@example.com",
             password=make_password("password123"),
         )
-        self.sign_in_child(child)
+        session = self.client.session
+        session.update({
+            'account_role': 'learner',
+            'account_id': child.id,
+            'account_name': child.name,
+            'child_id': child.id,
+            'child_name': child.name,
+            'child_grade': child.grade,
+        })
+        session.save()
 
         for path in [
             f"/lessons/{self.lesson.id}/story",
@@ -889,6 +898,40 @@ class SgilaFlowTests(TestCase):
         self.assertEqual(questions_response.context['next_activity_url'], f'/lessons/{lesson.id}/pronunciation')
         self.assertRedirects(visual_response, f'/lessons/{lesson.id}/pronunciation')
 
+    def test_story_page_lists_available_activities_for_learner_choice(self):
+        child = Child.objects.create(
+            name='Activity chooser',
+            age=9,
+            grade=3,
+            parent_email='activity-chooser@example.com',
+            password='hash',
+        )
+        lesson = Lesson.objects.create(title='Choose Activities', grade=3)
+        ReadingActivity.objects.create(
+            lesson=lesson,
+            order=1,
+            activity_type=ReadingActivity.MULTIPLE_CHOICE,
+            skill='literal_comprehension',
+            question='What happened?',
+            options=['A', 'B'],
+            correct_answer='A',
+        )
+        PronunciationWord.objects.create(lesson=lesson, word='Story')
+        SpellingActivity.objects.create(
+            lesson=lesson,
+            activity_type=SpellingActivity.FILL_VOWEL,
+            display_text='st_ry',
+            answer='story',
+        )
+        self.sign_in_child(child)
+
+        response = self.client.get(f'/lessons/{lesson.id}/story')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, f'/lessons/{lesson.id}/questions')
+        self.assertContains(response, f'/lessons/{lesson.id}/pronunciation')
+        self.assertContains(response, f'/lessons/{lesson.id}/spelling')
+
 
 class CurriculumSeedTests(TestCase):
     def test_seeded_curriculum_content_is_limited_to_grades_one_to_four(self):
@@ -919,6 +962,39 @@ class CurriculumSeedTests(TestCase):
                 for visual_item in lesson.visual_items.all():
                     self.assertEqual(len(visual_item.get_word_options()), 5)
                     self.assertIn(visual_item.correct_word, visual_item.get_word_options())
+
+    def test_soccer_trouble_choice_activity_is_answerable(self):
+        call_command('seed_data', verbosity=0)
+        child = Child.objects.create(
+            name='Soccer learner',
+            age=9,
+            grade=3,
+            parent_email='soccer@example.com',
+            password='hash',
+        )
+        lesson = Lesson.objects.get(title='Soccer Trouble')
+        activity = lesson.reading_activities.get(question='What did Coach Jones tell John to do?')
+        session = self.client.session
+        session.update({
+            'account_role': 'learner',
+            'account_id': child.id,
+            'account_name': child.name,
+            'child_id': child.id,
+            'child_name': child.name,
+            'child_grade': child.grade,
+        })
+        session.save()
+
+        response = self.client.post('/api/check-reading-activity', data={
+            'child_id': child.id,
+            'lesson_id': lesson.id,
+            'activity_id': activity.id,
+            'child_answer': 'Look at the goal and kick.',
+        }, content_type='application/json')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.json()['correct'])
+        self.assertEqual(activity.activity_type, ReadingActivity.MULTIPLE_CHOICE)
 
         formats = set(ReadingActivity.objects.values_list('activity_type', flat=True))
         self.assertTrue({
@@ -963,10 +1039,10 @@ class CurriculumSeedTests(TestCase):
             'Word Detective',
         )
         diary_story = Lesson.objects.get(title="Mandu's Secret Diary")
-        self.assertEqual(diary_story.reading_activities.count(), 21)
+        self.assertEqual(diary_story.reading_activities.count(), 5)
         self.assertEqual(
             list(diary_story.reading_activities.values_list('group_number', flat=True)),
-            ([1] * 12) + [2] + ([3] * 5) + ([4] * 2) + [5],
+            [1, 1, 1, 2, 3],
         )
         self.assertEqual(
             list(diary_story.pronunciation_words.values_list('word', flat=True)),

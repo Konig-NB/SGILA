@@ -193,6 +193,10 @@ def structured_reading_answer(activity):
     return value if isinstance(value, dict) else {}
 
 
+def is_structured_matching(activity):
+    return activity.activity_type == ReadingActivity.MATCHING and isinstance(activity.options, dict)
+
+
 def reading_answer_score(activity, child_answer):
     if activity.activity_type == ReadingActivity.SEQUENCING:
         correct = list(child_answer or []) == list(activity.items_in_correct_order or [])
@@ -200,9 +204,8 @@ def reading_answer_score(activity, child_answer):
 
     if activity.activity_type in {
         ReadingActivity.CROSSWORD,
-        ReadingActivity.MATCHING,
         ReadingActivity.WORD_SCRAMBLE,
-    }:
+    } or is_structured_matching(activity):
         expected = structured_reading_answer(activity)
         submitted = child_answer if isinstance(child_answer, dict) else {}
         score = 0
@@ -790,9 +793,8 @@ def check_reading_activity(request):
         has_answer = isinstance(child_answer, list) and bool(child_answer)
     elif activity.activity_type in {
         ReadingActivity.CROSSWORD,
-        ReadingActivity.MATCHING,
         ReadingActivity.WORD_SCRAMBLE,
-    }:
+    } or is_structured_matching(activity):
         has_answer = isinstance(child_answer, dict) and bool(child_answer)
     else:
         has_answer = bool(str(child_answer or '').strip())
@@ -866,9 +868,8 @@ def check_reading_activity(request):
     model_answer = reading_model_answer(activity)
     correct_answer = structured_reading_answer(activity) if activity.activity_type in {
         ReadingActivity.CROSSWORD,
-        ReadingActivity.MATCHING,
         ReadingActivity.WORD_SCRAMBLE,
-    } else activity.correct_answer
+    } or is_structured_matching(activity) else activity.correct_answer
 
     return JsonResponse({
         'correct': is_correct,
@@ -1072,8 +1073,11 @@ def spelling(request, lesson_id):
     except Lesson.DoesNotExist:
         return JsonResponse({'error': 'Lesson not found'}, status=404)
 
+    if lesson.grade != 3:
+        return JsonResponse({'error': 'Spelling is available for Grade 3 lessons only.'}, status=404)
+
     result = {}
-    activities = lesson.spelling_activities.all()
+    activities = lesson.spelling_activities.all()[:5]
 
     fill_vowel_words = []
     drag_words = []

@@ -201,8 +201,9 @@ function renderCloze(activity) {
   const bank = document.createElement('div');
   bank.className = 'cloze-word-bank';
   bank.setAttribute('aria-label', 'Word bank');
-  let selectedAnswer = '';
-  let selectedButton = null;
+  
+  const selectedAnswers = []; // Array to hold up to 3 selected words
+  const selectedButtons = []; // Track which buttons are selected
 
   activity.options.forEach((word) => {
     const button = document.createElement('button');
@@ -211,26 +212,51 @@ function renderCloze(activity) {
     button.textContent = word;
     button.dataset.answer = word;
     button.setAttribute('aria-pressed', 'false');
+    
     button.addEventListener('click', () => {
-      bank.querySelectorAll('.cloze-chip').forEach((chip) => {
-        chip.classList.remove('is-selected');
-        chip.setAttribute('aria-pressed', 'false');
-      });
-      button.classList.add('is-selected');
-      button.setAttribute('aria-pressed', 'true');
-      selectedAnswer = word;
-      selectedButton = button;
-      submit.disabled = false;
+      const isSelected = button.classList.contains('is-selected');
+      
+      if (isSelected) {
+        // Deselect if already selected
+        button.classList.remove('is-selected');
+        button.setAttribute('aria-pressed', 'false');
+        const index = selectedButtons.indexOf(button);
+        selectedAnswers.splice(index, 1);
+        selectedButtons.splice(index, 1);
+      } else if (selectedAnswers.length < 3) {
+        // Select if less than 3 are selected
+        button.classList.add('is-selected');
+        button.setAttribute('aria-pressed', 'true');
+        selectedAnswers.push(word);
+        selectedButtons.push(button);
+      } else {
+        // Show message if trying to select more than 3
+        alert('You can only select 3 words!');
+        return;
+      }
+      
+      // Enable submit only if exactly 3 words selected
+      submit.disabled = selectedAnswers.length !== 3;
     });
+    
     bank.appendChild(button);
   });
 
-  const submit = makeSubmitButton('Check the word');
+  const submit = makeSubmitButton('Check the words');
   submit.disabled = true;
-  submit.addEventListener('click', () => submitActivity(activity, selectedAnswer, selectedButton));
+  
+  submit.addEventListener('click', () => {
+    // Format answer as object: {1: word1, 2: word2, 3: word3}
+    const formattedAnswer = {
+      '1': selectedAnswers[0],
+      '2': selectedAnswers[1],
+      '3': selectedAnswers[2]
+    };
+    submitActivity(activity, formattedAnswer, selectedButtons[0]);
+  });
+  
   responseArea.append(bank, submit);
 }
-
 function renderSequence(activity) {
   const list = document.createElement('ol');
   list.className = 'sequence-list';
@@ -361,34 +387,271 @@ function renderCrossword(activity) {
   responseArea.append(layout, submit);
 }
 
-function renderMatching(activity) {
-  const config = activity.options || {};
-  const rows = document.createElement('div');
-  rows.className = 'matching-rows';
-  (config.prompts || []).forEach((prompt) => {
-    const row = document.createElement('label');
-    row.className = 'matching-row';
-    const word = document.createElement('strong');
-    word.textContent = prompt.text;
-    const select = document.createElement('select');
-    select.dataset.prompt = prompt.key;
-    select.innerHTML = '<option value="">Choose a meaning</option>';
-    (config.choices || []).forEach((choice) => {
-      const option = document.createElement('option');
-      option.value = choice.key;
-      option.textContent = `${choice.key}. ${choice.text}`;
-      select.appendChild(option);
+function renderCharacterMatching(activity) {
+  const container = document.createElement('div');
+  container.className = 'character-matching-container';
+  
+  // Left side: Clues
+  const cluesSection = document.createElement('div');
+  cluesSection.className = 'matching-clues-section';
+  const cluesTitle = document.createElement('h3');
+  cluesTitle.textContent = 'Read the clues:';
+  cluesSection.appendChild(cluesTitle);
+  
+  const cluesList = document.createElement('div');
+  cluesList.className = 'clues-list';
+  
+  // Right side: Drop zones
+  const dropZonesSection = document.createElement('div');
+  dropZonesSection.className = 'matching-dropzones-section';
+  const dropZonesTitle = document.createElement('h3');
+  dropZonesTitle.textContent = 'Drag names here:';
+  dropZonesSection.appendChild(dropZonesTitle);
+  
+  const dropZonesList = document.createElement('div');
+  dropZonesList.className = 'dropzones-list';
+  
+  // Bottom: Draggable character cards
+  const cardsSection = document.createElement('div');
+  cardsSection.className = 'matching-cards-section';
+  const cardsTitle = document.createElement('h3');
+  cardsTitle.textContent = 'Character names:';
+  cardsSection.appendChild(cardsTitle);
+  
+  const cardsList = document.createElement('div');
+  cardsList.className = 'draggable-cards-list';
+  
+  // Store all answers to handle multiple clues
+  const allAnswers = {};
+  const dropZones = {};
+  
+  // Get all matching questions for this lesson
+  fetch(`/api/lessons/${activity.lesson_id || lessonId}/questions`)
+    .then(r => r.json())
+    .then(activities => {
+      const matchingActivities = activities.filter(a => a.activity_type === 'matching' && a.group_title === 'Who Am I?');
+      
+      // Create clues and drop zones
+      matchingActivities.forEach((act, index) => {
+        const clueDiv = document.createElement('div');
+        clueDiv.className = 'clue-item';
+        clueDiv.innerHTML = `<p><strong>Clue ${index + 1}:</strong> ${act.question}</p>`;
+        cluesList.appendChild(clueDiv);
+        
+        // Create corresponding drop zone
+        const dropZone = document.createElement('div');
+        dropZone.className = 'drop-zone';
+        dropZone.dataset.clueIndex = index;
+        dropZone.dataset.correctAnswer = act.correct_answer || '';
+        dropZone.innerHTML = `<p class="drop-zone-placeholder">Drop name here</p>`;
+        dropZone.style.minHeight = '60px';
+        dropZone.style.border = '2px dashed #999';
+        dropZone.style.borderRadius = '8px';
+        dropZone.style.padding = '10px';
+        dropZone.style.margin = '10px 0';
+        
+        // Drag over effect
+        dropZone.addEventListener('dragover', (e) => {
+          e.preventDefault();
+          dropZone.style.backgroundColor = '#e0f7e0';
+          dropZone.style.borderColor = '#22b76e';
+        });
+        
+        dropZone.addEventListener('dragleave', () => {
+          dropZone.style.backgroundColor = 'transparent';
+          dropZone.style.borderColor = '#999';
+        });
+        
+        dropZone.addEventListener('drop', (e) => {
+          e.preventDefault();
+          const cardText = e.dataTransfer.getData('text/plain');
+          
+          // Remove any existing card in this zone
+          const existing = dropZone.querySelector('.dropped-card');
+          if (existing) existing.remove();
+          
+          // Add new card to zone
+          const droppedCard = document.createElement('div');
+          droppedCard.className = 'dropped-card';
+          droppedCard.textContent = cardText;
+          droppedCard.style.padding = '10px';
+          droppedCard.style.backgroundColor = '#6ee0c2';
+          droppedCard.style.borderRadius = '6px';
+          droppedCard.style.color = 'white';
+          droppedCard.style.fontWeight = 'bold';
+          droppedCard.style.cursor = 'pointer';
+          droppedCard.title = 'Click to remove';
+          
+          // Allow removal by clicking
+          droppedCard.addEventListener('click', () => {
+            droppedCard.remove();
+            dropZone.innerHTML = '<p class="drop-zone-placeholder">Drop name here</p>';
+            allAnswers[index] = null;
+            checkSubmitEnabled();
+          });
+          
+          // Hide placeholder and add card
+          const placeholder = dropZone.querySelector('.drop-zone-placeholder');
+          if (placeholder) placeholder.remove();
+          dropZone.appendChild(droppedCard);
+          
+          // Store answer
+          allAnswers[index] = cardText;
+          checkSubmitEnabled();
+          
+          dropZone.style.backgroundColor = 'transparent';
+          dropZone.style.borderColor = '#999';
+        });
+        
+        dropZonesList.appendChild(dropZone);
+        dropZones[index] = dropZone;
+      });
+      
+      // Create draggable character name cards
+      const characterNames = matchingActivities.map(a => a.correct_answer || '');
+      const uniqueNames = [...new Set(characterNames)];
+      
+      uniqueNames.forEach((name) => {
+        const card = document.createElement('div');
+        card.className = 'character-card';
+        card.textContent = name;
+        card.draggable = true;
+        card.style.padding = '12px 16px';
+        card.style.margin = '8px';
+        card.style.backgroundColor = '#a996ee';
+        card.style.color = 'white';
+        card.style.borderRadius = '8px';
+        card.style.cursor = 'grab';
+        card.style.fontWeight = 'bold';
+        card.style.display = 'inline-block';
+        card.style.userSelect = 'none';
+        
+        card.addEventListener('dragstart', (e) => {
+          e.dataTransfer.effectAllowed = 'copy';
+          e.dataTransfer.setData('text/plain', name);
+          card.style.opacity = '0.6';
+        });
+        
+        card.addEventListener('dragend', () => {
+          card.style.opacity = '1';
+        });
+        
+        cardsList.appendChild(card);
+      });
     });
-    row.append(word, select);
-    rows.appendChild(row);
-  });
-  const submit = makeSubmitButton('Check matches');
+  
+  function checkSubmitEnabled() {
+    const zoneCount = Object.keys(dropZones).length;
+    const filledCount = Object.values(allAnswers).filter(a => a !== null).length;
+    submit.disabled = filledCount !== zoneCount;
+  }
+  
+  cluesSection.appendChild(cluesList);
+  dropZonesSection.appendChild(dropZonesList);
+  cardsSection.appendChild(cardsList);
+  
+  container.appendChild(cluesSection);
+  container.appendChild(dropZonesSection);
+  container.appendChild(cardsSection);
+  
+  const submit = makeSubmitButton('Check answers');
+  submit.disabled = true;
+  
   submit.addEventListener('click', () => {
-    const answer = {};
-    rows.querySelectorAll('select').forEach((select) => answer[select.dataset.prompt] = select.value);
-    submitActivity(activity, answer);
+    submitActivity(activity, allAnswers);
   });
-  responseArea.append(rows, submit);
+  
+  responseArea.append(container, submit);
+  
+  // Add some basic styling
+  const style = document.createElement('style');
+  style.textContent = `
+    .character-matching-container {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 20px;
+      margin: 20px 0;
+    }
+    .matching-clues-section, .matching-dropzones-section {
+      padding: 15px;
+      background: #f9f9f9;
+      border-radius: 8px;
+    }
+    .clue-item, .drop-zone {
+      margin: 10px 0;
+    }
+    .draggable-cards-list {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-top: 10px;
+      padding: 15px;
+      background: #f9f9f9;
+      border-radius: 8px;
+    }
+    .character-card {
+      transition: transform 0.2s;
+    }
+    .character-card:hover {
+      transform: scale(1.05);
+    }
+    .dropped-card {
+      animation: dropAnimation 0.3s ease-out;
+    }
+    @keyframes dropAnimation {
+      from {
+        opacity: 0;
+        transform: scale(0.8);
+      }
+      to {
+        opacity: 1;
+        transform: scale(1);
+      }
+    }
+    @media (max-width: 768px) {
+      .character-matching-container {
+        grid-template-columns: 1fr;
+      }
+    }
+  `;
+  document.head.appendChild(style);
+}
+
+// Update the rendering logic to use new function for "Who Am I?"
+function renderMatching(activity) {
+  // Check if this is a character matching activity
+  if (activity.group_title === 'Who Am I?' || activity.activity_type === 'matching') {
+    renderCharacterMatching(activity);
+  } else {
+    // Original dropdown matching for other types
+    const config = activity.options || {};
+    const rows = document.createElement('div');
+    rows.className = 'matching-rows';
+    (config.prompts || []).forEach((prompt) => {
+      const row = document.createElement('label');
+      row.className = 'matching-row';
+      const word = document.createElement('strong');
+      word.textContent = prompt.text;
+      const select = document.createElement('select');
+      select.dataset.prompt = prompt.key;
+      select.innerHTML = '<option value="">Choose a meaning</option>';
+      (config.choices || []).forEach((choice) => {
+        const option = document.createElement('option');
+        option.value = choice.key;
+        option.textContent = `${choice.key}. ${choice.text}`;
+        select.appendChild(option);
+      });
+      row.append(word, select);
+      rows.appendChild(row);
+    });
+    const submit = makeSubmitButton('Check matches');
+    submit.addEventListener('click', () => {
+      const answer = {};
+      rows.querySelectorAll('select').forEach((select) => answer[select.dataset.prompt] = select.value);
+      submitActivity(activity, answer);
+    });
+    responseArea.append(rows, submit);
+  }
 }
 
 function renderWordScramble(activity) {

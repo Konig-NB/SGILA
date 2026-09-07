@@ -206,6 +206,16 @@ class Command(BaseCommand):
                     ReadingActivity.TRUE_FALSE,
                 }
             ]
+            selected_activities = []
+            selected_skills = set()
+            for activity in enriched_activities:
+                skill = activity.get('skill')
+                if skill not in selected_skills:
+                    selected_activities.append(activity)
+                    selected_skills.add(skill)
+                if len(selected_activities) == 5:
+                    break
+            enriched_activities = selected_activities
             group_numbers = {}
             for activity in enriched_activities:
                 original_group = activity.get('group_number') or 0
@@ -237,6 +247,7 @@ class Command(BaseCommand):
 
         lesson.visual_items.all().delete()
         lesson.pronunciation_words.all().delete()
+        lesson.spelling_activities.all().delete()
         lesson_words = LESSON_WORDS.get(lesson.title)
         pronunciation_words = PRONUNCIATION_WORDS.get(lesson.title, lesson_words)
         vocab_sheet = VISUAL_VOCAB_SHEETS.get(lesson.title)
@@ -275,10 +286,26 @@ class Command(BaseCommand):
                 isizulu_word=isizulu_word,
             )
 
-        spelling_words = LESSON_SPELLING.get(lesson.title)
+        if lesson.grade != 3:
+            return
+
+        spelling_words = list(LESSON_SPELLING.get(lesson.title, []))
+        existing_answers = {answer.lower() for _display_text, answer in spelling_words}
+        for word, _isizulu_word, _image_source in lesson_words:
+            if len(spelling_words) >= 5:
+                break
+            if word.lower() in existing_answers:
+                continue
+            display_text = word
+            for vowel in 'aeiouAEIOU':
+                if vowel in display_text:
+                    display_text = display_text.replace(vowel, '_', 1)
+                    break
+            spelling_words.append((display_text, word))
+            existing_answers.add(word.lower())
+
         if spelling_words:
-            lesson.spelling_activities.all().delete()
-            for display_text, answer in spelling_words:
+            for display_text, answer in spelling_words[:5]:
                 SpellingActivity.objects.create(
                     lesson=lesson,
                     activity_type=SpellingActivity.FILL_VOWEL,

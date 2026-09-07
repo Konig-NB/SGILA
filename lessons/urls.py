@@ -27,6 +27,8 @@ urlpatterns = [
     path('lessons/<int:lesson_id>/visual-activity', views.visual_activity_page, name='visual-activity-page'),
     path('lessons/<int:lesson_id>/pronunciation', views.pronunciation_page, name='pronunciation-page'),
     path('lessons/<int:lesson_id>/spelling', views.spelling_page, name='spelling-page'),
+    path('lessons/<int:lesson_id>/activities', views.grade3_activities_page, name='grade3-activities-page'),
+    path('lessons/<int:lesson_id>/activities/complete', views.complete_grade3_activities, name='complete-grade3-activities'),
     path('lessons/<int:lesson_id>/results', views.results_page, name='results-page'),
     path('dashboard/<int:child_id>', views.dashboard_page, name='dashboard'),
     path(
