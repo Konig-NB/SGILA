@@ -100,11 +100,14 @@ def activity_choices_for(lesson):
     if lesson.grade == 4:
         choices.extend([
             {'label': 'Comprehension', 'url': f'{base}/questions'},
+            {'label': 'Vocabulary', 'url': f'{base}/vocabulary'},
             {'label': 'Sequencing', 'url': f'{base}/sequencing'},
             {'label': 'Inference', 'url': f'{base}/inference'},
+            {'label': 'Prediction', 'url': f'{base}/prediction'},
             {'label': 'Feelings', 'url': f'{base}/feelings'},
             {'label': 'Cause and effect', 'url': f'{base}/cause-effect'},
             {'label': 'Main lesson', 'url': f'{base}/theme'},
+            {'label': 'Written response', 'url': f'{base}/written-response'},
         ])
     else:
         choices.extend([
@@ -1467,12 +1470,6 @@ def visual_activity_page(request, lesson_id):
     if response:
         return response
     lesson = get_object_or_404(Lesson, id=lesson_id)
-    if lesson.grade == 3 and not lesson.visual_items.exists():
-        if lesson.pronunciation_words.exists():
-            return redirect(f'/lessons/{lesson_id}/pronunciation')
-        if lesson.spelling_activities.exists():
-            return redirect(f'/lessons/{lesson_id}/spelling')
-        return redirect(f'/lessons/{lesson_id}/results')
     return render(request, 'visual_activity.html', {
         'lesson': lesson,
         'child': child,
@@ -1622,10 +1619,9 @@ def results_page(request, lesson_id):
         return response
     lesson = get_object_or_404(Lesson, id=lesson_id)
     prefix = f'lesson_{lesson_id}'
-<<<<<<< HEAD
     # A completed lesson no longer needs its "continue later" marker.
     request.session.pop(f'{prefix}_resume_url', None)
-=======
+
     fresh_suffixes = (
         'reading_skill_scores', 'comprehension_score', 'comprehension_total',
         'visual_score', 'visual_total', 'spelling_score', 'spelling_total',
@@ -1705,7 +1701,6 @@ def legacy_results_page(request, lesson_id):
         return response
     lesson = get_object_or_404(Lesson, id=lesson_id)
     prefix = f'lesson_{lesson_id}'
->>>>>>> b58a443a4ffa317ebb9c1b96d24c1713bb925ae5
 
     # ── Grade 4 results path ──────────────────────────────────────────────────
     if lesson.grade == 4:

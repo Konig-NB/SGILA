@@ -856,7 +856,7 @@ class SgilaFlowTests(TestCase):
         self.assertContains(visual_response, "No visual matching cards have been added yet.")
         self.assertContains(visual_response, "Continue")
 
-    def test_grade_three_flow_skips_visual_matching_and_keeps_pronunciation(self):
+    def test_grade_three_visual_matching_choice_opens_its_own_activity(self):
         child = Child.objects.create(
             name="Mandu",
             age=9,
@@ -887,7 +887,8 @@ class SgilaFlowTests(TestCase):
         visual_response = self.client.get(f'/lessons/{lesson.id}/visual-activity')
 
         self.assertEqual(questions_response.context['next_activity_url'], f'/lessons/{lesson.id}/pronunciation')
-        self.assertRedirects(visual_response, f'/lessons/{lesson.id}/pronunciation')
+        self.assertEqual(visual_response.status_code, 200)
+        self.assertContains(visual_response, "No visual matching cards have been added yet.")
 
 
 class CurriculumSeedTests(TestCase):

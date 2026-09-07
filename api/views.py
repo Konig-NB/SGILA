@@ -1142,6 +1142,19 @@ def check_spelling_answer(request):
         }, status=400)
 
     correct = spelling_answer_is_correct(activity, answer)
+    # Store the running spelling score as each answer is checked. This lets the
+    # learner's pause screen show an accurate score before the final form submit.
+    answers_key = session_score_key(lesson_id, 'spelling_answers')
+    answers = request.session.get(answers_key, {})
+    answers[str(activity.id)] = bool(correct)
+    request.session[answers_key] = answers
+    request.session[session_score_key(lesson_id, 'spelling_score')] = sum(
+        1 for is_correct in answers.values() if is_correct
+    )
+    request.session[session_score_key(lesson_id, 'spelling_total')] = SpellingActivity.objects.filter(
+        lesson_id=lesson_id
+    ).count()
+    request.session.modified = True
     return JsonResponse({
         'correct': correct,
         'message': 'Correct! Great spelling.' if correct else 'Not quite. Check the missing letters and try again.',
