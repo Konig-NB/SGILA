@@ -6,6 +6,16 @@
   <title>{% block title %}SGILA{% endblock %}</title>
   {% load static %}
   <link rel="stylesheet" href="{% static 'css/sgila_web.css' %}?v=clean-styles-20260809-4">
+  <script>
+    // Applied before paint so the page never flashes the wrong theme on load.
+    (function () {
+      var saved = localStorage.getItem('sgila-theme');
+      var theme = saved || (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+      if (theme === 'dark') {
+        document.documentElement.setAttribute('data-theme', 'dark');
+      }
+    })();
+  </script>
 </head>
 <body class="{% block body_class %}{% endblock %}">
   <nav class="navbar app-navbar">
@@ -14,6 +24,10 @@
       <span>SGILA</span>
     </a>
     <div class="nav-links">
+      <button type="button" id="theme-toggle" class="theme-toggle" aria-label="Toggle dark mode" aria-pressed="false">
+        <span class="theme-toggle-icon" aria-hidden="true"></span>
+        <span class="theme-toggle-label">Dark mode</span>
+      </button>
       {% if request.session.account_role == 'learner' %}
         <span>{{ request.session.child_name }}</span>
         <a href="/grade/{{ request.session.child_grade }}">Lessons</a>
@@ -74,5 +88,34 @@
   })();
   </script>
   {% endif %}
+  <script>
+  (function () {
+    var toggle = document.getElementById('theme-toggle');
+    if (!toggle) return;
+    var root = document.documentElement;
+
+    function isDark() {
+      return root.getAttribute('data-theme') === 'dark';
+    }
+
+    function reflect() {
+      toggle.setAttribute('aria-pressed', isDark() ? 'true' : 'false');
+      toggle.querySelector('.theme-toggle-label').textContent = isDark() ? 'Light mode' : 'Dark mode';
+    }
+
+    toggle.addEventListener('click', function () {
+      if (isDark()) {
+        root.removeAttribute('data-theme');
+        localStorage.setItem('sgila-theme', 'light');
+      } else {
+        root.setAttribute('data-theme', 'dark');
+        localStorage.setItem('sgila-theme', 'dark');
+      }
+      reflect();
+    });
+
+    reflect();
+  })();
+  </script>
 </body>
 </html>
