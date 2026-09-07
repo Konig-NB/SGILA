@@ -22,6 +22,32 @@
     <article><span>Average</span><strong>{{ overall_average }}%</strong></article>
   </section>
 
+  {% if grade_confirmation_cards %}
+    <section class="gc-banner" aria-label="Grade confirmation needed">
+      <div class="gc-banner-head">
+        <strong>New school year — please confirm each child's grade</strong>
+        <p>SGILA never moves a learner up a grade by itself. Tell us what grade they're really in at school now — the same grade again is fine if they're repeating it.</p>
+      </div>
+      <div class="gc-banner-list">
+        {% for card in grade_confirmation_cards %}
+          <form action="/confirm-grade/{{ card.child.id }}" method="post" class="gc-confirm-row">
+            {% csrf_token %}
+            <span class="gc-confirm-name">{{ card.child.name }}</span>
+            <span class="gc-confirm-current">Was Grade {{ card.child.grade }}</span>
+            <label class="gc-confirm-label" for="gc-grade-{{ card.child.id }}">Now in</label>
+            <select id="gc-grade-{{ card.child.id }}" name="grade" class="gc-confirm-select">
+              <option value="1" {% if card.suggested_grade == 1 %}selected{% endif %}>Grade 1</option>
+              <option value="2" {% if card.suggested_grade == 2 %}selected{% endif %}>Grade 2</option>
+              <option value="3" {% if card.suggested_grade == 3 %}selected{% endif %}>Grade 3</option>
+              <option value="4" {% if card.suggested_grade == 4 %}selected{% endif %}>Grade 4</option>
+            </select>
+            <button type="submit" class="lr-btn gc-confirm-btn">Confirm</button>
+          </form>
+        {% endfor %}
+      </div>
+    </section>
+  {% endif %}
+
   {% if cards %}
     <div class="pd-section-hdr">Your children</div>
     <div class="lr-rows">

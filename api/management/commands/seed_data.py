@@ -24,6 +24,7 @@ from api.models import (
     Child,
     ComprehensionQuestion,
     FeelingsQuestion,
+    GradeHistory,
     InferenceQuestion,
     Lesson,
     Parent,
@@ -41,6 +42,7 @@ from api.models import (
     VisualActivityItem,
     VocabularyQuestion,
     WrittenResponsePrompt,
+    current_school_year,
 )
 
 
@@ -111,6 +113,7 @@ class Command(BaseCommand):
             photo='child_photos/demo_child_photo.jpeg',
             password=make_password('password123'),
         )
+        self.mark_grade_confirmed(child)
 
         lerato_lesson = self.create_lerato_lesson()
         Progress.objects.create(
@@ -169,6 +172,7 @@ class Command(BaseCommand):
             photo='child_photos/demo_child_photo.jpeg',
             password=make_password('password123'),
         )
+        self.mark_grade_confirmed(child)
 
         self.create_big_book_lessons()
 
@@ -209,6 +213,26 @@ class Command(BaseCommand):
             "Demo data loaded. Logins: sipho_d / parent@sgila.test / teacher@sgila.test, password password123. Class code RAINB1. "
             "Expired-trial demo: parent3@sgila.test / lindiwe_n, password password123 (trial started 40 days ago, payment is due)."
         ))
+        self.stdout.write(
+            "Both demo learners are marked as grade-confirmed for this school year, same as real "
+            "registration. To test the yearly grade-confirmation banner, backdate a learner in the "
+            "shell, e.g.:\n"
+            "  python manage.py shell -c \"from api.models import Child; c = Child.objects.get(username__iexact='sipho_d'); "
+            "c.grade_confirmed_year -= 1; c.save()\"\n"
+            "then log in as parent@sgila.test or teacher@sgila.test and open their dashboard."
+        )
+
+    def mark_grade_confirmed(self, child):
+        """Registering a child (real signup, or this seed command) counts as
+        confirming their grade for the current school year — see
+        Child.needs_grade_confirmation() and GradeHistory."""
+        child.grade_confirmed_year = current_school_year()
+        child.save(update_fields=['grade_confirmed_year'])
+        GradeHistory.objects.update_or_create(
+            child=child,
+            year=current_school_year(),
+            defaults={'grade': child.grade, 'confirmed_by': GradeHistory.REGISTRATION},
+        )
 
     def add_reading_activities(self, lesson, activities):
         for order, activity in enumerate(activities, 1):

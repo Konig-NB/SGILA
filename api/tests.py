@@ -4,6 +4,7 @@ from pathlib import Path
 
 from django.contrib.auth.hashers import make_password
 from django.core.management import call_command
+from django.core import mail
 from django.test import Client, TestCase
 
 from api.curriculum_enrichment import (
@@ -17,6 +18,7 @@ from api.curriculum_library import STORYBOARD_IMAGES
 from api.models import (
     Child,
     ComprehensionQuestion,
+    GradeHistory,
     Lesson,
     OTPToken,
     Parent,
@@ -29,6 +31,7 @@ from api.models import (
     Teacher,
     TeacherClass,
     VisualActivityItem,
+    current_school_year,
 )
 
 
@@ -1035,3 +1038,213 @@ class CurriculumSeedTests(TestCase):
                 image_url.split('#', 1)[0] == lesson.thumbnail_image
                 for image_url in page_images
             ))
+
+
+class GradeConfirmationTests(TestCase):
+    """Covers the yearly grade-confirmation feature: no auto-rollover, an
+    explicit human decision is required, and it's fully logged."""
+
+    def setUp(self):
+        self.client = Client()
+        self.parent = Parent.objects.create(
+            full_name='Test Parent', email='parent-gc@example.com',
+            password=make_password('password123'), accepted_popia=True,
+        )
+        self.teacher = Teacher.objects.create(
+            full_name='Test Teacher', email='teacher-gc@example.com',
+            password=make_password('password123'), school_name='Sgila Primary',
+            grades_taught='2,3', accepted_popia=True,
+        )
+        self.child = Child.objects.create(
+            name='Test Learner', username='testlearnergc', grade=2,
+            parent=self.parent, parent_email=self.parent.email,
+            school_name='Sgila Primary', teacher=self.teacher,
+            password=make_password('password123'),
+        )
+
+    def login_parent(self):
+        return self.client.post('/login', {'role': 'parent', 'email': self.parent.email, 'password': 'password123'})
+
+    def login_teacher(self):
+        return self.client.post('/login', {'role': 'teacher', 'email': self.teacher.email, 'password': 'password123'})
+
+    def test_registration_confirms_current_year_and_needs_no_prompt(self):
+        self.assertEqual(self.child.grade_confirmed_year, None)
+        # Simulate what register_learner/parent_add_child do on creation.
+        from lessons.views import mark_grade_confirmed_at_registration
+        mark_grade_confirmed_at_registration(self.child)
+        self.child.refresh_from_db()
+        self.assertEqual(self.child.grade_confirmed_year, current_school_year())
+        self.assertFalse(self.child.needs_grade_confirmation())
+        self.assertEqual(
+            GradeHistory.objects.get(child=self.child).confirmed_by,
+            GradeHistory.REGISTRATION,
+        )
+
+    def test_grade_never_changes_on_its_own(self):
+        """Simulates a new school year starting with nobody confirming anything:
+        the app must not touch `grade` by itself."""
+        self.child.grade_confirmed_year = current_school_year() - 1
+        self.child.save(update_fields=['grade_confirmed_year'])
+        self.assertTrue(self.child.needs_grade_confirmation())
+
+        self.login_parent()
+        response = self.client.get('/parent/dashboard')
+        self.assertContains(response, 'confirm')
+        self.assertContains(response, 'Test Learner')
+
+        self.child.refresh_from_db()
+        self.assertEqual(self.child.grade, 2)  # untouched
+
+    def test_parent_can_confirm_promotion(self):
+        self.child.grade_confirmed_year = current_school_year() - 1
+        self.child.save(update_fields=['grade_confirmed_year'])
+        self.login_parent()
+
+        response = self.client.post(f'/confirm-grade/{self.child.id}', {'grade': '3'}, follow=True)
+        self.assertEqual(response.status_code, 200)
+
+        self.child.refresh_from_db()
+        self.assertEqual(self.child.grade, 3)
+        self.assertEqual(self.child.grade_confirmed_year, current_school_year())
+        self.assertFalse(self.child.needs_grade_confirmation())
+
+        history = GradeHistory.objects.get(child=self.child, year=current_school_year())
+        self.assertEqual(history.grade, 3)
+        self.assertEqual(history.confirmed_by, GradeHistory.PARENT)
+        self.assertFalse(history.repeated)
+
+    def test_parent_can_confirm_a_repeated_grade(self):
+        self.child.grade_confirmed_year = current_school_year() - 1
+        self.child.save(update_fields=['grade_confirmed_year'])
+        self.login_parent()
+
+        self.client.post(f'/confirm-grade/{self.child.id}', {'grade': '2'})
+
+        self.child.refresh_from_db()
+        self.assertEqual(self.child.grade, 2)  # repeated, not bumped
+
+        history = GradeHistory.objects.get(child=self.child, year=current_school_year())
+        self.assertEqual(history.grade, 2)
+        # Registration already logged grade 2 for the child's first year, so a
+        # later parent confirmation of the same grade is correctly flagged as a repeat.
+        self.assertTrue(history.repeated)
+
+    def test_teacher_can_confirm_a_linked_learner(self):
+        self.child.grade_confirmed_year = current_school_year() - 1
+        self.child.save(update_fields=['grade_confirmed_year'])
+        self.login_teacher()
+
+        response = self.client.post(f'/confirm-grade/{self.child.id}', {'grade': '3'}, follow=True)
+        self.assertEqual(response.status_code, 200)
+
+        self.child.refresh_from_db()
+        self.assertEqual(self.child.grade, 3)
+        history = GradeHistory.objects.get(child=self.child, year=current_school_year())
+        self.assertEqual(history.confirmed_by, GradeHistory.TEACHER)
+
+    def test_parent_cannot_confirm_a_child_that_is_not_theirs(self):
+        other_parent = Parent.objects.create(
+            full_name='Other Parent', email='other-parent-gc@example.com',
+            password=make_password('password123'), accepted_popia=True,
+        )
+        self.client.post('/login', {'role': 'parent', 'email': other_parent.email, 'password': 'password123'})
+        self.child.grade_confirmed_year = current_school_year() - 1
+        self.child.save(update_fields=['grade_confirmed_year'])
+
+        self.client.post(f'/confirm-grade/{self.child.id}', {'grade': '4'})
+
+        self.child.refresh_from_db()
+        self.assertEqual(self.child.grade, 2)  # unchanged — access denied
+        self.assertFalse(GradeHistory.objects.filter(child=self.child, year=current_school_year()).exists())
+
+    def test_invalid_grade_is_rejected(self):
+        self.child.grade_confirmed_year = current_school_year() - 1
+        self.child.save(update_fields=['grade_confirmed_year'])
+        self.login_parent()
+
+        self.client.post(f'/confirm-grade/{self.child.id}', {'grade': '9'})
+
+        self.child.refresh_from_db()
+        self.assertEqual(self.child.grade, 2)
+        self.assertTrue(self.child.needs_grade_confirmation())
+
+
+class GradeReminderEmailTests(TestCase):
+    """Covers the send_grade_reminders management command: who gets emailed,
+    grouping multiple children per parent, and not spamming on re-runs."""
+
+    def setUp(self):
+        self.parent = Parent.objects.create(
+            full_name='Reminder Parent', email='reminder-parent@example.com',
+            password=make_password('password123'), accepted_popia=True,
+        )
+        self.child = Child.objects.create(
+            name='Reminder Kid', username='remindkid', grade=2,
+            parent=self.parent, parent_email=self.parent.email,
+            password=make_password('x'),
+        )
+
+    def backdate(self, child, years=1):
+        child.grade_confirmed_year = current_school_year() - years
+        child.save(update_fields=['grade_confirmed_year'])
+
+    def test_no_email_when_already_confirmed(self):
+        self.child.grade_confirmed_year = current_school_year()
+        self.child.save(update_fields=['grade_confirmed_year'])
+        call_command('send_grade_reminders')
+        self.assertEqual(len(mail.outbox), 0)
+
+    def test_emails_parent_when_confirmation_due(self):
+        self.backdate(self.child)
+        call_command('send_grade_reminders')
+        self.assertEqual(len(mail.outbox), 1)
+        sent = mail.outbox[0]
+        self.assertEqual(sent.to, [self.parent.email])
+        self.assertIn('Reminder Kid', sent.body)
+        self.assertIn('/login', sent.body)
+        # No one-click grade-change link — must not embed a confirm-grade URL.
+        self.assertNotIn('/confirm-grade/', sent.body)
+
+        self.child.refresh_from_db()
+        self.assertTrue(self.child.reminder_already_sent_this_year())
+
+    def test_does_not_resend_within_the_same_year(self):
+        self.backdate(self.child)
+        call_command('send_grade_reminders')
+        call_command('send_grade_reminders')
+        self.assertEqual(len(mail.outbox), 1)  # still just one email total
+
+    def test_dry_run_sends_nothing(self):
+        self.backdate(self.child)
+        call_command('send_grade_reminders', '--dry-run')
+        self.assertEqual(len(mail.outbox), 0)
+        self.child.refresh_from_db()
+        self.assertFalse(self.child.reminder_already_sent_this_year())
+
+    def test_multiple_children_same_parent_get_one_combined_email(self):
+        second_child = Child.objects.create(
+            name='Second Kid', username='secondkid', grade=1,
+            parent=self.parent, parent_email=self.parent.email,
+            password=make_password('x'),
+        )
+        self.backdate(self.child)
+        self.backdate(second_child)
+
+        call_command('send_grade_reminders')
+
+        self.assertEqual(len(mail.outbox), 1)
+        body = mail.outbox[0].body
+        self.assertIn('Reminder Kid', body)
+        self.assertIn('Second Kid', body)
+
+    def test_confirming_stops_further_reminders(self):
+        self.backdate(self.child)
+        call_command('send_grade_reminders')
+        self.assertEqual(len(mail.outbox), 1)
+
+        self.child.record_grade_confirmation(3, confirmed_by=GradeHistory.PARENT, confirmed_by_name='Reminder Parent')
+
+        # Confirmed for this year now — running the reminder job again must not re-email.
+        call_command('send_grade_reminders')
+        self.assertEqual(len(mail.outbox), 1)

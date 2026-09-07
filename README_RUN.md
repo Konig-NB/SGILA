@@ -45,8 +45,43 @@ intentionally want to reset the app to its original demo accounts.
 ## Email and OTP Testing
 
 The clean-machine package uses Django's console email backend by default. OTP and
-password-reset messages appear in the terminal. SMTP credentials are optional and
-must be supplied through a local `.env` file based on `.env.example`.
+password-reset messages appear in the terminal. For inbox delivery, copy
+`.env.example` to `.env`, set `EMAIL_HOST_USER` and `EMAIL_HOST_PASSWORD`, then
+restart the server. Gmail requires an app password rather than the normal account
+password. SMTP is selected automatically when both values are configured.
+
+## Yearly Grade-Confirmation Reminder Emails
+
+At the start of each school year, learners whose grade hasn't been confirmed yet
+(see `Child.needs_grade_confirmation()`) show a banner on the parent/teacher
+dashboard. On top of that banner, you can email parents a reminder using:
+
+```
+python manage.py send_grade_reminders            # sends real emails
+python manage.py send_grade_reminders --dry-run   # preview only, sends nothing
+```
+
+It's safe to run this as often as you like — each parent gets at most **one**
+reminder email per school year (tracked via `Child.grade_reminder_sent_year`), so
+running it daily won't spam anyone. It groups multiple children under the same
+parent into a single email, and the email always points the parent to `/login`
+rather than including a one-click "confirm" link, so the actual grade change stays
+behind normal authentication.
+
+This project isn't deployed yet, so nothing schedules this command automatically —
+run it however suits wherever you end up hosting it:
+
+- **Cron (Linux/macOS server):** add a line like
+  `0 6 1 1 * cd /path/to/sgila_project && /path/to/.venv/bin/python manage.py send_grade_reminders`
+  to run at 6am on 1 January. Running it weekly for the first month of the year
+  (instead of just once) is a good idea in case the mail server is briefly down.
+- **Windows Task Scheduler:** create a task that runs
+  `.venv\Scripts\python.exe manage.py send_grade_reminders` with "Start in" set to
+  the `sgila_project` folder, triggered on a schedule (e.g. daily during January).
+- **Hosting platforms with a scheduler add-on** (Heroku Scheduler, Render Cron
+  Jobs, PythonAnywhere scheduled tasks, etc.): point it at the same command —
+  `python manage.py send_grade_reminders` — using whichever syntax that platform
+  expects.
 
 ## Stop the Server
 
