@@ -2658,6 +2658,8 @@ def teacher_dashboard(request):
 
     class_average = round(sum(row['average'] for row in active_rows) / len(active_rows)) if active_rows else 0
     grade_confirmation_rows = [row for row in learner_rows if row['needs_grade_confirmation']]
+    preview_learners = learner_rows[:3]
+    first_grade_anchor = f"grade-section-{grade_sections[0]['grade']}" if grade_sections else ''
     return render(request, 'teacher_dashboard.html', {
         'teacher': teacher,
         'learner_rows': learner_rows,
