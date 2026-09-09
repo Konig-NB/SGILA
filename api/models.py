@@ -1,6 +1,6 @@
 import random
 import string
-from datetime import date
+from datetime import date, timedelta
 
 from django.db import models
 from django.utils import timezone
@@ -37,6 +37,9 @@ class Parent(models.Model):
     password = models.CharField(max_length=300)
     phone = models.CharField(max_length=30, blank=True)
     accepted_popia = models.BooleanField(default=False)
+    is_active = models.BooleanField(default=True)
+    deactivated_at = models.DateTimeField(null=True, blank=True)
+    auth_version = models.PositiveIntegerField(default=0)
     created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):
@@ -133,7 +136,7 @@ class Child(models.Model):
             self.save(update_fields=['age'])
 
     def save(self, *args, **kwargs):
-        self.username = capitalize_first(self.username)
+        self.username = capitalize_first(self.username) or None
         self.first_name = title_case(self.first_name)
         self.last_name = title_case(self.last_name)
         self.name = title_case(self.name)
@@ -849,6 +852,38 @@ class PasswordResetToken(models.Model):
 
     def __str__(self):
         return f"PasswordReset for {self.email} ({'used' if self.is_used else 'active'})"
+
+
+class AccountActionOTP(models.Model):
+    """A short-lived, single-purpose OTP for sensitive account actions."""
+
+    REACTIVATE_PARENT = 'reactivate_parent'
+    ACTION_CHOICES = [(REACTIVATE_PARENT, 'Reactivate parent account')]
+    MAX_ATTEMPTS = 5
+
+    parent = models.ForeignKey(
+        Parent,
+        on_delete=models.CASCADE,
+        related_name='account_action_otps',
+    )
+    action = models.CharField(max_length=32, choices=ACTION_CHOICES)
+    code_hash = models.CharField(max_length=300)
+    created_at = models.DateTimeField(default=timezone.now)
+    attempts = models.PositiveSmallIntegerField(default=0)
+    is_used = models.BooleanField(default=False)
+
+    class Meta:
+        ordering = ['-created_at']
+
+    def is_expired(self):
+        return timezone.now() > self.created_at + timedelta(minutes=10)
+
+    @property
+    def can_attempt(self):
+        return not self.is_used and not self.is_expired() and self.attempts < self.MAX_ATTEMPTS
+
+    def __str__(self):
+        return f"{self.get_action_display()} for {self.parent.email}"
 
 
 # ─────────────────────────────────────────────

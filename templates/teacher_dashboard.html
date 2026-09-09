@@ -114,6 +114,9 @@
             <div class="portal-learner-copy">
               <h3>{{ row.learner.name }}</h3>
               <p>Grade {{ row.learner.grade }}{% if row.learner.school_name %} - {{ row.learner.school_name }}{% endif %}</p>
+              {% if not row.access_allowed %}
+                <span class="learner-access-badge">Learner access paused</span>
+              {% endif %}
               {% if row.latest %}
                 <small>Latest: {{ row.latest.lesson.title }} on {{ row.latest.completed_on|date:"d M Y" }}</small>
               {% else %}

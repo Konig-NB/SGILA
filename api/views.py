@@ -6,6 +6,7 @@ Read the docstring at the top of each view to understand what screen it serves.
 from django.http import JsonResponse
 from django.db.models import Q
 from django.views.decorators.csrf import csrf_exempt
+from django.views.decorators.cache import never_cache
 from django.views.decorators.http import require_http_methods
 from .validators import password_strength_errors
 from .validators import password_strength_errors
@@ -16,6 +17,7 @@ import hashlib
 import random
 from django.core.mail import send_mail
 from django.conf import settings as django_settings
+from django.utils import timezone
 
 import secrets
 from .models import (
@@ -34,6 +36,7 @@ from .models import (
     Message,
     title_case,
 )
+from .account_access import child_access_status, linked_parent_for_child
 from .jwt_utils import create_access_token, token_from_request
 from .reporting import rows_for_record
 
@@ -78,6 +81,7 @@ def password_matches(raw, stored):
 
 
 def set_learner_session(request, child):
+    request.session.flush()
     request.session['account_role'] = 'learner'
     request.session['account_id'] = child.id
     request.session['account_name'] = child.name
@@ -480,13 +484,25 @@ def login(request):
         ).first()
         if not child or not password_matches(password, child.password):
             return JsonResponse({'login_successful': False, 'message': 'Incorrect username or password.'}, status=401)
+        allowed, reason = child_access_status(child)
+        if not allowed:
+            request.session.flush()
+            return JsonResponse({
+                'login_successful': False,
+                'access_blocked': True,
+                'reason': reason,
+                'message': 'Learner access is paused. Ask a parent to check the SGILA account.',
+                'redirect_to': f'/account-access?reason={reason}',
+            }, status=403)
         set_learner_session(request, child)
+        linked_parent = linked_parent_for_child(child)
         token = create_access_token({
             'sub': child.id,
             'role': 'learner',
             'email': child.parent_email,
             'name': child.name,
             'grade': child.grade,
+            'parent_auth_version': linked_parent.auth_version if linked_parent else None,
         })
         return JsonResponse({
             'login_successful': True,
@@ -507,12 +523,23 @@ def login(request):
             return JsonResponse({'login_successful': False, 'message': 'Incorrect email or password.'}, status=401)
         if not password_matches(password, account.password):
             return JsonResponse({'login_successful': False, 'message': 'Incorrect email or password.'}, status=401)
+        if role == 'parent' and not account.is_active:
+            request.session.flush()
+            request.session['pending_reactivation_parent_id'] = account.id
+            request.session['pending_reactivation_verified_at'] = int(timezone.now().timestamp())
+            return JsonResponse({
+                'login_successful': False,
+                'reactivation_required': True,
+                'message': 'This account is deactivated. Confirm reactivation to continue.',
+                'redirect_to': '/account/reactivate',
+            }, status=403)
         token = create_access_token({
             'sub': account.id,
             'role': role,
             'email': email,
             'name': account.full_name,
             'grade': None,
+            'auth_version': getattr(account, 'auth_version', 0),
         })
         return JsonResponse({
             'login_successful': True,
@@ -711,6 +738,7 @@ def story(request, lesson_id):
 # POST /api/check-answer
 # ─────────────────────────────────────────────────────────────
 
+@never_cache
 @require_http_methods(["GET"])
 def questions(request, lesson_id):
     """

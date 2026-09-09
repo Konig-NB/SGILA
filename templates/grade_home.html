@@ -46,7 +46,11 @@
         </span>
         {% if lesson.is_current_ai_story %}<span class="badge badge-ai">AI story — just for you</span>{% endif %}
         <h2>{{ lesson.title }}</h2>
-        <p>Grade {{ lesson.grade }} story and activities</p>
+        {% if lesson.activity_count and lesson.questions_per_activity %}
+          <p>Grade {{ lesson.grade }} &middot; {{ lesson.activity_count }} activities &middot; {{ lesson.questions_per_activity }} questions each</p>
+        {% else %}
+          <p>Grade {{ lesson.grade }} story and activities</p>
+        {% endif %}
         <small>{% for star in lesson.stars %}&#9733;{% empty %}Start reading for 2x rewards{% endfor %}</small>
       </div>
     </a>

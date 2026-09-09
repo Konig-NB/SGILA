@@ -7,6 +7,7 @@ from django.core.management.base import BaseCommand
 from django.utils import timezone
 
 from api.curriculum_enrichment import (
+    LESSON_COVERS,
     LESSON_WORDS,
     LESSON_SPELLING,
     PRONUNCIATION_WORDS,
@@ -18,6 +19,10 @@ from api.curriculum_library import (
     EXPANDED_STORIES,
     MANDUS_SECRET_DIARY_ACTIVITIES,
     STORYBOARD_IMAGES,
+)
+from api.grade1_activity_blueprints import (
+    A_VERY_HOT_DAY_ACTIVITIES,
+    LERATOS_FRUIT_BASKET_ACTIVITIES,
 )
 from api.models import (
     CauseEffectPair,
@@ -294,7 +299,12 @@ class Command(BaseCommand):
             for page, panel in zip(pages, panel_sequence):
                 page.image_url = f'{storyboard_url}#panel-{panel}'
                 page.save(update_fields=['image_url'])
-            lesson.thumbnail_image = storyboard_url
+            lesson.thumbnail_image = LESSON_COVERS.get(lesson.title, storyboard_url)
+            lesson.save(update_fields=['thumbnail_image'])
+
+        cover_url = LESSON_COVERS.get(lesson.title)
+        if cover_url and lesson.thumbnail_image != cover_url:
+            lesson.thumbnail_image = cover_url
             lesson.save(update_fields=['thumbnail_image'])
 
         lesson.visual_items.all().delete()
@@ -352,7 +362,7 @@ class Command(BaseCommand):
         lesson = Lesson.objects.create(
             title="Lerato's Fruit Basket",
             grade=1,
-            thumbnail_image='/static/img/lerato/Fruits.avif',
+            thumbnail_image=LESSON_COVERS["Lerato's Fruit Basket"],
         )
 
         pages = [
@@ -402,37 +412,7 @@ class Command(BaseCommand):
                 correct_answer=answer,
             )
 
-        self.add_reading_activities(lesson, [
-            {
-                'activity_type': ReadingActivity.MULTIPLE_CHOICE,
-                'skill': 'literal_comprehension',
-                'question': 'What did Mother buy?',
-                'options': ['A mango', 'A basket', 'A banana'],
-                'correct_answer': 'A mango',
-            },
-            {
-                'activity_type': ReadingActivity.ORAL_RESPONSE,
-                'skill': 'literal_comprehension',
-                'question': 'Why does Lerato eat fruit?',
-                'correct_answer': 'She eats fruit to stay healthy and strong.',
-            },
-            {
-                'activity_type': ReadingActivity.SEQUENCING,
-                'skill': 'sequencing',
-                'question': 'Put the story in order.',
-                'items_in_correct_order': [
-                    'Mother buys a mango.',
-                    'Lerato puts it in the basket.',
-                    'Lerato eats fruit to stay strong.',
-                ],
-            },
-            {
-                'activity_type': ReadingActivity.TRUE_FALSE,
-                'skill': 'literal_comprehension',
-                'question': 'Lerato keeps fruit in a basket.',
-                'correct_answer': 'True',
-            },
-        ])
+        self.add_reading_activities(lesson, LERATOS_FRUIT_BASKET_ACTIVITIES)
 
         fruit_words = [
             ('Apple', 'apple', 'Ihhabhula', '/static/img/lerato/fruit_apple.png'),
@@ -869,7 +849,7 @@ class Command(BaseCommand):
         lesson = Lesson.objects.create(
             title=title,
             grade=grade,
-            thumbnail_image=storyboard_url or pages[0][2],
+            thumbnail_image=LESSON_COVERS.get(title) or storyboard_url or pages[0][2],
         )
         for page_number, text, image_url, highlighted_words in pages:
             StoryPage.objects.create(
@@ -944,37 +924,7 @@ class Command(BaseCommand):
                     'fish,laughed,swim',
                 ),
             ],
-            activities=[
-                {
-                    'activity_type': ReadingActivity.MULTIPLE_CHOICE,
-                    'skill': 'literal_comprehension',
-                    'question': 'Why did they stop playing?',
-                    'options': ['It was too hot.', 'They lost the ball.', 'School started.'],
-                    'correct_answer': 'It was too hot.',
-                },
-                {
-                    'activity_type': ReadingActivity.ORAL_RESPONSE,
-                    'skill': 'literal_comprehension',
-                    'question': 'Who played soccer?',
-                    'correct_answer': 'Karabo, Tshepo and Cathy played soccer.',
-                },
-                {
-                    'activity_type': ReadingActivity.SEQUENCING,
-                    'skill': 'sequencing',
-                    'question': 'Put the story in order.',
-                    'items_in_correct_order': [
-                        'The friends play soccer.',
-                        'Karabo remembers the pond.',
-                        'Karabo jumps into the water.',
-                    ],
-                },
-                {
-                    'activity_type': ReadingActivity.TRUE_FALSE,
-                    'skill': 'literal_comprehension',
-                    'question': 'A fish sat on Karabo\'s head.',
-                    'correct_answer': 'True',
-                },
-            ],
+            activities=A_VERY_HOT_DAY_ACTIVITIES,
         )
 
         self.create_story_lesson(

@@ -8,6 +8,7 @@ import hashlib
 import json
 import random
 import re
+import secrets
 import threading
 import time
 import urllib.parse
@@ -20,6 +21,7 @@ from django.conf import settings
 from django.core.mail import send_mail
 from django.contrib import messages
 from django.contrib.auth.hashers import check_password, make_password
+from django.db import transaction
 from django.db.models import Q
 from django.http import FileResponse, Http404, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
@@ -28,6 +30,7 @@ from django.utils.dateparse import parse_date
 from django.views.decorators.http import require_http_methods
 
 from api.models import (
+    AccountActionOTP,
     AIStoryJob,
     CauseEffectPair,
     Child,
@@ -62,6 +65,7 @@ from api.models import (
     current_school_year,
     title_case,
 )
+from api.account_access import child_access_status, subscription_allows_children
 from api.reporting import aggregate_rows, rows_for_record, rows_from_scores
 
 
@@ -104,6 +108,41 @@ def payment_due_response(request, context=None):
     return render(request, 'payment_due.html', context or {})
 
 
+REACTIVATION_CHALLENGE_SECONDS = 15 * 60
+REACTIVATION_RESEND_SECONDS = 60
+
+
+def begin_parent_reactivation(request, parent):
+    request.session.flush()
+    request.session['pending_reactivation_parent_id'] = parent.id
+    request.session['pending_reactivation_verified_at'] = int(timezone.now().timestamp())
+
+
+def clear_parent_reactivation(request):
+    request.session.pop('pending_reactivation_parent_id', None)
+    request.session.pop('pending_reactivation_verified_at', None)
+    request.session.pop('reactivation_token_id', None)
+    request.session.modified = True
+
+
+def pending_reactivation_parent(request):
+    parent_id = request.session.get('pending_reactivation_parent_id')
+    verified_at = request.session.get('pending_reactivation_verified_at')
+    try:
+        challenge_age = timezone.now().timestamp() - int(verified_at)
+    except (TypeError, ValueError):
+        challenge_age = REACTIVATION_CHALLENGE_SECONDS + 1
+    if not parent_id or challenge_age > REACTIVATION_CHALLENGE_SECONDS:
+        clear_parent_reactivation(request)
+        return None
+    return Parent.objects.filter(pk=parent_id, is_active=False).first()
+
+
+def masked_email(email):
+    local, domain = email.split('@', 1)
+    return local[:2] + '*' * max(3, len(local) - 2) + '@' + domain[:2] + '*****'
+
+
 def learner_required(request):
     child_id = request.session.get('child_id')
     if not child_id:
@@ -136,7 +175,7 @@ def unique_code_for(model):
 
 def normalize_child_username(raw_value):
     username = re.sub(r'[^A-Za-z]', '', (raw_value or '').strip())
-    return username[:40]
+    return capitalize_first(username[:40])
 
 
 def unique_child_username(raw_value):
@@ -448,8 +487,15 @@ def login_page(request):
 
         if account and password_matches(password, account.password):
             if role == 'learner':
+                allowed, reason = child_access_status(account)
+                if not allowed:
+                    request.session.flush()
+                    return redirect(f'/account-access?reason={reason}')
                 set_account_session(request, role, account, account)
                 return redirect(f'/grade/{account.grade}')
+            if role == 'parent' and not account.is_active:
+                begin_parent_reactivation(request, account)
+                return redirect('/account/reactivate')
             set_account_session(request, role, account)
             return redirect(f'/{role}/dashboard')
 
@@ -464,6 +510,167 @@ def login_page(request):
 def logout_view(request):
     request.session.flush()
     return redirect('/')
+
+
+@require_http_methods(['GET'])
+def account_access_page(request):
+    reason = request.GET.get('reason', '')
+    content = {
+        'parent_deactivated': {
+            'title': 'Your SGILA access is paused',
+            'message': 'This learner profile is linked to a deactivated parent account. Ask your parent to sign in and reactivate their account.',
+        },
+        'subscription_inactive': {
+            'title': 'Your learning plan is paused',
+            'message': 'This learner profile needs an active SGILA plan. Ask your parent to sign in and update the family plan.',
+        },
+        'learner_not_found': {
+            'title': 'We could not find this learner profile',
+            'message': 'Ask your parent or teacher to check the learner account details.',
+        },
+    }.get(reason, {
+        'title': 'SGILA access is paused',
+        'message': 'Ask your parent to sign in and check the account.',
+    })
+    return render(request, 'account_access.html', content)
+
+
+@require_http_methods(['POST'])
+def parent_deactivate_account(request):
+    if request.session.get('account_role') != 'parent':
+        return redirect('/login?role=parent')
+
+    parent = get_object_or_404(Parent, id=request.session.get('account_id'))
+    password = request.POST.get('password', '')
+    if not password_matches(password, parent.password):
+        messages.error(request, 'Your password was incorrect. The account was not deactivated.')
+        return redirect('/parent/dashboard')
+
+    cancel_subscription = request.POST.get('cancel_subscription') == 'on'
+    with transaction.atomic():
+        parent = Parent.objects.select_for_update().get(pk=parent.pk)
+        if parent.is_active:
+            parent.is_active = False
+            parent.deactivated_at = timezone.now()
+            parent.auth_version += 1
+            parent.save(update_fields=['is_active', 'deactivated_at', 'auth_version'])
+        AccountActionOTP.objects.filter(parent=parent, is_used=False).update(is_used=True)
+        if cancel_subscription:
+            Subscription.objects.filter(parent=parent).update(
+                status='cancelled',
+                updated_at=timezone.now(),
+            )
+
+    request.session.flush()
+    messages.success(request, 'Your SGILA account is deactivated. Your records have been retained for possible reactivation.')
+    return redirect('/login?role=parent')
+
+
+@require_http_methods(['GET', 'POST'])
+def reactivate_account(request):
+    parent = pending_reactivation_parent(request)
+    if not parent:
+        messages.error(request, 'Sign in with the deactivated parent account to start reactivation.')
+        return redirect('/login?role=parent')
+
+    action = request.POST.get('action', '')
+    if request.method == 'POST' and action in {'send', 'resend'}:
+        latest = AccountActionOTP.objects.filter(
+            parent=parent,
+            action=AccountActionOTP.REACTIVATE_PARENT,
+        ).first()
+        if latest and (timezone.now() - latest.created_at).total_seconds() < REACTIVATION_RESEND_SECONDS:
+            if latest.can_attempt:
+                request.session['reactivation_token_id'] = latest.id
+                redirect_url = '/account/reactivate?sent=1'
+            else:
+                request.session.pop('reactivation_token_id', None)
+                redirect_url = '/account/reactivate'
+            messages.info(request, 'A code was sent recently. Please wait one minute before requesting another.')
+            return redirect(redirect_url)
+
+        AccountActionOTP.objects.filter(
+            parent=parent,
+            action=AccountActionOTP.REACTIVATE_PARENT,
+            is_used=False,
+        ).update(is_used=True)
+        code = f'{secrets.randbelow(900000) + 100000:06d}'
+        token = AccountActionOTP.objects.create(
+            parent=parent,
+            action=AccountActionOTP.REACTIVATE_PARENT,
+            code_hash=make_password(code),
+        )
+        try:
+            send_mail(
+                'Reactivate your SGILA account',
+                (
+                    f'Hi {parent.full_name},\n\n'
+                    f'Your SGILA reactivation code is: {code}\n\n'
+                    'This code expires in 10 minutes. Do not share it with anyone.\n\n'
+                    'If you did not request this, you can ignore this email.\n\n'
+                    '- The SGILA Team'
+                ),
+                settings.DEFAULT_FROM_EMAIL,
+                [parent.email],
+                fail_silently=False,
+            )
+        except Exception:
+            token.delete()
+            messages.error(request, 'We could not send the email right now. Your account is still deactivated; please try again.')
+            return redirect('/account/reactivate')
+
+        request.session['reactivation_token_id'] = token.id
+        messages.success(request, 'A reactivation code has been sent to your email.')
+        return redirect('/account/reactivate?sent=1')
+
+    if request.method == 'POST' and action == 'verify':
+        token_id = request.session.get('reactivation_token_id')
+        code = request.POST.get('code', '').strip()
+        with transaction.atomic():
+            token = AccountActionOTP.objects.select_for_update().filter(
+                pk=token_id,
+                parent=parent,
+                action=AccountActionOTP.REACTIVATE_PARENT,
+            ).first()
+            if not token or not token.can_attempt:
+                messages.error(request, 'That code is expired or no longer valid. Request a new code.')
+                return redirect('/account/reactivate')
+            if not check_password(code, token.code_hash):
+                token.attempts += 1
+                if token.attempts >= AccountActionOTP.MAX_ATTEMPTS:
+                    token.is_used = True
+                token.save(update_fields=['attempts', 'is_used'])
+                remaining = max(0, AccountActionOTP.MAX_ATTEMPTS - token.attempts)
+                messages.error(request, f'Incorrect code. {remaining} attempt(s) remaining.')
+                return redirect('/account/reactivate?sent=1')
+
+            token.is_used = True
+            token.save(update_fields=['is_used'])
+            parent = Parent.objects.select_for_update().get(pk=parent.pk)
+            parent.is_active = True
+            parent.deactivated_at = None
+            parent.auth_version += 1
+            parent.save(update_fields=['is_active', 'deactivated_at', 'auth_version'])
+            AccountActionOTP.objects.filter(parent=parent, is_used=False).update(is_used=True)
+
+        clear_parent_reactivation(request)
+        set_account_session(request, 'parent', parent)
+        if subscription_allows_children(parent):
+            messages.success(request, 'Your SGILA account and learner access are active again.')
+            return redirect('/parent/dashboard')
+        messages.warning(request, 'Your account is active again. Choose or reactivate a plan to restore learner access.')
+        return redirect('/subscription')
+
+    token_id = request.session.get('reactivation_token_id')
+    token = AccountActionOTP.objects.filter(
+        pk=token_id,
+        parent=parent,
+        is_used=False,
+    ).first()
+    return render(request, 'reactivate_account.html', {
+        'masked_email': masked_email(parent.email),
+        'otp_sent': bool(token and token.can_attempt),
+    })
 
 
 @require_http_methods(["GET", "POST"])
@@ -882,25 +1089,6 @@ def parent_add_child(request):
             return redirect('/parent/dashboard')
 
     return render(request, 'add_child.html', {'parent': parent})
-
-
-@require_http_methods(['POST'])
-def parent_delete_child(request, child_id):
-    if request.session.get('account_role') != 'parent':
-        return redirect('/login?role=parent')
-    parent = get_object_or_404(Parent, id=request.session['account_id'])
-    child = Child.objects.filter(
-        id=child_id,
-    ).filter(
-        Q(parent=parent) | Q(parent_email__iexact=parent.email)
-    ).first()
-    if not child:
-        messages.error(request, 'Child profile not found or access denied.')
-        return redirect('/parent/dashboard')
-
-    child.delete()
-    messages.success(request, 'Child profile deleted permanently.')
-    return redirect('/parent/dashboard')
 
 
 # ───────────────────────── AI story generation ─────────────────────────
@@ -1344,6 +1532,15 @@ def grade_home(request, grade):
     lesson_data = []
     for lesson in lessons:
         record = progress_by_lesson.get(lesson.id)
+        group_sizes = {}
+        for group_number in lesson.reading_activities.values_list('group_number', flat=True):
+            if group_number:
+                group_sizes[group_number] = group_sizes.get(group_number, 0) + 1
+        questions_per_activity = (
+            next(iter(group_sizes.values()))
+            if group_sizes and len(set(group_sizes.values())) == 1
+            else None
+        )
         lesson_data.append({
             'id': lesson.id,
             'title': lesson.title,
@@ -1352,6 +1549,8 @@ def grade_home(request, grade):
             'completed': bool(record),
             'stars': range(record.stars_earned) if record else range(0),
             'is_current_ai_story': lesson.is_ai_generated and lesson.id == getattr(latest_ai_lesson, 'id', None),
+            'activity_count': len(group_sizes),
+            'questions_per_activity': questions_per_activity,
         })
 
     required_lessons = curated_lessons + public_ai_stories
@@ -2516,6 +2715,7 @@ def story_report_page(request, child_id, lesson_id):
 
 
 def build_dashboard_row(child):
+    access_allowed, access_reason = child_access_status(child)
     records = list(
         Progress.objects.filter(child=child)
         .select_related('lesson')
@@ -2572,6 +2772,8 @@ def build_dashboard_row(child):
     return {
         'child': child,
         'learner': child,
+        'access_allowed': access_allowed,
+        'access_reason': access_reason,
         'teacher': child.teacher,
         'teacher_class': child.teacher_class,
         'lessons_done': lessons_done,
@@ -2624,6 +2826,7 @@ def parent_dashboard(request):
         'total_stars': total_stars,
         'needs_help_count': needs_help_count,
         'grade_confirmation_cards': grade_confirmation_cards,
+        'children_access_allowed': subscription_allows_children(parent),
     })
 
 

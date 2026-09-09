@@ -1,13 +1,15 @@
 import json
 import re
+from unittest.mock import patch
 from pathlib import Path
 
 from django.contrib.auth.hashers import make_password
-from django.core.management import call_command
 from django.core import mail
-from django.test import Client, TestCase
+from django.core.management import call_command
+from django.test import Client, TestCase, override_settings
 
 from api.curriculum_enrichment import (
+    LESSON_COVERS,
     LESSON_WORDS,
     LESSON_SPELLING,
     PRONUNCIATION_WORDS,
@@ -16,6 +18,7 @@ from api.curriculum_enrichment import (
 )
 from api.curriculum_library import STORYBOARD_IMAGES
 from api.models import (
+    AccountActionOTP,
     Child,
     ComprehensionQuestion,
     GradeHistory,
@@ -28,6 +31,7 @@ from api.models import (
     ReadingActivityResponse,
     SpellingActivity,
     StoryPage,
+    Subscription,
     Teacher,
     TeacherClass,
     VisualActivityItem,
@@ -217,7 +221,8 @@ class SgilaFlowTests(TestCase):
             "password": "password123",
         })
         self.assertRedirects(response, "/parent/dashboard")
-        child = Child.objects.get(username="lethum")
+        child = Child.objects.get(username__iexact="lethum")
+        self.assertEqual(child.username, "Lethum")
         self.assertEqual(child.name, "Lethu Mokoena")
         self.assertEqual(child.parent_email, parent.email)
         self.assertEqual(child.teacher, teacher)
@@ -854,7 +859,7 @@ class SgilaFlowTests(TestCase):
 
         self.assertEqual(story_response.status_code, 200)
         self.assertContains(story_response, "No story pages have been added yet.")
-        self.assertContains(story_response, "Answer questions")
+        self.assertContains(story_response, "Start 3 activities")
         self.assertEqual(visual_response.status_code, 200)
         self.assertContains(visual_response, "No visual matching cards have been added yet.")
         self.assertContains(visual_response, "Continue")
@@ -891,6 +896,208 @@ class SgilaFlowTests(TestCase):
 
         self.assertEqual(questions_response.context['next_activity_url'], f'/lessons/{lesson.id}/pronunciation')
         self.assertRedirects(visual_response, f'/lessons/{lesson.id}/pronunciation')
+
+    def create_parent_and_child(self, subscription_status=None, link_by_email_only=False):
+        parent = Parent.objects.create(
+            full_name='Nandi Dlamini',
+            email='nandi@example.com',
+            password=make_password('StrongPass123!'),
+            accepted_popia=True,
+        )
+        child = Child.objects.create(
+            parent=None if link_by_email_only else parent,
+            username='lwazi',
+            name='Lwazi Dlamini',
+            age=8,
+            grade=1,
+            parent_email=parent.email,
+            password=make_password('LearnerPass123!'),
+        )
+        if subscription_status:
+            Subscription.objects.create(
+                parent=parent,
+                plan_type='family',
+                status=subscription_status,
+            )
+        return parent, child
+
+    def sign_in_parent(self, parent):
+        session = self.client.session
+        session['account_role'] = 'parent'
+        session['account_id'] = parent.id
+        session['account_name'] = parent.full_name
+        session.save()
+
+    def test_parent_deactivation_requires_password_and_blocks_existing_learner_sessions(self):
+        parent, child = self.create_parent_and_child()
+        self.sign_in_parent(parent)
+
+        wrong_password = self.client.post('/parent/deactivate', {'password': 'wrong'})
+        self.assertRedirects(wrong_password, '/parent/dashboard')
+        parent.refresh_from_db()
+        self.assertTrue(parent.is_active)
+
+        learner_client = Client()
+        learner_session = learner_client.session
+        learner_session.update({
+            'account_role': 'learner',
+            'account_id': child.id,
+            'account_name': child.name,
+            'child_id': child.id,
+            'child_name': child.name,
+            'child_grade': child.grade,
+        })
+        learner_session.save()
+
+        response = self.client.post('/parent/deactivate', {'password': 'StrongPass123!'})
+        self.assertRedirects(response, '/login?role=parent')
+        parent.refresh_from_db()
+        self.assertFalse(parent.is_active)
+        self.assertIsNotNone(parent.deactivated_at)
+        self.assertEqual(parent.auth_version, 1)
+        self.assertTrue(Child.objects.filter(pk=child.pk).exists())
+        self.assertNotIn('account_role', self.client.session)
+
+        blocked = learner_client.get(f'/grade/{child.grade}')
+        self.assertRedirects(blocked, '/account-access?reason=parent_deactivated')
+        self.assertNotIn('child_id', learner_client.session)
+
+    def test_email_only_legacy_child_is_blocked_when_parent_is_deactivated(self):
+        parent, child = self.create_parent_and_child(link_by_email_only=True)
+        parent.is_active = False
+        parent.save(update_fields=['is_active'])
+
+        response = self.client.post('/api/login', {
+            'email': child.username,
+            'password': 'LearnerPass123!',
+            'role': 'learner',
+        }, content_type='application/json')
+
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(response.json()['reason'], 'parent_deactivated')
+
+    @override_settings(EMAIL_BACKEND='django.core.mail.backends.locmem.EmailBackend')
+    def test_parent_reactivation_uses_a_hashed_one_time_code(self):
+        parent, child = self.create_parent_and_child()
+        parent.is_active = False
+        parent.auth_version = 1
+        parent.save(update_fields=['is_active', 'auth_version'])
+
+        login_response = self.client.post('/login', {
+            'role': 'parent',
+            'email': parent.email,
+            'password': 'StrongPass123!',
+        })
+        self.assertRedirects(login_response, '/account/reactivate')
+        self.assertNotIn('account_role', self.client.session)
+
+        send_response = self.client.post('/account/reactivate', {'action': 'send'})
+        self.assertRedirects(send_response, '/account/reactivate?sent=1')
+        self.assertEqual(len(mail.outbox), 1)
+        code = re.search(r'\b(\d{6})\b', mail.outbox[0].body).group(1)
+        token = AccountActionOTP.objects.get(parent=parent)
+        self.assertNotEqual(token.code_hash, code)
+
+        verify_response = self.client.post('/account/reactivate', {
+            'action': 'verify',
+            'code': code,
+        })
+        self.assertRedirects(verify_response, '/parent/dashboard')
+        parent.refresh_from_db()
+        token.refresh_from_db()
+        self.assertTrue(parent.is_active)
+        self.assertIsNone(parent.deactivated_at)
+        self.assertEqual(parent.auth_version, 2)
+        self.assertTrue(token.is_used)
+        self.assertEqual(Parent.objects.filter(email=parent.email).count(), 1)
+
+        learner_login = Client().post('/login', {
+            'role': 'learner',
+            'email': child.username,
+            'password': 'LearnerPass123!',
+        })
+        self.assertRedirects(learner_login, f'/grade/{child.grade}')
+
+    @override_settings(EMAIL_BACKEND='django.core.mail.backends.locmem.EmailBackend')
+    def test_wrong_reactivation_code_is_limited_to_five_attempts(self):
+        parent, _ = self.create_parent_and_child()
+        parent.is_active = False
+        parent.save(update_fields=['is_active'])
+        self.client.post('/login', {
+            'role': 'parent',
+            'email': parent.email,
+            'password': 'StrongPass123!',
+        })
+        self.client.post('/account/reactivate', {'action': 'send'})
+
+        for _ in range(AccountActionOTP.MAX_ATTEMPTS):
+            self.client.post('/account/reactivate', {'action': 'verify', 'code': '000000'})
+
+        token = AccountActionOTP.objects.get(parent=parent)
+        parent.refresh_from_db()
+        self.assertEqual(token.attempts, AccountActionOTP.MAX_ATTEMPTS)
+        self.assertTrue(token.is_used)
+        self.assertFalse(parent.is_active)
+
+        resend_response = self.client.post('/account/reactivate', {'action': 'send'})
+        self.assertRedirects(resend_response, '/account/reactivate')
+        self.assertEqual(AccountActionOTP.objects.filter(parent=parent).count(), 1)
+        self.assertNotIn('reactivation_token_id', self.client.session)
+
+    @override_settings(EMAIL_BACKEND='django.core.mail.backends.locmem.EmailBackend')
+    def test_cancelled_plan_keeps_learners_paused_after_parent_reactivation(self):
+        parent, child = self.create_parent_and_child(subscription_status='cancelled')
+        parent.is_active = False
+        parent.save(update_fields=['is_active'])
+        self.client.post('/login', {
+            'role': 'parent',
+            'email': parent.email,
+            'password': 'StrongPass123!',
+        })
+        self.client.post('/account/reactivate', {'action': 'send'})
+        code = re.search(r'\b(\d{6})\b', mail.outbox[0].body).group(1)
+
+        response = self.client.post('/account/reactivate', {'action': 'verify', 'code': code})
+        self.assertRedirects(response, '/subscription')
+        parent.refresh_from_db()
+        self.assertTrue(parent.is_active)
+
+        learner_response = Client().post('/login', {
+            'role': 'learner',
+            'email': child.username,
+            'password': 'LearnerPass123!',
+        })
+        self.assertRedirects(learner_response, '/account-access?reason=subscription_inactive')
+
+    def test_deactivation_can_cancel_subscription_without_deleting_records(self):
+        parent, child = self.create_parent_and_child(subscription_status='active')
+        self.sign_in_parent(parent)
+        response = self.client.post('/parent/deactivate', {
+            'password': 'StrongPass123!',
+            'cancel_subscription': 'on',
+        })
+
+        self.assertRedirects(response, '/login?role=parent')
+        self.assertEqual(Subscription.objects.get(parent=parent).status, 'cancelled')
+        self.assertTrue(Child.objects.filter(pk=child.pk).exists())
+
+    def test_failed_reactivation_email_does_not_leave_a_usable_token(self):
+        parent, _ = self.create_parent_and_child()
+        parent.is_active = False
+        parent.save(update_fields=['is_active'])
+        self.client.post('/login', {
+            'role': 'parent',
+            'email': parent.email,
+            'password': 'StrongPass123!',
+        })
+
+        with patch('lessons.views.send_mail', side_effect=RuntimeError('smtp unavailable')):
+            response = self.client.post('/account/reactivate', {'action': 'send'})
+
+        self.assertRedirects(response, '/account/reactivate')
+        self.assertFalse(AccountActionOTP.objects.filter(parent=parent).exists())
+        parent.refresh_from_db()
+        self.assertFalse(parent.is_active)
 
 
 class CurriculumSeedTests(TestCase):
@@ -940,8 +1147,8 @@ class CurriculumSeedTests(TestCase):
 
         hot_day = Lesson.objects.get(title='A Very Hot Day')
         self.assertEqual(
-            list(hot_day.reading_activities.values_list('activity_type', flat=True)[:2]),
-            [ReadingActivity.CLOZE, ReadingActivity.MULTIPLE_CHOICE],
+            list(hot_day.reading_activities.values_list('activity_type', flat=True)[:3]),
+            [ReadingActivity.CLOZE] * 3,
         )
         running_story = Lesson.objects.get(title="Mandu's Running Shoes")
         self.assertEqual(running_story.reading_activities.count(), 13)
@@ -1028,14 +1235,18 @@ class CurriculumSeedTests(TestCase):
 
         for title in STORYBOARD_IMAGES:
             lesson = Lesson.objects.get(title=title)
-            self.assertIn('/static/img/storyboards/', lesson.thumbnail_image)
+            storyboard_path = f'/static/img/storyboards/{STORYBOARD_IMAGES[title][0]}'
+            if title in LESSON_COVERS:
+                self.assertEqual(lesson.thumbnail_image, LESSON_COVERS[title])
+            else:
+                self.assertEqual(lesson.thumbnail_image, storyboard_path)
             page_images = list(lesson.pages.values_list('image_url', flat=True))
             self.assertEqual(
                 [int(image_url.rsplit('#panel-', 1)[1]) for image_url in page_images],
                 STORYBOARD_PAGE_PANELS[title],
             )
             self.assertTrue(all(
-                image_url.split('#', 1)[0] == lesson.thumbnail_image
+                image_url.split('#', 1)[0] == storyboard_path
                 for image_url in page_images
             ))
 

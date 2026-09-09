@@ -85,6 +85,7 @@ const skillLabels = {
   text_to_self: 'Make a connection',
   fact_vs_opinion: 'Think carefully',
   spelling: 'Build the story words',
+  visual_literacy: 'Look closely at pictures',
 };
 const KOALY_IMAGES = {
   ready: "{% static 'img/koaly_cutout.png' %}",
@@ -157,25 +158,207 @@ function makeSubmitButton(label) {
   return button;
 }
 
+function activityConfig(activity) {
+  return activity.options && !Array.isArray(activity.options) ? activity.options : {};
+}
+
+function choiceItems(activity) {
+  const config = activityConfig(activity);
+  return Array.isArray(activity.options) ? activity.options : (config.choices || []);
+}
+
+function visualPanelClass(imageUrl) {
+  const match = String(imageUrl || '').match(/#panel-([1-6])/);
+  return match ? ` storyboard-panel-${match[1]}` : '';
+}
+
+function createActivityVisual(imageUrl, alt, modifier = '') {
+  const frame = document.createElement('div');
+  const isSheet = imageUrl.includes('/storyboards/') || imageUrl.includes('/vocab_sheets/');
+  frame.className = `activity-visual${isSheet ? ` storyboard-crop${visualPanelClass(imageUrl)}` : ''}${modifier ? ` ${modifier}` : ''}`;
+  const image = document.createElement('img');
+  image.src = imageUrl;
+  image.alt = alt || 'Story picture';
+  frame.appendChild(image);
+  return frame;
+}
+
+function prepareActivitySpeechWords(element) {
+  if (!element) return [];
+  const rawText = element.dataset.speechText || element.textContent.trim();
+  element.dataset.speechText = rawText;
+  element.innerHTML = '';
+  let characterIndex = 0;
+  rawText.split(/(\s+)/).forEach((token) => {
+    if (!token) return;
+    if (/^\s+$/.test(token)) {
+      element.appendChild(document.createTextNode(token));
+    } else {
+      const word = document.createElement('span');
+      word.className = 'activity-speech-word';
+      word.dataset.start = characterIndex;
+      word.dataset.end = characterIndex + token.length;
+      word.textContent = token;
+      element.appendChild(word);
+    }
+    characterIndex += token.length;
+  });
+  return [...element.querySelectorAll('.activity-speech-word')];
+}
+
+function clearActivitySpeechWords(words) {
+  words.forEach((word) => word.classList.remove('spoken-word', 'current-word'));
+}
+
+function highlightActivityWord(words, characterIndex) {
+  const currentWord = words.find((word) => (
+    Number(word.dataset.start) <= characterIndex
+    && characterIndex < Number(word.dataset.end)
+  ));
+  if (!currentWord) return;
+  words.forEach((word) => word.classList.remove('current-word'));
+  currentWord.classList.add('spoken-word', 'current-word');
+}
+
+function speakActivityText(text, button, highlightElement = null) {
+  if (!text || !('speechSynthesis' in window)) return;
+  window.speechSynthesis.cancel();
+  const words = prepareActivitySpeechWords(highlightElement);
+  clearActivitySpeechWords(words);
+  const utterance = new SpeechSynthesisUtterance(text);
+  const voices = window.speechSynthesis.getVoices();
+  utterance.voice = voices.find((voice) => voice.lang.toLowerCase() === 'en-za')
+    || voices.find((voice) => voice.lang.toLowerCase().startsWith('en'))
+    || null;
+  utterance.lang = utterance.voice ? utterance.voice.lang : 'en-ZA';
+  utterance.rate = 0.86;
+  utterance.pitch = 1;
+  utterance.onboundary = (event) => {
+    if (!event.name || event.name === 'word') {
+      highlightActivityWord(words, event.charIndex);
+    }
+  };
+  if (button) {
+    button.disabled = true;
+    button.textContent = 'Listening...';
+    utterance.onend = () => {
+      words.forEach((word) => word.classList.remove('current-word'));
+      button.disabled = false;
+      button.textContent = 'Listen again';
+    };
+    utterance.onerror = () => {
+      clearActivitySpeechWords(words);
+      utterance.onend();
+    };
+  }
+  window.speechSynthesis.speak(utterance);
+}
+
+function renderActivityMedia(activity, questionText) {
+  const config = activityConfig(activity);
+  if (!config.prompt_image && !config.audio_text && !config.focus_word) return;
+
+  const media = document.createElement('div');
+  media.className = 'activity-media';
+  if (config.presentation === 'grade1_phonics') media.classList.add('grade1-phonics-media');
+  if (!config.prompt_image) media.classList.add('audio-only');
+  if (config.prompt_image) {
+    media.appendChild(createActivityVisual(
+      config.prompt_image,
+      config.prompt_alt || config.focus_word || 'Story clue',
+      config.prompt_image_mode === 'silhouette' ? 'is-silhouette' : '',
+    ));
+  }
+
+  const actions = document.createElement('div');
+  actions.className = 'activity-media-copy';
+  if (config.display_word) {
+    const displayWord = document.createElement('strong');
+    displayWord.className = 'grade1-phonics-word';
+    const wordTemplate = String(config.display_word);
+    const blankIndex = wordTemplate.indexOf('_');
+    if (blankIndex === -1) {
+      displayWord.textContent = wordTemplate;
+    } else {
+      const blank = document.createElement('span');
+      blank.className = 'grade1-phonics-blank';
+      blank.setAttribute('aria-label', 'missing letter');
+      blank.setAttribute('aria-live', 'polite');
+      displayWord.append(
+        document.createTextNode(wordTemplate.slice(0, blankIndex)),
+        blank,
+        document.createTextNode(wordTemplate.slice(blankIndex + 1)),
+      );
+      displayWord.setAttribute('aria-label', `Incomplete word: ${wordTemplate.replace('_', 'blank')}`);
+    }
+    actions.appendChild(displayWord);
+  }
+  if (config.focus_word) {
+    const word = document.createElement('strong');
+    word.className = 'pronunciation-focus-word';
+    word.textContent = config.focus_word;
+    actions.appendChild(word);
+    if (config.translation) {
+      const translation = document.createElement('span');
+      translation.className = 'pronunciation-translation';
+      translation.textContent = config.translation;
+      actions.appendChild(translation);
+    }
+  }
+  if (config.audio_text) {
+    const listen = document.createElement('button');
+    listen.type = 'button';
+    listen.className = 'btn btn-light activity-listen';
+    listen.textContent = 'Listen';
+    const isPhonicsWord = config.presentation === 'grade1_phonics';
+    const spokenText = isPhonicsWord ? config.audio_text : activity.question;
+    listen.addEventListener('click', () => speakActivityText(
+      spokenText,
+      listen,
+      isPhonicsWord ? null : questionText,
+    ));
+    actions.appendChild(listen);
+  }
+  media.appendChild(actions);
+  responseArea.appendChild(media);
+}
+
 function renderChoice(activity) {
   const grid = document.createElement('div');
-  grid.className = 'options-grid';
+  const options = choiceItems(activity);
+  const hasPictures = options.some((option) => option && typeof option === 'object' && option.image_url);
+  const hideOptionMarkers = activity.group_title === 'Short Sentences & Picture Matching';
+  grid.className = `options-grid${hasPictures ? ' visual-options-grid' : ''}`;
+  if (hideOptionMarkers) grid.classList.add('without-option-markers');
   let selectedAnswer = '';
   let selectedButton = null;
 
-  activity.options.forEach((option, index) => {
+  options.forEach((option, index) => {
+    const value = option && typeof option === 'object' ? option.value : option;
+    const label = option && typeof option === 'object' ? (option.label || option.value) : option;
     const button = document.createElement('button');
     button.className = 'btn btn-option';
     button.type = 'button';
-    button.dataset.answer = option;
+    button.dataset.answer = value;
     button.setAttribute('aria-pressed', 'false');
 
-    const marker = document.createElement('span');
-    marker.className = 'option-marker';
-    marker.textContent = String.fromCharCode(65 + index);
+    if (!hideOptionMarkers) {
+      const marker = document.createElement('span');
+      marker.className = 'option-marker';
+      marker.textContent = String.fromCharCode(65 + index);
+      button.appendChild(marker);
+    }
+    if (option && typeof option === 'object' && option.image_url) {
+      button.prepend(createActivityVisual(
+        option.image_url,
+        option.alt || label,
+        option.image_mode === 'silhouette' ? 'is-silhouette' : '',
+      ));
+    }
     const copy = document.createElement('span');
-    copy.textContent = option;
-    button.append(marker, copy);
+    copy.className = 'option-copy';
+    copy.textContent = label;
+    button.appendChild(copy);
 
     button.addEventListener('click', () => {
       grid.querySelectorAll('.btn-option').forEach((choice) => {
@@ -184,7 +367,7 @@ function renderChoice(activity) {
       });
       button.classList.add('is-selected');
       button.setAttribute('aria-pressed', 'true');
-      selectedAnswer = option;
+      selectedAnswer = value;
       selectedButton = button;
       submit.disabled = false;
     });
@@ -198,13 +381,18 @@ function renderChoice(activity) {
 }
 
 function renderCloze(activity) {
+  const config = activityConfig(activity);
+  const phonicsBlank = config.presentation === 'grade1_phonics'
+    ? responseArea.querySelector('.grade1-phonics-blank')
+    : null;
+  const phonicsWord = phonicsBlank ? phonicsBlank.closest('.grade1-phonics-word') : null;
   const bank = document.createElement('div');
   bank.className = 'cloze-word-bank';
   bank.setAttribute('aria-label', 'Word bank');
   let selectedAnswer = '';
   let selectedButton = null;
 
-  activity.options.forEach((word) => {
+  choiceItems(activity).forEach((word) => {
     const button = document.createElement('button');
     button.type = 'button';
     button.className = 'cloze-chip';
@@ -220,6 +408,14 @@ function renderCloze(activity) {
       button.setAttribute('aria-pressed', 'true');
       selectedAnswer = word;
       selectedButton = button;
+      if (phonicsBlank) {
+        phonicsBlank.textContent = word;
+        phonicsBlank.classList.add('has-letter');
+        phonicsWord.setAttribute(
+          'aria-label',
+          `Completed word: ${String(config.display_word).replace('_', word)}`,
+        );
+      }
       submit.disabled = false;
     });
     bank.appendChild(button);
@@ -234,10 +430,17 @@ function renderCloze(activity) {
 function renderSequence(activity) {
   const list = document.createElement('ol');
   list.className = 'sequence-list';
+  const config = activityConfig(activity);
+  const itemImages = config.item_images || {};
 
   activity.items.forEach((item) => {
     const row = document.createElement('li');
+    if (itemImages[item]) {
+      row.classList.add('has-picture');
+      row.appendChild(createActivityVisual(itemImages[item], item));
+    }
     const text = document.createElement('span');
+    text.className = 'sequence-copy';
     text.textContent = item;
     const controls = document.createElement('div');
     controls.className = 'sequence-controls';
@@ -271,7 +474,7 @@ function renderSequence(activity) {
 
   const submit = makeSubmitButton('Check the order');
   submit.addEventListener('click', () => {
-    const answer = [...list.querySelectorAll('li > span')].map((item) => item.textContent);
+    const answer = [...list.querySelectorAll('.sequence-copy')].map((item) => item.textContent);
     submitActivity(activity, answer);
   });
   responseArea.append(list, submit);
@@ -361,8 +564,103 @@ function renderCrossword(activity) {
   responseArea.append(layout, submit);
 }
 
+function renderDragMatch(activity) {
+  const config = activityConfig(activity);
+  const board = document.createElement('div');
+  board.className = 'drag-match-board';
+  const tray = document.createElement('div');
+  tray.className = 'drag-match-tray';
+  const targets = document.createElement('div');
+  targets.className = 'drag-match-targets';
+  const assignments = {};
+  let selectedPrompt = '';
+
+  function updateSubmit() {
+    submit.disabled = Object.keys(assignments).length !== (config.prompts || []).length;
+  }
+
+  function assign(promptKey, choiceKey) {
+    if (!promptKey || !choiceKey) return;
+    Object.keys(assignments).forEach((key) => {
+      if (assignments[key] === choiceKey) delete assignments[key];
+    });
+    assignments[promptKey] = choiceKey;
+    tray.querySelectorAll('.drag-match-chip').forEach((chip) => {
+      chip.classList.toggle('is-matched', Boolean(assignments[chip.dataset.prompt]));
+      chip.classList.remove('is-selected');
+    });
+    targets.querySelectorAll('.drag-match-target').forEach((target) => {
+      const prompt = Object.keys(assignments).find((key) => assignments[key] === target.dataset.choice) || '';
+      target.dataset.prompt = prompt;
+      const promptData = (config.prompts || []).find((item) => item.key === prompt);
+      target.querySelector('.drag-match-slot').textContent = promptData ? promptData.text : 'Drop a picture here';
+      target.classList.toggle('has-match', Boolean(prompt));
+    });
+    selectedPrompt = '';
+    updateSubmit();
+  }
+
+  (config.prompts || []).forEach((prompt) => {
+    const chip = document.createElement('button');
+    chip.type = 'button';
+    chip.className = 'drag-match-chip';
+    chip.dataset.prompt = prompt.key;
+    chip.draggable = true;
+    if (prompt.image_url) chip.appendChild(createActivityVisual(prompt.image_url, prompt.text));
+    const label = document.createElement('span');
+    label.textContent = prompt.text;
+    chip.appendChild(label);
+    chip.addEventListener('click', () => {
+      selectedPrompt = prompt.key;
+      tray.querySelectorAll('.drag-match-chip').forEach((item) => item.classList.toggle('is-selected', item === chip));
+    });
+    chip.addEventListener('dragstart', (event) => event.dataTransfer.setData('text/plain', prompt.key));
+    tray.appendChild(chip);
+  });
+
+  (config.choices || []).forEach((choice) => {
+    const target = document.createElement('button');
+    target.type = 'button';
+    target.className = 'drag-match-target';
+    target.dataset.choice = choice.key;
+    if (choice.image_url) target.appendChild(createActivityVisual(choice.image_url, choice.text));
+    const label = document.createElement('strong');
+    label.textContent = choice.text;
+    const slot = document.createElement('span');
+    slot.className = 'drag-match-slot';
+    slot.textContent = 'Drop a picture here';
+    target.append(label, slot);
+    target.addEventListener('click', () => assign(selectedPrompt, choice.key));
+    target.addEventListener('dragover', (event) => event.preventDefault());
+    target.addEventListener('drop', (event) => {
+      event.preventDefault();
+      assign(event.dataTransfer.getData('text/plain'), choice.key);
+    });
+    targets.appendChild(target);
+  });
+
+  const trayTitle = document.createElement('strong');
+  trayTitle.className = 'drag-match-heading';
+  trayTitle.textContent = 'Pictures';
+  tray.prepend(trayTitle);
+  const targetTitle = document.createElement('strong');
+  targetTitle.className = 'drag-match-heading';
+  targetTitle.textContent = 'Story places';
+  targets.prepend(targetTitle);
+  board.append(tray, targets);
+
+  const submit = makeSubmitButton('Check matches');
+  submit.disabled = true;
+  submit.addEventListener('click', () => submitActivity(activity, assignments));
+  responseArea.append(board, submit);
+}
+
 function renderMatching(activity) {
   const config = activity.options || {};
+  if (config.presentation === 'drag_match') {
+    renderDragMatch(activity);
+    return;
+  }
   const rows = document.createElement('div');
   rows.className = 'matching-rows';
   (config.prompts || []).forEach((prompt) => {
@@ -418,15 +716,18 @@ function renderWordScramble(activity) {
 }
 
 function renderOral(activity) {
+  const config = activityConfig(activity);
   const oral = document.createElement('div');
   oral.className = 'oral-response';
   const title = document.createElement('strong');
-  title.textContent = 'Say it in a full sentence';
+  title.textContent = config.focus_word ? `Say the word: ${config.focus_word}` : 'Say it in a full sentence';
   const help = document.createElement('span');
-  help.textContent = 'Tell the answer to a teacher, parent, or learning partner.';
+  help.textContent = config.focus_word
+    ? 'Listen, say the word clearly, then tick it as complete.'
+    : 'Tell the answer to a teacher, parent, or learning partner.';
   oral.append(title, help);
 
-  const submit = makeSubmitButton('I said my answer');
+  const submit = makeSubmitButton(config.focus_word ? 'I said the word' : 'I said my answer');
   submit.addEventListener('click', () => submitActivity(activity, 'Answered aloud'));
   responseArea.append(oral, submit);
 }
@@ -553,10 +854,19 @@ function renderActivity() {
     ? `Activity ${group.number} - Question ${questionNumber}`
     : `Activity ${group ? group.number : current + 1}`;
   document.getElementById('skill-label').textContent = `${group ? group.title : 'Story activity'} - ${skillLabels[activity.skill] || 'Read for meaning'}`;
-  document.getElementById('activity-instruction').textContent = typeInstructions[activity.activity_type] || 'Use the story to answer.';
-  document.getElementById('question-text').textContent = activity.question;
+  const config = activityConfig(activity);
+  const isGradeOnePhonics = config.presentation === 'grade1_phonics';
+  const instruction = config.instruction;
+  document.getElementById('activity-instruction').textContent = instruction
+    || typeInstructions[activity.activity_type]
+    || 'Use the story to answer.';
+  const questionText = document.getElementById('question-text');
+  delete questionText.dataset.speechText;
+  questionText.textContent = activity.question;
+  questionText.classList.toggle('hidden', isGradeOnePhonics);
   setMascot('ready', 'Take your time and use the story.');
   updateProgress();
+  renderActivityMedia(activity, questionText);
 
   if (activity.options && activity.options.writing_template) {
     renderGuidedDiary(activity);
@@ -596,6 +906,16 @@ function markChoice(selectedButton, data) {
 function markMatchingAnswers(data) {
   const expectedAnswers = data.correct_answer;
   if (!expectedAnswers || typeof expectedAnswers !== 'object') return;
+  responseArea.querySelectorAll('.drag-match-target').forEach((target) => {
+    const promptKey = target.dataset.prompt;
+    if (!promptKey) return;
+    const isCorrect = String(expectedAnswers[promptKey] || '') === target.dataset.choice;
+    target.classList.add(isCorrect ? 'match-correct' : 'match-wrong');
+    const badge = document.createElement('span');
+    badge.className = 'matching-result-badge';
+    badge.textContent = isCorrect ? 'Correct' : 'Incorrect';
+    target.appendChild(badge);
+  });
   responseArea.querySelectorAll('.matching-row').forEach((row) => {
     const select = row.querySelector('select');
     const correctValue = String(expectedAnswers[select.dataset.prompt] || '');
@@ -730,7 +1050,7 @@ async function submitActivity(activity, answer, selectedButton = null) {
 
 async function loadActivities() {
   try {
-    const response = await fetch(`/api/lessons/${lessonId}/questions`);
+    const response = await fetch(`/api/lessons/${lessonId}/questions`, {cache: 'no-store'});
     if (!response.ok) throw new Error('Activities could not be loaded.');
     activities = await response.json();
     const groups = new Map();

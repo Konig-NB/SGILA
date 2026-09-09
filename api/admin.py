@@ -4,10 +4,13 @@ Register all models here so the admin can add/edit content
 without writing code.
 """
 from django.contrib import admin
+from django.utils.crypto import get_random_string
+
 from .models import (
     Parent, Teacher, Child, Lesson, StoryPage, ComprehensionQuestion, ReadingActivity,
     VisualActivityItem, PronunciationWord, SpellingActivity, Progress,
     TeacherClass, Message, Subscription, PackageCode, AIStoryJob, GradeHistory,
+    AccountActionOTP,
 )
 
 @admin.register(PackageCode)
@@ -115,8 +118,20 @@ class GradeHistoryAdmin(admin.ModelAdmin):
 
 @admin.register(Parent)
 class ParentAdmin(admin.ModelAdmin):
-    list_display = ('full_name', 'email', 'phone', 'created_at')
+    list_display = ('full_name', 'email', 'phone', 'is_active', 'deactivated_at', 'created_at')
+    list_filter = ('is_active',)
     search_fields = ('full_name', 'email', 'phone')
+
+
+@admin.register(AccountActionOTP)
+class AccountActionOTPAdmin(admin.ModelAdmin):
+    list_display = ('parent', 'action', 'created_at', 'attempts', 'is_used')
+    list_filter = ('action', 'is_used')
+    search_fields = ('parent__full_name', 'parent__email')
+    readonly_fields = ('parent', 'action', 'code_hash', 'created_at', 'attempts', 'is_used')
+
+    def has_add_permission(self, request):
+        return False
 
 
 @admin.register(Teacher)

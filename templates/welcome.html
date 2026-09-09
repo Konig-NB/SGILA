@@ -1,80 +1,85 @@
 {% extends 'base.html' %}
 {% load static %}
-{% block title %}SGILA Reading App{% endblock %}
+{% block title %}SGILA Reading Adventures{% endblock %}
+{% block body_class %}home-page{% endblock %}
 {% block content %}
-<section class="hero">
-  <div class="hero-copy" >
-    <p class="eyebrow">Bringing meaning to every story!</p>
-    <h1>SGILA</h1>
-    <p>A fun, interactive reading app designed for foundation <br> phase learners</p>
-    <section class="quick-roles">
-      <a href="/login?role=learner" class="role-tile role-tile-learner">
+<div class="studio-home">
+  <section class="studio-hero" aria-labelledby="studio-home-title">
+    <div class="studio-hero-copy">
+      <p class="studio-kicker">READ / LISTEN / UNDERSTAND</p>
+      <h1 id="studio-home-title">SGILA reading adventures</h1>
+      <p class="studio-tagline">Stories that grow with every reader.</p>
+      <p class="studio-support">CAPS-aligned reading adventures for Grades 1-4.</p>
 
-        <strong>Learner</strong>
-
-      </a>
-      <a href="/register?role=parent" class="role-tile role-tile-parent">
-
-        <strong>Parent</strong>
-
-      </a>
-      <a href="/register?role=teacher" class="role-tile role-tile-teacher">
-        <strong>Teacher</strong>
-      </a>
-    </section>
-  </div>
-  <div class="hero-mascot hero-web-preview" id="home-koaly-zone">
-    <div class="web-preview-panel reactive-koaly koaly-ready" id="home-koaly-card" aria-live="polite">
-      <div class="web-preview-copy">
-        <span class="status-chip" id="home-koaly-label">Hi there I'm Koaly!</span>
-        <h2>Welcome</h2>
-        <p>Open your dashboard, continue Lerato's Fruit Basket, listen to voiceover, and earn stars.</p>
-        <div class="desktop-progress-row">
-          <span class="rainbow-dot red"></span>
-          <span class="rainbow-dot orange"></span>
-          <span class="rainbow-dot yellow"></span>
-          <span class="rainbow-dot green"></span>
-          <span class="rainbow-dot blue"></span>
-          <span class="rainbow-dot violet"></span>
-        </div>
+      <div class="studio-hero-actions">
+        <a class="studio-button studio-button-primary" href="/login?role=learner">Start reading</a>
+        <a class="studio-text-link" href="#choose-role">I'm a parent or teacher</a>
       </div>
-      <div class="web-preview-visual">
-        <img src="{% static 'img/koaly_cutout.png' %}" alt="Koaly reading mascot">
-        <span id="home-koaly-state">Move over Koaly or click for a reaction.</span>
-      </div>
+
+      <nav class="studio-role-selector" id="choose-role" aria-label="Choose your SGILA role">
+        <a class="studio-role studio-role-learner is-active" href="/login?role=learner">
+          <span class="studio-role-mark" aria-hidden="true">L</span>
+          <span>Learner</span>
+        </a>
+        <a class="studio-role studio-role-parent-option" id="family-entry" href="/register?role=parent">
+          <span class="studio-role-mark studio-role-parent" aria-hidden="true">P</span>
+          <span>Parent</span>
+        </a>
+        <a class="studio-role studio-role-teacher-option" id="school-entry" href="/register?role=teacher">
+          <span class="studio-role-mark studio-role-teacher" aria-hidden="true">T</span>
+          <span>Teacher</span>
+        </a>
+      </nav>
     </div>
-  </div>
-</section>
 
+    <div class="studio-hero-media">
+      <img src="{% static 'img/home_reading_studio.png' %}" alt="Three learners reading with Koaly in a bright school library">
+    </div>
+  </section>
 
-<script>
-  (() => {
-    const card = document.getElementById('home-koaly-card');
-    const label = document.getElementById('home-koaly-label');
-    const state = document.getElementById('home-koaly-state');
-    if (!card || !label || !state) return;
-    const koalyImage = card.querySelector('img');
-    const koalyImages = {
-      'koaly-ready': "{% static 'img/koaly_cutout.png' %}",
-      'koaly-listening': "{% static 'img/koaly_cutout.png' %}",
-      'koaly-happy': "{% static 'img/koaly_happy.png' %}",
-      'koaly-sad': "{% static 'img/koaly_sad.png' %}",
-    };
+  <section class="studio-stories" id="stories" aria-labelledby="studio-stories-title">
+    <div class="studio-section-heading">
+      <div>
+        <p class="studio-section-kicker">STORY LIBRARY</p>
+        <h2 id="studio-stories-title">Stories to discover</h2>
+      </div>
+      <a class="studio-text-link" href="/login?role=learner">Open my lessons</a>
+    </div>
 
-    const setMood = (mood, text) => {
-      card.classList.remove('koaly-ready', 'koaly-listening', 'koaly-happy', 'koaly-sad', 'koaly-celebrating', 'koaly-encouraging');
-      card.classList.add(mood);
-      if (koalyImage) koalyImage.src = koalyImages[mood] || koalyImages['koaly-ready'];
-      label.textContent = text;
-      state.textContent = text;
-    };
+    <div class="studio-story-grid">
+      <a class="studio-story-card" href="/login?role=learner">
+        <div class="studio-story-image">
+          <img src="{% static 'img/lerato/lerato_market.png' %}" alt="Lerato at the fruit market">
+          <span class="studio-grade studio-grade-one">Grade 1</span>
+        </div>
+        <div class="studio-story-meta">
+          <h3>Lerato's Fruit Basket</h3>
+          <span>Market adventure</span>
+        </div>
+      </a>
 
-    card.addEventListener('mouseenter', () => setMood('koaly-listening', 'Nice to meet you:)'));
-    card.addEventListener('mouseleave', () => setMood('koaly-ready', 'Hi there! I\'m Koaly!'));
-    card.addEventListener('click', () => {
-      setMood('koaly-happy', 'I cannot wait to read with you:)!');
-      window.setTimeout(() => setMood('koaly-ready', 'Hi there! I\'m Koaly!'), 1600);
-    });
-  })();
-</script>
+      <a class="studio-story-card" href="/login?role=learner">
+        <div class="studio-story-image">
+          <img src="{% static 'img/storyboards/g2_dan_storyboard.png' %}" alt="Scenes from Dan Has a Bad Week">
+          <span class="studio-grade studio-grade-two">Grade 2</span>
+        </div>
+        <div class="studio-story-meta">
+          <h3>Dan Has a Bad Week</h3>
+          <span>School-day story</span>
+        </div>
+      </a>
+
+      <a class="studio-story-card" href="/login?role=learner">
+        <div class="studio-story-image">
+          <img src="{% static 'img/storyboards/g4_mandu_shoes_storyboard.png' %}" alt="Scenes from Mandu's Running Shoes">
+          <span class="studio-grade studio-grade-four">Grade 4</span>
+        </div>
+        <div class="studio-story-meta">
+          <h3>Mandu's Running Shoes</h3>
+          <span>Determination and courage</span>
+        </div>
+      </a>
+    </div>
+  </section>
+</div>
 {% endblock %}
