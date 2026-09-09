@@ -98,6 +98,11 @@ class SgilaFlowTests(TestCase):
         self.assertTrue(stylesheet.is_file())
         self.assertIn('@layer foundation, application, pages;', css)
         self.assertNotIn('!important', css)
+        self.assertEqual(css.count('{'), css.count('}'))
+        self.assertIn(
+            '[data-theme="dark"] img {\n  opacity: .95;\n}\n\n/* Reading Studio homepage */',
+            css,
+        )
         self.assertFalse((stylesheet.parent / 'sgila.css').exists())
         self.assertFalse((stylesheet.parent / 'sgila_web.css').exists())
 

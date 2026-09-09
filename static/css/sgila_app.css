@@ -10606,6 +10606,8 @@ body:not(.diagram-body) .story-diary-signature {
 
 [data-theme="dark"] img {
   opacity: .95;
+}
+
 /* Reading Studio homepage */
 body.home-page {
   background: #ffffff;
