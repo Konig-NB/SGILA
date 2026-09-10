@@ -184,6 +184,25 @@ def activity_choices_for(lesson):
     return choices
 
 
+def activity_resume_url(request, child, lesson):
+    """Return the best saved destination when a learner reopens a story."""
+    answers = request.session.get(f'lesson_{lesson.id}_reading_activity_answers', {})
+    answered_ids = {
+        str(key).removeprefix('activity-')
+        for key in answers
+        if str(key).startswith('activity-')
+    }
+    activities = list(lesson.reading_activities.order_by('order', 'id'))
+    for index, activity in enumerate(activities):
+        if str(activity.id) not in answered_ids:
+            return f'/lessons/{lesson.id}/questions?activity_index={index}'
+
+    paused_url = (child.paused_activities or {}).get(str(lesson.id))
+    if paused_url:
+        return paused_url
+    return None
+
+
 def activity_score_summary(request, lesson):
     """Summarise the in-progress attempt stored in the learner session."""
     prefix = f'lesson_{lesson.id}_'
@@ -1701,6 +1720,7 @@ def story_page(request, lesson_id):
         'lesson': lesson,
         'pages': pages,
         'child': child,
+        'activity_resume_url': activity_resume_url(request, child, lesson),
         'first_activity_url': first_activity_url,
     })
 
