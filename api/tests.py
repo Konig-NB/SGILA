@@ -1,12 +1,15 @@
 import json
 import re
+from unittest.mock import patch
 from pathlib import Path
 
 from django.contrib.auth.hashers import make_password
+from django.core import mail
 from django.core.management import call_command
-from django.test import Client, TestCase
+from django.test import Client, TestCase, override_settings
 
 from api.curriculum_enrichment import (
+    LESSON_COVERS,
     LESSON_WORDS,
     LESSON_SPELLING,
     PRONUNCIATION_WORDS,
@@ -15,8 +18,10 @@ from api.curriculum_enrichment import (
 )
 from api.curriculum_library import STORYBOARD_IMAGES
 from api.models import (
+    AccountActionOTP,
     Child,
     ComprehensionQuestion,
+    GradeHistory,
     Lesson,
     OTPToken,
     Parent,
@@ -26,9 +31,11 @@ from api.models import (
     ReadingActivityResponse,
     SpellingActivity,
     StoryPage,
+    Subscription,
     Teacher,
     TeacherClass,
     VisualActivityItem,
+    current_school_year,
 )
 
 
@@ -91,6 +98,11 @@ class SgilaFlowTests(TestCase):
         self.assertTrue(stylesheet.is_file())
         self.assertIn('@layer foundation, application, pages;', css)
         self.assertNotIn('!important', css)
+        self.assertEqual(css.count('{'), css.count('}'))
+        self.assertIn(
+            '[data-theme="dark"] img {\n  opacity: .95;\n}\n\n/* Reading Studio homepage */',
+            css,
+        )
         self.assertFalse((stylesheet.parent / 'sgila.css').exists())
         self.assertFalse((stylesheet.parent / 'sgila_web.css').exists())
 
@@ -214,7 +226,8 @@ class SgilaFlowTests(TestCase):
             "password": "password123",
         })
         self.assertRedirects(response, "/parent/dashboard")
-        child = Child.objects.get(username="lethum")
+        child = Child.objects.get(username__iexact="lethum")
+        self.assertEqual(child.username, "Lethum")
         self.assertEqual(child.name, "Lethu Mokoena")
         self.assertEqual(child.parent_email, parent.email)
         self.assertEqual(child.teacher, teacher)
@@ -499,6 +512,64 @@ class SgilaFlowTests(TestCase):
             {'score': 1, 'total': 2},
         )
 
+    def test_matching_list_answers_are_accepted_for_single_choice_questions(self):
+        child = Child.objects.create(
+            name='Mandu',
+            age=10,
+            grade=4,
+            parent_email='grade4-matching-list@example.com',
+            password='hash',
+        )
+        lesson = Lesson.objects.create(title='Grade 4 Matching Fix', grade=4)
+        activity = ReadingActivity.objects.create(
+            lesson=lesson,
+            order=1,
+            group_number=1,
+            group_title='Story Words',
+            activity_type=ReadingActivity.MATCHING,
+            skill='vocabulary_in_context',
+            question='What does unconscious mean in this report?',
+            options=[
+                'Not awake or responding',
+                'Unable to hear a whisper',
+                'Angry about an accident',
+                'Ready to climb again',
+            ],
+            correct_answer='Not awake or responding',
+        )
+        self.sign_in_child(child)
+
+        response = self.client.post('/api/check-reading-activity', json.dumps({
+            'child_id': child.id,
+            'lesson_id': lesson.id,
+            'activity_id': activity.id,
+            'child_answer': 'Not awake or responding',
+        }), content_type='application/json')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.json()['correct'])
+        self.assertEqual(response.json()['correct_answer'], 'Not awake or responding')
+
+    def test_oral_activity_uses_dictation_textbox_for_activity_7(self):
+        project_root = Path(__file__).resolve().parent.parent
+        template = project_root / 'templates' / 'questions.html'
+        source = template.read_text(encoding='utf-8')
+
+        self.assertIn('function renderOral(activity)', source)
+        self.assertIn("answer.id = 'oral-response'", source)
+        self.assertIn('attachDictationToTextarea(answer)', source)
+        self.assertIn('SpeechRecognition', source)
+
+    def test_sequence_activity_supports_drag_and_drop_reordering(self):
+        project_root = Path(__file__).resolve().parent.parent
+        template = project_root / 'templates' / 'questions.html'
+        source = template.read_text(encoding='utf-8')
+
+        self.assertIn("row.draggable = true", source)
+        self.assertIn("row.addEventListener('dragover'", source)
+        self.assertIn("row.addEventListener('drop'", source)
+        self.assertIn('sequence-draggable', source)
+
     def test_grade_four_matching_returns_row_level_correct_answers(self):
         child = Child.objects.create(
             name='Mandu',
@@ -583,6 +654,84 @@ class SgilaFlowTests(TestCase):
         stylesheet = Path(__file__).resolve().parent.parent / 'static' / 'css' / 'sgila_app.css'
         self.assertIn('.scramble-row.scramble-correct', stylesheet.read_text(encoding='utf-8'))
         self.assertIn('.scramble-row.scramble-wrong', stylesheet.read_text(encoding='utf-8'))
+
+    def test_reasoning_requires_readable_english_and_matches_example_sentence(self):
+        child = Child.objects.create(
+            name='Mandu',
+            age=10,
+            grade=4,
+            parent_email='reasoning@example.com',
+            password='hash',
+        )
+        lesson = Lesson.objects.create(title='Reasoning Check', grade=4)
+        activity = ReadingActivity.objects.create(
+            lesson=lesson,
+            order=1,
+            group_number=1,
+            group_title='Story thinking',
+            activity_type=ReadingActivity.REASONING,
+            skill='inference',
+            question='Why were the first-aid kits important?',
+            correct_answer='because it was used to help the dog get better',
+        )
+        self.sign_in_child(child)
+
+        bad_response = self.client.post('/api/check-reading-activity', json.dumps({
+            'child_id': child.id,
+            'lesson_id': lesson.id,
+            'activity_id': activity.id,
+            'child_answer': "rsfkhdfjlgb'oil",
+        }), content_type='application/json')
+        self.assertEqual(bad_response.status_code, 400)
+        self.assertIn('readable English', bad_response.json()['error'])
+
+        good_response = self.client.post('/api/check-reading-activity', json.dumps({
+            'child_id': child.id,
+            'lesson_id': lesson.id,
+            'activity_id': activity.id,
+            'child_answer': 'because it was used to help the dog get better',
+        }), content_type='application/json')
+        self.assertEqual(good_response.status_code, 200)
+        self.assertTrue(good_response.json()['review_required'])
+        self.assertEqual(good_response.json()['model_answer'], 'because it was used to help the dog get better')
+
+    def test_open_ended_response_requires_two_punctuated_sentences(self):
+        child = Child.objects.create(
+            name='Twins learner',
+            age=10,
+            grade=4,
+            parent_email='two-sentences@example.com',
+            password='hash',
+        )
+        lesson = Lesson.objects.create(title='Two Sentence Check', grade=4)
+        activity = ReadingActivity.objects.create(
+            lesson=lesson,
+            order=1,
+            group_number=1,
+            group_title='Retell',
+            activity_type=ReadingActivity.OPEN_ENDED,
+            skill='summarising',
+            question='Retell the mistake and resolution in two or three sentences.',
+            correct_answer='Todd and Ted dressed for Comic Day on the wrong date. They felt embarrassed at school but then laughed at the harmless mistake.',
+        )
+        self.sign_in_child(child)
+
+        short_response = self.client.post('/api/check-reading-activity', json.dumps({
+            'child_id': child.id,
+            'lesson_id': lesson.id,
+            'activity_id': activity.id,
+            'child_answer': 'The twins made a mistake',
+        }), content_type='application/json')
+        self.assertEqual(short_response.status_code, 400)
+        self.assertIn('two or more sentences', short_response.json()['error'])
+
+        complete_response = self.client.post('/api/check-reading-activity', json.dumps({
+            'child_id': child.id,
+            'lesson_id': lesson.id,
+            'activity_id': activity.id,
+            'child_answer': 'The twins made a mistake. They laughed about it later.',
+        }), content_type='application/json')
+        self.assertEqual(complete_response.status_code, 200)
 
     def test_guided_diary_is_saved_to_the_child_story_profile(self):
         child = Child.objects.create(
@@ -851,7 +1000,7 @@ class SgilaFlowTests(TestCase):
 
         self.assertEqual(story_response.status_code, 200)
         self.assertContains(story_response, "No story pages have been added yet.")
-        self.assertContains(story_response, "Answer questions")
+        self.assertContains(story_response, "Start 3 activities")
         self.assertEqual(visual_response.status_code, 200)
         self.assertContains(visual_response, "No visual matching cards have been added yet.")
         self.assertContains(visual_response, "Continue")
@@ -889,6 +1038,208 @@ class SgilaFlowTests(TestCase):
         self.assertEqual(questions_response.context['next_activity_url'], f'/lessons/{lesson.id}/pronunciation')
         self.assertEqual(visual_response.status_code, 200)
         self.assertContains(visual_response, "No visual matching cards have been added yet.")
+
+    def create_parent_and_child(self, subscription_status=None, link_by_email_only=False):
+        parent = Parent.objects.create(
+            full_name='Nandi Dlamini',
+            email='nandi@example.com',
+            password=make_password('StrongPass123!'),
+            accepted_popia=True,
+        )
+        child = Child.objects.create(
+            parent=None if link_by_email_only else parent,
+            username='lwazi',
+            name='Lwazi Dlamini',
+            age=8,
+            grade=1,
+            parent_email=parent.email,
+            password=make_password('LearnerPass123!'),
+        )
+        if subscription_status:
+            Subscription.objects.create(
+                parent=parent,
+                plan_type='family',
+                status=subscription_status,
+            )
+        return parent, child
+
+    def sign_in_parent(self, parent):
+        session = self.client.session
+        session['account_role'] = 'parent'
+        session['account_id'] = parent.id
+        session['account_name'] = parent.full_name
+        session.save()
+
+    def test_parent_deactivation_requires_password_and_blocks_existing_learner_sessions(self):
+        parent, child = self.create_parent_and_child()
+        self.sign_in_parent(parent)
+
+        wrong_password = self.client.post('/parent/deactivate', {'password': 'wrong'})
+        self.assertRedirects(wrong_password, '/parent/dashboard')
+        parent.refresh_from_db()
+        self.assertTrue(parent.is_active)
+
+        learner_client = Client()
+        learner_session = learner_client.session
+        learner_session.update({
+            'account_role': 'learner',
+            'account_id': child.id,
+            'account_name': child.name,
+            'child_id': child.id,
+            'child_name': child.name,
+            'child_grade': child.grade,
+        })
+        learner_session.save()
+
+        response = self.client.post('/parent/deactivate', {'password': 'StrongPass123!'})
+        self.assertRedirects(response, '/login?role=parent')
+        parent.refresh_from_db()
+        self.assertFalse(parent.is_active)
+        self.assertIsNotNone(parent.deactivated_at)
+        self.assertEqual(parent.auth_version, 1)
+        self.assertTrue(Child.objects.filter(pk=child.pk).exists())
+        self.assertNotIn('account_role', self.client.session)
+
+        blocked = learner_client.get(f'/grade/{child.grade}')
+        self.assertRedirects(blocked, '/account-access?reason=parent_deactivated')
+        self.assertNotIn('child_id', learner_client.session)
+
+    def test_email_only_legacy_child_is_blocked_when_parent_is_deactivated(self):
+        parent, child = self.create_parent_and_child(link_by_email_only=True)
+        parent.is_active = False
+        parent.save(update_fields=['is_active'])
+
+        response = self.client.post('/api/login', {
+            'email': child.username,
+            'password': 'LearnerPass123!',
+            'role': 'learner',
+        }, content_type='application/json')
+
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(response.json()['reason'], 'parent_deactivated')
+
+    @override_settings(EMAIL_BACKEND='django.core.mail.backends.locmem.EmailBackend')
+    def test_parent_reactivation_uses_a_hashed_one_time_code(self):
+        parent, child = self.create_parent_and_child()
+        parent.is_active = False
+        parent.auth_version = 1
+        parent.save(update_fields=['is_active', 'auth_version'])
+
+        login_response = self.client.post('/login', {
+            'role': 'parent',
+            'email': parent.email,
+            'password': 'StrongPass123!',
+        })
+        self.assertRedirects(login_response, '/account/reactivate')
+        self.assertNotIn('account_role', self.client.session)
+
+        send_response = self.client.post('/account/reactivate', {'action': 'send'})
+        self.assertRedirects(send_response, '/account/reactivate?sent=1')
+        self.assertEqual(len(mail.outbox), 1)
+        code = re.search(r'\b(\d{6})\b', mail.outbox[0].body).group(1)
+        token = AccountActionOTP.objects.get(parent=parent)
+        self.assertNotEqual(token.code_hash, code)
+
+        verify_response = self.client.post('/account/reactivate', {
+            'action': 'verify',
+            'code': code,
+        })
+        self.assertRedirects(verify_response, '/parent/dashboard')
+        parent.refresh_from_db()
+        token.refresh_from_db()
+        self.assertTrue(parent.is_active)
+        self.assertIsNone(parent.deactivated_at)
+        self.assertEqual(parent.auth_version, 2)
+        self.assertTrue(token.is_used)
+        self.assertEqual(Parent.objects.filter(email=parent.email).count(), 1)
+
+        learner_login = Client().post('/login', {
+            'role': 'learner',
+            'email': child.username,
+            'password': 'LearnerPass123!',
+        })
+        self.assertRedirects(learner_login, f'/grade/{child.grade}')
+
+    @override_settings(EMAIL_BACKEND='django.core.mail.backends.locmem.EmailBackend')
+    def test_wrong_reactivation_code_is_limited_to_five_attempts(self):
+        parent, _ = self.create_parent_and_child()
+        parent.is_active = False
+        parent.save(update_fields=['is_active'])
+        self.client.post('/login', {
+            'role': 'parent',
+            'email': parent.email,
+            'password': 'StrongPass123!',
+        })
+        self.client.post('/account/reactivate', {'action': 'send'})
+
+        for _ in range(AccountActionOTP.MAX_ATTEMPTS):
+            self.client.post('/account/reactivate', {'action': 'verify', 'code': '000000'})
+
+        token = AccountActionOTP.objects.get(parent=parent)
+        parent.refresh_from_db()
+        self.assertEqual(token.attempts, AccountActionOTP.MAX_ATTEMPTS)
+        self.assertTrue(token.is_used)
+        self.assertFalse(parent.is_active)
+
+        resend_response = self.client.post('/account/reactivate', {'action': 'send'})
+        self.assertRedirects(resend_response, '/account/reactivate')
+        self.assertEqual(AccountActionOTP.objects.filter(parent=parent).count(), 1)
+        self.assertNotIn('reactivation_token_id', self.client.session)
+
+    @override_settings(EMAIL_BACKEND='django.core.mail.backends.locmem.EmailBackend')
+    def test_cancelled_plan_keeps_learners_paused_after_parent_reactivation(self):
+        parent, child = self.create_parent_and_child(subscription_status='cancelled')
+        parent.is_active = False
+        parent.save(update_fields=['is_active'])
+        self.client.post('/login', {
+            'role': 'parent',
+            'email': parent.email,
+            'password': 'StrongPass123!',
+        })
+        self.client.post('/account/reactivate', {'action': 'send'})
+        code = re.search(r'\b(\d{6})\b', mail.outbox[0].body).group(1)
+
+        response = self.client.post('/account/reactivate', {'action': 'verify', 'code': code})
+        self.assertRedirects(response, '/subscription')
+        parent.refresh_from_db()
+        self.assertTrue(parent.is_active)
+
+        learner_response = Client().post('/login', {
+            'role': 'learner',
+            'email': child.username,
+            'password': 'LearnerPass123!',
+        })
+        self.assertRedirects(learner_response, '/account-access?reason=subscription_inactive')
+
+    def test_deactivation_can_cancel_subscription_without_deleting_records(self):
+        parent, child = self.create_parent_and_child(subscription_status='active')
+        self.sign_in_parent(parent)
+        response = self.client.post('/parent/deactivate', {
+            'password': 'StrongPass123!',
+            'cancel_subscription': 'on',
+        })
+
+        self.assertRedirects(response, '/login?role=parent')
+        self.assertEqual(Subscription.objects.get(parent=parent).status, 'cancelled')
+        self.assertTrue(Child.objects.filter(pk=child.pk).exists())
+
+    def test_failed_reactivation_email_does_not_leave_a_usable_token(self):
+        parent, _ = self.create_parent_and_child()
+        parent.is_active = False
+        parent.save(update_fields=['is_active'])
+        self.client.post('/login', {
+            'role': 'parent',
+            'email': parent.email,
+            'password': 'StrongPass123!',
+        })
+
+        with patch('lessons.views.send_mail', side_effect=RuntimeError('smtp unavailable')):
+            response = self.client.post('/account/reactivate', {'action': 'send'})
+
+        self.assertRedirects(response, '/account/reactivate')
+        self.assertFalse(AccountActionOTP.objects.filter(parent=parent).exists())
+        parent.refresh_from_db()
+        self.assertFalse(parent.is_active)
 
 
 class CurriculumSeedTests(TestCase):
@@ -938,8 +1289,8 @@ class CurriculumSeedTests(TestCase):
 
         hot_day = Lesson.objects.get(title='A Very Hot Day')
         self.assertEqual(
-            list(hot_day.reading_activities.values_list('activity_type', flat=True)[:2]),
-            [ReadingActivity.CLOZE, ReadingActivity.MULTIPLE_CHOICE],
+            list(hot_day.reading_activities.values_list('activity_type', flat=True)[:3]),
+            [ReadingActivity.CLOZE] * 3,
         )
         running_story = Lesson.objects.get(title="Mandu's Running Shoes")
         self.assertEqual(running_story.reading_activities.count(), 13)
@@ -1026,13 +1377,227 @@ class CurriculumSeedTests(TestCase):
 
         for title in STORYBOARD_IMAGES:
             lesson = Lesson.objects.get(title=title)
-            self.assertIn('/static/img/storyboards/', lesson.thumbnail_image)
+            storyboard_path = f'/static/img/storyboards/{STORYBOARD_IMAGES[title][0]}'
+            if title in LESSON_COVERS:
+                self.assertEqual(lesson.thumbnail_image, LESSON_COVERS[title])
+            else:
+                self.assertEqual(lesson.thumbnail_image, storyboard_path)
             page_images = list(lesson.pages.values_list('image_url', flat=True))
             self.assertEqual(
                 [int(image_url.rsplit('#panel-', 1)[1]) for image_url in page_images],
                 STORYBOARD_PAGE_PANELS[title],
             )
             self.assertTrue(all(
-                image_url.split('#', 1)[0] == lesson.thumbnail_image
+                image_url.split('#', 1)[0] == storyboard_path
                 for image_url in page_images
             ))
+
+
+class GradeConfirmationTests(TestCase):
+    """Covers the yearly grade-confirmation feature: no auto-rollover, an
+    explicit human decision is required, and it's fully logged."""
+
+    def setUp(self):
+        self.client = Client()
+        self.parent = Parent.objects.create(
+            full_name='Test Parent', email='parent-gc@example.com',
+            password=make_password('password123'), accepted_popia=True,
+        )
+        self.teacher = Teacher.objects.create(
+            full_name='Test Teacher', email='teacher-gc@example.com',
+            password=make_password('password123'), school_name='Sgila Primary',
+            grades_taught='2,3', accepted_popia=True,
+        )
+        self.child = Child.objects.create(
+            name='Test Learner', username='testlearnergc', grade=2,
+            parent=self.parent, parent_email=self.parent.email,
+            school_name='Sgila Primary', teacher=self.teacher,
+            password=make_password('password123'),
+        )
+
+    def login_parent(self):
+        return self.client.post('/login', {'role': 'parent', 'email': self.parent.email, 'password': 'password123'})
+
+    def login_teacher(self):
+        return self.client.post('/login', {'role': 'teacher', 'email': self.teacher.email, 'password': 'password123'})
+
+    def test_registration_confirms_current_year_and_needs_no_prompt(self):
+        self.assertEqual(self.child.grade_confirmed_year, None)
+        # Simulate what register_learner/parent_add_child do on creation.
+        from lessons.views import mark_grade_confirmed_at_registration
+        mark_grade_confirmed_at_registration(self.child)
+        self.child.refresh_from_db()
+        self.assertEqual(self.child.grade_confirmed_year, current_school_year())
+        self.assertFalse(self.child.needs_grade_confirmation())
+        self.assertEqual(
+            GradeHistory.objects.get(child=self.child).confirmed_by,
+            GradeHistory.REGISTRATION,
+        )
+
+    def test_grade_never_changes_on_its_own(self):
+        """Simulates a new school year starting with nobody confirming anything:
+        the app must not touch `grade` by itself."""
+        self.child.grade_confirmed_year = current_school_year() - 1
+        self.child.save(update_fields=['grade_confirmed_year'])
+        self.assertTrue(self.child.needs_grade_confirmation())
+
+        self.login_parent()
+        response = self.client.get('/parent/dashboard')
+        self.assertContains(response, 'confirm')
+        self.assertContains(response, 'Test Learner')
+
+        self.child.refresh_from_db()
+        self.assertEqual(self.child.grade, 2)  # untouched
+
+    def test_parent_can_confirm_promotion(self):
+        self.child.grade_confirmed_year = current_school_year() - 1
+        self.child.save(update_fields=['grade_confirmed_year'])
+        self.login_parent()
+
+        response = self.client.post(f'/confirm-grade/{self.child.id}', {'grade': '3'}, follow=True)
+        self.assertEqual(response.status_code, 200)
+
+        self.child.refresh_from_db()
+        self.assertEqual(self.child.grade, 3)
+        self.assertEqual(self.child.grade_confirmed_year, current_school_year())
+        self.assertFalse(self.child.needs_grade_confirmation())
+
+        history = GradeHistory.objects.get(child=self.child, year=current_school_year())
+        self.assertEqual(history.grade, 3)
+        self.assertEqual(history.confirmed_by, GradeHistory.PARENT)
+        self.assertFalse(history.repeated)
+
+    def test_parent_can_confirm_a_repeated_grade(self):
+        self.child.grade_confirmed_year = current_school_year() - 1
+        self.child.save(update_fields=['grade_confirmed_year'])
+        self.login_parent()
+
+        self.client.post(f'/confirm-grade/{self.child.id}', {'grade': '2'})
+
+        self.child.refresh_from_db()
+        self.assertEqual(self.child.grade, 2)  # repeated, not bumped
+
+        history = GradeHistory.objects.get(child=self.child, year=current_school_year())
+        self.assertEqual(history.grade, 2)
+        # Registration already logged grade 2 for the child's first year, so a
+        # later parent confirmation of the same grade is correctly flagged as a repeat.
+        self.assertTrue(history.repeated)
+
+    def test_teacher_can_confirm_a_linked_learner(self):
+        self.child.grade_confirmed_year = current_school_year() - 1
+        self.child.save(update_fields=['grade_confirmed_year'])
+        self.login_teacher()
+
+        response = self.client.post(f'/confirm-grade/{self.child.id}', {'grade': '3'}, follow=True)
+        self.assertEqual(response.status_code, 200)
+
+        self.child.refresh_from_db()
+        self.assertEqual(self.child.grade, 3)
+        history = GradeHistory.objects.get(child=self.child, year=current_school_year())
+        self.assertEqual(history.confirmed_by, GradeHistory.TEACHER)
+
+    def test_parent_cannot_confirm_a_child_that_is_not_theirs(self):
+        other_parent = Parent.objects.create(
+            full_name='Other Parent', email='other-parent-gc@example.com',
+            password=make_password('password123'), accepted_popia=True,
+        )
+        self.client.post('/login', {'role': 'parent', 'email': other_parent.email, 'password': 'password123'})
+        self.child.grade_confirmed_year = current_school_year() - 1
+        self.child.save(update_fields=['grade_confirmed_year'])
+
+        self.client.post(f'/confirm-grade/{self.child.id}', {'grade': '4'})
+
+        self.child.refresh_from_db()
+        self.assertEqual(self.child.grade, 2)  # unchanged — access denied
+        self.assertFalse(GradeHistory.objects.filter(child=self.child, year=current_school_year()).exists())
+
+    def test_invalid_grade_is_rejected(self):
+        self.child.grade_confirmed_year = current_school_year() - 1
+        self.child.save(update_fields=['grade_confirmed_year'])
+        self.login_parent()
+
+        self.client.post(f'/confirm-grade/{self.child.id}', {'grade': '9'})
+
+        self.child.refresh_from_db()
+        self.assertEqual(self.child.grade, 2)
+        self.assertTrue(self.child.needs_grade_confirmation())
+
+
+class GradeReminderEmailTests(TestCase):
+    """Covers the send_grade_reminders management command: who gets emailed,
+    grouping multiple children per parent, and not spamming on re-runs."""
+
+    def setUp(self):
+        self.parent = Parent.objects.create(
+            full_name='Reminder Parent', email='reminder-parent@example.com',
+            password=make_password('password123'), accepted_popia=True,
+        )
+        self.child = Child.objects.create(
+            name='Reminder Kid', username='remindkid', grade=2,
+            parent=self.parent, parent_email=self.parent.email,
+            password=make_password('x'),
+        )
+
+    def backdate(self, child, years=1):
+        child.grade_confirmed_year = current_school_year() - years
+        child.save(update_fields=['grade_confirmed_year'])
+
+    def test_no_email_when_already_confirmed(self):
+        self.child.grade_confirmed_year = current_school_year()
+        self.child.save(update_fields=['grade_confirmed_year'])
+        call_command('send_grade_reminders')
+        self.assertEqual(len(mail.outbox), 0)
+
+    def test_emails_parent_when_confirmation_due(self):
+        self.backdate(self.child)
+        call_command('send_grade_reminders')
+        self.assertEqual(len(mail.outbox), 1)
+        sent = mail.outbox[0]
+        self.assertEqual(sent.to, [self.parent.email])
+        self.assertIn('Reminder Kid', sent.body)
+        self.assertIn('/login', sent.body)
+        # No one-click grade-change link — must not embed a confirm-grade URL.
+        self.assertNotIn('/confirm-grade/', sent.body)
+
+        self.child.refresh_from_db()
+        self.assertTrue(self.child.reminder_already_sent_this_year())
+
+    def test_does_not_resend_within_the_same_year(self):
+        self.backdate(self.child)
+        call_command('send_grade_reminders')
+        call_command('send_grade_reminders')
+        self.assertEqual(len(mail.outbox), 1)  # still just one email total
+
+    def test_dry_run_sends_nothing(self):
+        self.backdate(self.child)
+        call_command('send_grade_reminders', '--dry-run')
+        self.assertEqual(len(mail.outbox), 0)
+        self.child.refresh_from_db()
+        self.assertFalse(self.child.reminder_already_sent_this_year())
+
+    def test_multiple_children_same_parent_get_one_combined_email(self):
+        second_child = Child.objects.create(
+            name='Second Kid', username='secondkid', grade=1,
+            parent=self.parent, parent_email=self.parent.email,
+            password=make_password('x'),
+        )
+        self.backdate(self.child)
+        self.backdate(second_child)
+
+        call_command('send_grade_reminders')
+
+        self.assertEqual(len(mail.outbox), 1)
+        body = mail.outbox[0].body
+        self.assertIn('Reminder Kid', body)
+        self.assertIn('Second Kid', body)
+
+    def test_confirming_stops_further_reminders(self):
+        self.backdate(self.child)
+        call_command('send_grade_reminders')
+        self.assertEqual(len(mail.outbox), 1)
+
+        self.child.record_grade_confirmation(3, confirmed_by=GradeHistory.PARENT, confirmed_by_name='Reminder Parent')
+
+        # Confirmed for this year now — running the reminder job again must not re-email.
+        call_command('send_grade_reminders')
+        self.assertEqual(len(mail.outbox), 1)

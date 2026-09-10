@@ -65,6 +65,32 @@
     </div>
   {% endif %}
 
+  {% if grade_confirmation_rows %}
+    <section class="gc-banner" aria-label="Grade confirmation needed">
+      <div class="gc-banner-head">
+        <strong>New school year — please confirm each learner's grade</strong>
+        <p>SGILA never moves a learner up a grade by itself. Confirm what grade they're really in now — the same grade again is fine if they're repeating it.</p>
+      </div>
+      <div class="gc-banner-list">
+        {% for row in grade_confirmation_rows %}
+          <form action="/confirm-grade/{{ row.learner.id }}" method="post" class="gc-confirm-row">
+            {% csrf_token %}
+            <span class="gc-confirm-name">{{ row.learner.name }}</span>
+            <span class="gc-confirm-current">Was Grade {{ row.learner.grade }}</span>
+            <label class="gc-confirm-label" for="gc-grade-{{ row.learner.id }}">Now in</label>
+            <select id="gc-grade-{{ row.learner.id }}" name="grade" class="gc-confirm-select">
+              <option value="1" {% if row.suggested_grade == 1 %}selected{% endif %}>Grade 1</option>
+              <option value="2" {% if row.suggested_grade == 2 %}selected{% endif %}>Grade 2</option>
+              <option value="3" {% if row.suggested_grade == 3 %}selected{% endif %}>Grade 3</option>
+              <option value="4" {% if row.suggested_grade == 4 %}selected{% endif %}>Grade 4</option>
+            </select>
+            <button type="submit" class="lr-btn gc-confirm-btn">Confirm</button>
+          </form>
+        {% endfor %}
+      </div>
+    </section>
+  {% endif %}
+
   {% for section in grade_sections %}
     <section class="portal-section" id="grade-section-{{ section.grade }}">
       <div class="portal-section-header">
@@ -88,6 +114,9 @@
             <div class="portal-learner-copy">
               <h3>{{ row.learner.name }}</h3>
               <p>Grade {{ row.learner.grade }}{% if row.learner.school_name %} - {{ row.learner.school_name }}{% endif %}</p>
+              {% if not row.access_allowed %}
+                <span class="learner-access-badge">Learner access paused</span>
+              {% endif %}
               {% if row.latest %}
                 <small>Latest: {{ row.latest.lesson.title }} on {{ row.latest.completed_on|date:"d M Y" }}</small>
               {% else %}

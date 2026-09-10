@@ -22,6 +22,40 @@
     <article><span>Average</span><strong>{{ overall_average }}%</strong></article>
   </section>
 
+  {% if grade_confirmation_cards %}
+    <section class="gc-banner" aria-label="Grade confirmation needed">
+      <div class="gc-banner-head">
+        <strong>New school year — please confirm each child's grade</strong>
+        <p>SGILA never moves a learner up a grade by itself. Tell us what grade they're really in at school now — the same grade again is fine if they're repeating it.</p>
+      </div>
+      <div class="gc-banner-list">
+        {% for card in grade_confirmation_cards %}
+          <form action="/confirm-grade/{{ card.child.id }}" method="post" class="gc-confirm-row">
+            {% csrf_token %}
+            <span class="gc-confirm-name">{{ card.child.name }}</span>
+            <span class="gc-confirm-current">Was Grade {{ card.child.grade }}</span>
+            <label class="gc-confirm-label" for="gc-grade-{{ card.child.id }}">Now in</label>
+            <select id="gc-grade-{{ card.child.id }}" name="grade" class="gc-confirm-select">
+              <option value="1" {% if card.suggested_grade == 1 %}selected{% endif %}>Grade 1</option>
+              <option value="2" {% if card.suggested_grade == 2 %}selected{% endif %}>Grade 2</option>
+              <option value="3" {% if card.suggested_grade == 3 %}selected{% endif %}>Grade 3</option>
+              <option value="4" {% if card.suggested_grade == 4 %}selected{% endif %}>Grade 4</option>
+            </select>
+            <button type="submit" class="lr-btn gc-confirm-btn">Confirm</button>
+          </form>
+        {% endfor %}
+      </div>
+    </section>
+  {% endif %}
+
+  {% if not children_access_allowed %}
+    <section class="account-status-banner" role="status">
+      <strong>Learner access is paused</strong>
+      <span>Your account is active, but your plan is not. Update the plan to restore access for your children.</span>
+      <a href="/subscription">View plan</a>
+    </section>
+  {% endif %}
+
   {% if cards %}
     <div class="pd-section-hdr">Your children</div>
     <div class="lr-rows">
@@ -62,10 +96,6 @@
 
           <div class="lr-actions">
             <a href="/dashboard/{{ card.child.id }}" class="lr-btn">Report</a>
-            <form action="/parent/delete-child/{{ card.child.id }}" method="post" class="lr-delete-form" onsubmit="return confirm('Delete this learner profile permanently? This cannot be undone.');">
-              {% csrf_token %}
-              <button type="submit" class="lr-btn lr-btn-danger">Delete</button>
-            </form>
           </div>
         </article>
       {% endfor %}
@@ -76,5 +106,57 @@
       <p>Add your first child to begin tracking learning progress.</p>
     </section>
   {% endif %}
+
+  <section class="account-danger-zone" aria-labelledby="deactivate-account-heading">
+    <div>
+      <p class="eyebrow">Account settings</p>
+      <h2 id="deactivate-account-heading">Deactivate account</h2>
+      <p>Pause your parent account and every learner profile linked to it.</p>
+    </div>
+    <button type="button" class="btn account-deactivate-trigger" id="open-deactivate-dialog">Deactivate account</button>
+  </section>
+
+  <dialog class="account-dialog" id="deactivate-dialog" aria-labelledby="deactivate-dialog-title">
+    <form method="post" action="/parent/deactivate" class="account-dialog-form">
+      {% csrf_token %}
+      <div class="account-dialog-heading">
+        <span class="account-dialog-icon" aria-hidden="true">!</span>
+        <div>
+          <p class="eyebrow">Please confirm</p>
+          <h2 id="deactivate-dialog-title">Pause this SGILA account?</h2>
+        </div>
+      </div>
+      <p>All linked learners will be signed out and unable to use lessons until this account is reactivated.</p>
+      <p>Your parent profile, learner records, progress and messages will remain stored for reactivation and legitimate retention purposes. You may contact SGILA to request deletion where applicable.</p>
+      <label class="account-password-field">
+        Confirm your password
+        <input type="password" name="password" autocomplete="current-password" required>
+      </label>
+      <label class="account-checkbox">
+        <input type="checkbox" name="cancel_subscription">
+        <span>Also cancel my current SGILA subscription. Leaving this unchecked will not change billing or the plan status.</span>
+      </label>
+      <div class="account-dialog-actions">
+        <button type="button" class="btn btn-light" id="close-deactivate-dialog">Keep account active</button>
+        <button type="submit" class="btn account-danger-button">Deactivate account</button>
+      </div>
+    </form>
+  </dialog>
 </section>
+<script>
+(function () {
+  const dialog = document.getElementById('deactivate-dialog');
+  const openButton = document.getElementById('open-deactivate-dialog');
+  const closeButton = document.getElementById('close-deactivate-dialog');
+  if (!dialog || !openButton || !closeButton) return;
+  openButton.addEventListener('click', function () {
+    if (typeof dialog.showModal === 'function') dialog.showModal();
+    else dialog.setAttribute('open', '');
+  });
+  closeButton.addEventListener('click', function () {
+    if (typeof dialog.close === 'function') dialog.close();
+    else dialog.removeAttribute('open');
+  });
+})();
+</script>
 {% endblock %}

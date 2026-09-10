@@ -47,7 +47,9 @@
     <button id="next-btn" class="btn btn-primary {% if not pages %}hidden{% endif %}">Next</button>
   </div>
   <div id="story-done" class="center {% if pages %}hidden{% endif %}">
-    <a href="/lessons/{{ lesson.id }}/questions" class="btn btn-primary btn-large">Answer questions</a>
+    <a href="/lessons/{{ lesson.id }}/questions" class="btn btn-primary btn-large">
+      {% if lesson.grade == 1 %}Start 3 activities{% else %}Answer questions{% endif %}
+    </a>
   </div>
 </section>
 <script>

@@ -5,7 +5,17 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>{% block title %}SGILA{% endblock %}</title>
   {% load static %}
-  <link rel="stylesheet" href="{% static 'css/sgila_web.css' %}?v=parent-dashboard-app-background-20260909-1">
+  <link rel="stylesheet" href="{% static 'css/sgila_app.css' %}?v=clean-styles-20260909-2">
+  <script>
+    // Applied before paint so the page never flashes the wrong theme on load.
+    (function () {
+      var saved = localStorage.getItem('sgila-theme');
+      var theme = saved || (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+      if (theme === 'dark') {
+        document.documentElement.setAttribute('data-theme', 'dark');
+      }
+    })();
+  </script>
 </head>
 <body class="{% block body_class %}{% endblock %}">
   <nav class="navbar app-navbar">
@@ -13,7 +23,18 @@
       <span class="brand-mark"><img src="{% static 'img/koaly_cutout.png' %}" alt="Koaly logo"></span>
       <span>SGILA</span>
     </a>
+    {% if request.path == '/' and not request.session.account_role %}
+    <div class="home-nav-links" aria-label="Homepage sections">
+      <a href="#stories">Stories</a>
+      <a href="#family-entry">For families</a>
+      <a href="#school-entry">For schools</a>
+    </div>
+    {% endif %}
     <div class="nav-links">
+      <button type="button" id="theme-toggle" class="theme-toggle" aria-label="Toggle dark mode" aria-pressed="false">
+        <span class="theme-toggle-icon" aria-hidden="true"></span>
+        <span class="theme-toggle-label">Dark mode</span>
+      </button>
       {% if request.session.account_role == 'learner' %}
         <span>{{ request.session.child_name }}</span>
         <a href="/grade/{{ request.session.child_grade }}">Lessons</a>
@@ -74,112 +95,34 @@
   })();
   </script>
   {% endif %}
-  {% if request.session.account_role == 'learner' %}
-  <div class="learner-modal hidden" id="activity-pause-modal" role="dialog" aria-modal="true" aria-labelledby="activity-pause-title">
-    <div class="learner-modal-card">
-      <button type="button" class="learner-modal-close" aria-label="Close pause menu" data-close-modal>&times;</button>
-      <span class="learner-modal-banner">Pause</span>
-      <h2 id="activity-pause-title">Would you like to continue?</h2>
-      <p id="activity-pause-score">Your score so far: loading…</p>
-      <p>You can keep going now, or take a break and return to this activity later.</p>
-      <div class="learner-modal-options">
-        <button type="button" class="btn btn-primary" id="activity-continue">Keep learning</button>
-        <button type="button" class="btn btn-light" id="activity-pause">Pause for later</button>
-      </div>
-    </div>
-  </div>
   <script>
   (function () {
-    const modal = document.getElementById('activity-pause-modal');
-    if (!modal) return;
-    let nextUrl = '';
-    let resumeUrl = '';
-    const score = document.getElementById('activity-pause-score');
-    const csrfToken = (document.cookie.match(/(?:^|; )csrftoken=([^;]*)/) || [])[1] || '';
-    const activityPath = /^\/lessons\/(\d+)\/(questions|visual-activity|pronunciation|spelling|vocabulary|sequencing|inference|prediction|feelings|cause-effect|theme|written-response)$/;
+    var toggle = document.getElementById('theme-toggle');
+    if (!toggle) return;
+    var root = document.documentElement;
 
-    async function showPause(options = {}) {
-      const current = location.pathname.match(activityPath);
-      if (!current) return;
-      nextUrl = options.nextUrl || '';
-      resumeUrl = options.resumeUrl || location.pathname;
-      if (!options.resumeUrl && current[2] === 'questions' && typeof window.SgilaCurrentActivityIndex === 'function') {
-        resumeUrl += `?activity_index=${window.SgilaCurrentActivityIndex()}`;
-      }
-      document.getElementById('activity-pause-title').textContent = options.completed
-        ? 'Great work! Would you like to continue?'
-        : 'Would you like to take a break?';
-      document.getElementById('activity-continue').textContent = nextUrl ? 'Continue' : 'Keep learning';
-      score.textContent = 'Your score so far: loading…';
-      modal.classList.remove('hidden');
-      modal.style.display = 'grid';
-      try {
-        const response = await fetch(`/lessons/${current[1]}/activity-pause`);
-        const data = await response.json();
-        score.textContent = `Your score so far: ${data.score} out of ${data.total}`;
-      } catch (_) { score.textContent = 'Your score so far is safely saved.'; }
+    function isDark() {
+      return root.getAttribute('data-theme') === 'dark';
     }
 
-    window.SgilaActivityPause = { show: showPause };
-
-    const top = document.querySelector('.activity-top');
-    if (top && activityPath.test(location.pathname)) {
-      const breakButton = document.createElement('button');
-      breakButton.type = 'button';
-      breakButton.className = 'btn btn-light activity-pause-button';
-      breakButton.textContent = 'Take a break';
-      breakButton.addEventListener('click', () => showPause());
-      top.appendChild(breakButton);
+    function reflect() {
+      toggle.setAttribute('aria-pressed', isDark() ? 'true' : 'false');
+      toggle.querySelector('.theme-toggle-label').textContent = isDark() ? 'Light mode' : 'Dark mode';
     }
 
-    const originalFetch = window.fetch.bind(window);
-
-    document.addEventListener('click', async (event) => {
-      const link = event.target.closest('a.btn');
-      if (!link || !/\/lessons\/\d+\/(questions|visual-activity|pronunciation|spelling|sequencing|inference|prediction|feelings|cause-effect|theme|written-response)$/.test(link.pathname)) return;
-      const current = location.pathname.match(activityPath);
-      if (!current || link.pathname === location.pathname) return;
-      event.preventDefault();
-      showPause({nextUrl: link.pathname, resumeUrl: link.pathname, completed: true});
-    });
-    document.getElementById('activity-continue').addEventListener('click', () => {
-      if (nextUrl) location.href = nextUrl;
-      else {
-        modal.classList.add('hidden');
-        modal.style.display = 'none';
+    toggle.addEventListener('click', function () {
+      if (isDark()) {
+        root.removeAttribute('data-theme');
+        localStorage.setItem('sgila-theme', 'light');
+      } else {
+        root.setAttribute('data-theme', 'dark');
+        localStorage.setItem('sgila-theme', 'dark');
       }
-    });
-    document.getElementById('activity-pause').addEventListener('click', async () => {
-      const current = location.pathname.match(/^\/lessons\/(\d+)\//);
-      if (!current) return;
-      try {
-        await originalFetch(`/lessons/${current[1]}/activity-pause`, {method: 'POST', headers: {'Content-Type': 'application/json', 'X-CSRFToken': decodeURIComponent(csrfToken)}, body: JSON.stringify({resume_url: resumeUrl})});
-      } finally { location.href = `/grade/{{ request.session.child_grade }}`; }
-    });
-    modal.querySelector('[data-close-modal]').addEventListener('click', () => {
-      modal.classList.add('hidden');
-      modal.style.display = 'none';
+      reflect();
     });
 
-    // The static link is a safe fallback, but browser history lets a learner go
-    // back to the activity they actually came from after choosing their own path.
-    document.querySelectorAll('.activity-top .back-link').forEach((backLink) => {
-      backLink.addEventListener('click', (event) => {
-        const activityMenu = new URLSearchParams(location.search).get('activity_menu');
-        if (activityMenu && /^\d+$/.test(activityMenu)) {
-          event.preventDefault();
-          location.href = `/grade/{{ request.session.child_grade }}?activity_menu=${activityMenu}`;
-          return;
-        }
-        const previousPage = document.referrer ? new URL(document.referrer) : null;
-        if (previousPage && previousPage.origin === location.origin && previousPage.pathname !== location.pathname) {
-          event.preventDefault();
-          window.history.back();
-        }
-      });
-    });
+    reflect();
   })();
   </script>
-  {% endif %}
 </body>
 </html>

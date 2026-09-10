@@ -2,6 +2,12 @@
 
 import json
 
+from api.grade1_activity_blueprints import (
+    BEN_GOES_TO_SCHOOL_ACTIVITIES,
+    BONGI_WAITS_ACTIVITIES,
+    OLWETHUS_FIRST_DAY_ACTIVITIES,
+)
+
 
 STORYBOARD_IMAGES = {
     'A Very Hot Day': ('g1_hot_storyboard.png', 3),
@@ -353,32 +359,7 @@ EXPANDED_STORIES = [
                 'played,friends,good',
             ),
         ],
-        'activities': [
-            _choice(
-                'literal_comprehension',
-                'Who followed Jabu?',
-                ['Ben', 'Mrs Moleleki', 'His friend'],
-                'Ben',
-            ),
-            _oral(
-                'literal_comprehension',
-                'When did Jabu see Ben?',
-                'Jabu saw Ben at break.',
-            ),
-            _sequence(
-                'Put these events in order.',
-                [
-                    'Jabu walks to school.',
-                    'The class sings a song.',
-                    'Ben runs onto the field.',
-                ],
-            ),
-            _true_false(
-                'literal_comprehension',
-                'Jabu was happy to play with Ben.',
-                'True',
-            ),
-        ],
+        'activities': BEN_GOES_TO_SCHOOL_ACTIVITIES,
     },
     {
         'title': "Olwethu's First Day",
@@ -418,32 +399,7 @@ EXPANDED_STORIES = [
                 'leave,fun,friend',
             ),
         ],
-        'activities': [
-            _choice(
-                'literal_comprehension',
-                'Why was Olwethu scared?',
-                ['It was her first day.', 'She lost her shoes.', 'It was raining.'],
-                'It was her first day.',
-            ),
-            _oral(
-                'literal_comprehension',
-                'Who helped Olwethu?',
-                'Gogo, Mother and Zinzi helped Olwethu.',
-            ),
-            _sequence(
-                'Put the day in order.',
-                [
-                    'Olwethu gets ready.',
-                    'Olwethu goes to class.',
-                    'Olwethu makes a friend.',
-                ],
-            ),
-            _true_false(
-                'literal_comprehension',
-                'Olwethu liked school at the end.',
-                'True',
-            ),
-        ],
+        'activities': OLWETHUS_FIRST_DAY_ACTIVITIES,
     },
     {
         'title': 'Bongi Waits',
@@ -482,32 +438,7 @@ EXPANDED_STORIES = [
                 'called,ran,hugged,braai',
             ),
         ],
-        'activities': [
-            _choice(
-                'literal_comprehension',
-                'Who was Bongi waiting for?',
-                ['Granny and Grandpa', 'Her teacher', 'The doctor'],
-                'Granny and Grandpa',
-            ),
-            _sequence(
-                'Put these events in order.',
-                [
-                    'Bongi helps Dad.',
-                    'Bongi reads a picture book to her baby brother, Siya.',
-                    'Bongi hugs her grandparents.',
-                ],
-            ),
-            _oral(
-                'literal_comprehension',
-                'What did Bongi do while she waited?',
-                'She helped Dad, played with her friends and read to her baby brother, Siya.',
-            ),
-            _true_false(
-                'literal_comprehension',
-                'Bongi was excited to see her grandparents.',
-                'True',
-            ),
-        ],
+        'activities': BONGI_WAITS_ACTIVITIES,
     },
     {
         'title': 'The School Shed Is on Fire',
@@ -1463,7 +1394,7 @@ EXPANDED_STORIES = [
             _reasoning(
                 'inference',
                 'Why were the first-aid kits important?',
-                'The kits contained gloves, a clean dressing and a bandage that the girls used safely.',
+                'because it was used to help the dog get better',
             ),
             _choice(
                 'fact_vs_opinion',

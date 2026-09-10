@@ -1,0 +1,36 @@
+{% extends 'base.html' %}
+{% block title %}Reactivate account - SGILA{% endblock %}
+{% block content %}
+<section class="account-state-page">
+  <article class="account-state-card">
+    <span class="account-state-mark" aria-hidden="true">R</span>
+    <p class="eyebrow">Parent account</p>
+    <h1>Reactivate your SGILA account</h1>
+    {% if otp_sent %}
+      <p>Enter the 6-digit code sent to <strong>{{ masked_email }}</strong>. It expires after 10 minutes.</p>
+      <form method="post" action="/account/reactivate" class="reactivation-form">
+        {% csrf_token %}
+        <input type="hidden" name="action" value="verify">
+        <label>
+          Reactivation code
+          <input type="text" name="code" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{6}" maxlength="6" required autofocus>
+        </label>
+        <button type="submit" class="btn btn-primary btn-full">Verify and reactivate</button>
+      </form>
+      <form method="post" action="/account/reactivate" class="reactivation-resend-form">
+        {% csrf_token %}
+        <input type="hidden" name="action" value="resend">
+        <button type="submit" class="account-text-button">Send a new code</button>
+      </form>
+    {% else %}
+      <p>Your password was correct, but this account is deactivated. We will email a one-time code to <strong>{{ masked_email }}</strong> before restoring access.</p>
+      <form method="post" action="/account/reactivate" class="reactivation-form">
+        {% csrf_token %}
+        <input type="hidden" name="action" value="send">
+        <button type="submit" class="btn btn-primary btn-full">Yes, send reactivation code</button>
+      </form>
+    {% endif %}
+    <a class="account-start-over" href="/login?role=parent">Use a different account</a>
+  </article>
+</section>
+{% endblock %}

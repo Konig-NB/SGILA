@@ -26,6 +26,15 @@ STORYBOARD_PAGE_PANELS = {
 }
 
 
+LESSON_COVERS = {
+    "Lerato's Fruit Basket": '/static/img/covers/g1_lerato_fruit_basket.webp',
+    'A Very Hot Day': '/static/img/covers/g1_very_hot_day.webp',
+    'Ben Goes to School': '/static/img/covers/g1_ben_goes_to_school.webp',
+    "Olwethu's First Day": '/static/img/covers/g1_olwethu_first_day.webp',
+    'Bongi Waits': '/static/img/covers/g1_bongi_waits.webp',
+}
+
+
 VISUAL_VOCAB_SHEETS = {
     'A Very Hot Day': 'g1_hot_vocab.png',
     'Ben Goes to School': 'g1_ben_vocab.png',
