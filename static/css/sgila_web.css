@@ -9879,7 +9879,11 @@ body:not(.diagram-body) #check-answers {
 .text-option + .text-option { margin-top: 10px; }
 .text-option.is-correct { border-color: var(--success); background: var(--mint-soft); }
 .text-option.is-wrong { border-color: var(--danger); background: #fff0f0; }
-.text-option.selected { border-color: var(--ink); box-shadow: 0 0 0 4px rgba(248, 200, 75, .55); transform: translateY(-1px); }
+.text-option.selected { 
+    border-color: #4a90e2; 
+    box-shadow: 0 0 0 4px rgba(74, 144, 226, 0.35); 
+    transform: translateY(-1px); 
+}
 .picture-option img, .sequence-card img, .truth-card > img, .detective-sentence + img { display: block; width: 150px; height: 100px; object-fit: cover; border-radius: 8px; }
 .picture-option.is-correct, .sequence-card.is-correct { border-color: var(--success); }
 .picture-option.is-wrong { border-color: var(--danger); }
@@ -9907,7 +9911,11 @@ body:not(.diagram-body) #check-answers {
 .truth-card > img { width: 100%; height: 180px; object-fit: cover; margin-bottom: 14px; }
 .true-button { background: var(--mint); }
 .false-button { background: #ffdede; }
-.true-button.selected, .false-button.selected { border: 3px solid var(--ink); box-shadow: 0 0 0 4px rgba(248, 200, 75, .55); transform: translateY(-1px); }
+.true-button.selected, .false-button.selected { 
+    border: 3px solid #4a90e2; 
+    box-shadow: 0 0 0 4px rgba(74, 144, 226, 0.35); 
+    transform: translateY(-1px); 
+}
 .truth-choices .is-correct { outline: 3px solid var(--success); }
 .truth-choices .is-wrong { outline: 3px solid var(--danger); }
 .detective-sentence { font-size: 1.35rem; line-height: 2.5; }
@@ -9935,4 +9943,12 @@ body:not(.diagram-body) #check-answers {
   .listen-spell-row { grid-template-columns: 42px 1fr 34px; }
   .listen-spell-row .audio-assist, .listen-spell-row .spelling-input { grid-column: 2; }
   .listen-spell-row .spelling-result { grid-column: 3; grid-row: 1 / span 2; }
+}
+/* Hide the top activity picker row */
+body:not(.diagram-body) #activity-picker {
+    display: none !important;
+}
+/* Hide the bottom "Story activities" section on stories */
+body:not(.diagram-body) .story-activity-choices {
+    display: none !important;
 }
