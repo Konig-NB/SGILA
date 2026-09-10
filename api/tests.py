@@ -512,6 +512,64 @@ class SgilaFlowTests(TestCase):
             {'score': 1, 'total': 2},
         )
 
+    def test_matching_list_answers_are_accepted_for_single_choice_questions(self):
+        child = Child.objects.create(
+            name='Mandu',
+            age=10,
+            grade=4,
+            parent_email='grade4-matching-list@example.com',
+            password='hash',
+        )
+        lesson = Lesson.objects.create(title='Grade 4 Matching Fix', grade=4)
+        activity = ReadingActivity.objects.create(
+            lesson=lesson,
+            order=1,
+            group_number=1,
+            group_title='Story Words',
+            activity_type=ReadingActivity.MATCHING,
+            skill='vocabulary_in_context',
+            question='What does unconscious mean in this report?',
+            options=[
+                'Not awake or responding',
+                'Unable to hear a whisper',
+                'Angry about an accident',
+                'Ready to climb again',
+            ],
+            correct_answer='Not awake or responding',
+        )
+        self.sign_in_child(child)
+
+        response = self.client.post('/api/check-reading-activity', json.dumps({
+            'child_id': child.id,
+            'lesson_id': lesson.id,
+            'activity_id': activity.id,
+            'child_answer': 'Not awake or responding',
+        }), content_type='application/json')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.json()['correct'])
+        self.assertEqual(response.json()['correct_answer'], 'Not awake or responding')
+
+    def test_oral_activity_uses_dictation_textbox_for_activity_7(self):
+        project_root = Path(__file__).resolve().parent.parent
+        template = project_root / 'templates' / 'questions.html'
+        source = template.read_text(encoding='utf-8')
+
+        self.assertIn('function renderOral(activity)', source)
+        self.assertIn("answer.id = 'oral-response'", source)
+        self.assertIn('attachDictationToTextarea(answer)', source)
+        self.assertIn('SpeechRecognition', source)
+
+    def test_sequence_activity_supports_drag_and_drop_reordering(self):
+        project_root = Path(__file__).resolve().parent.parent
+        template = project_root / 'templates' / 'questions.html'
+        source = template.read_text(encoding='utf-8')
+
+        self.assertIn("row.draggable = true", source)
+        self.assertIn("row.addEventListener('dragover'", source)
+        self.assertIn("row.addEventListener('drop'", source)
+        self.assertIn('sequence-draggable', source)
+
     def test_grade_four_matching_returns_row_level_correct_answers(self):
         child = Child.objects.create(
             name='Mandu',
@@ -596,6 +654,84 @@ class SgilaFlowTests(TestCase):
         stylesheet = Path(__file__).resolve().parent.parent / 'static' / 'css' / 'sgila_app.css'
         self.assertIn('.scramble-row.scramble-correct', stylesheet.read_text(encoding='utf-8'))
         self.assertIn('.scramble-row.scramble-wrong', stylesheet.read_text(encoding='utf-8'))
+
+    def test_reasoning_requires_readable_english_and_matches_example_sentence(self):
+        child = Child.objects.create(
+            name='Mandu',
+            age=10,
+            grade=4,
+            parent_email='reasoning@example.com',
+            password='hash',
+        )
+        lesson = Lesson.objects.create(title='Reasoning Check', grade=4)
+        activity = ReadingActivity.objects.create(
+            lesson=lesson,
+            order=1,
+            group_number=1,
+            group_title='Story thinking',
+            activity_type=ReadingActivity.REASONING,
+            skill='inference',
+            question='Why were the first-aid kits important?',
+            correct_answer='because it was used to help the dog get better',
+        )
+        self.sign_in_child(child)
+
+        bad_response = self.client.post('/api/check-reading-activity', json.dumps({
+            'child_id': child.id,
+            'lesson_id': lesson.id,
+            'activity_id': activity.id,
+            'child_answer': "rsfkhdfjlgb'oil",
+        }), content_type='application/json')
+        self.assertEqual(bad_response.status_code, 400)
+        self.assertIn('readable English', bad_response.json()['error'])
+
+        good_response = self.client.post('/api/check-reading-activity', json.dumps({
+            'child_id': child.id,
+            'lesson_id': lesson.id,
+            'activity_id': activity.id,
+            'child_answer': 'because it was used to help the dog get better',
+        }), content_type='application/json')
+        self.assertEqual(good_response.status_code, 200)
+        self.assertTrue(good_response.json()['review_required'])
+        self.assertEqual(good_response.json()['model_answer'], 'because it was used to help the dog get better')
+
+    def test_open_ended_response_requires_two_punctuated_sentences(self):
+        child = Child.objects.create(
+            name='Twins learner',
+            age=10,
+            grade=4,
+            parent_email='two-sentences@example.com',
+            password='hash',
+        )
+        lesson = Lesson.objects.create(title='Two Sentence Check', grade=4)
+        activity = ReadingActivity.objects.create(
+            lesson=lesson,
+            order=1,
+            group_number=1,
+            group_title='Retell',
+            activity_type=ReadingActivity.OPEN_ENDED,
+            skill='summarising',
+            question='Retell the mistake and resolution in two or three sentences.',
+            correct_answer='Todd and Ted dressed for Comic Day on the wrong date. They felt embarrassed at school but then laughed at the harmless mistake.',
+        )
+        self.sign_in_child(child)
+
+        short_response = self.client.post('/api/check-reading-activity', json.dumps({
+            'child_id': child.id,
+            'lesson_id': lesson.id,
+            'activity_id': activity.id,
+            'child_answer': 'The twins made a mistake',
+        }), content_type='application/json')
+        self.assertEqual(short_response.status_code, 400)
+        self.assertIn('two or more sentences', short_response.json()['error'])
+
+        complete_response = self.client.post('/api/check-reading-activity', json.dumps({
+            'child_id': child.id,
+            'lesson_id': lesson.id,
+            'activity_id': activity.id,
+            'child_answer': 'The twins made a mistake. They laughed about it later.',
+        }), content_type='application/json')
+        self.assertEqual(complete_response.status_code, 200)
 
     def test_guided_diary_is_saved_to_the_child_story_profile(self):
         child = Child.objects.create(

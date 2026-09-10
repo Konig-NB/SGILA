@@ -13,6 +13,7 @@ from .validators import password_strength_errors
 from django.contrib.auth.hashers import check_password, make_password
 import json
 import hashlib
+import re
 
 import random
 from django.core.mail import send_mail
@@ -181,6 +182,31 @@ def spelling_answer_is_correct(activity, raw_answer):
     return normalise_spelling_answer(raw_answer) == normalise_spelling_answer(activity.answer)
 
 
+def looks_like_readable_english_text(value):
+    """Reject gibberish and keep review answers readable for a young learner."""
+    text = str(value or '').strip()
+    if not text:
+        return False
+    if len(text) < 8:
+        return False
+    text = text.replace('’', "'")
+    if re.search(r'[^A-Za-z\s\'\-.,!?;:]', text):
+        return False
+    words = re.findall(r"[A-Za-z']+", text)
+    if len(words) < 2:
+        return False
+    if any(len(word) < 2 and word.lower() not in {'a', 'i'} for word in words):
+        return False
+    vowels = sum(1 for word in words for ch in word.lower() if ch in 'aeiou')
+    return vowels >= max(2, len(words) // 2)
+
+
+def has_two_punctuated_sentences(value):
+    """Require at least two sentences that end with punctuation."""
+    text = str(value or '').strip()
+    return len(re.findall(r'[.!?](?=\s|$)', text)) >= 2
+
+
 def normalise_reading_answer(value):
     """Compare short learner answers without case or punctuation noise."""
     value = str(value or '').strip().lower()
@@ -204,7 +230,6 @@ def reading_answer_score(activity, child_answer):
 
     if activity.activity_type in {
         ReadingActivity.CROSSWORD,
-        ReadingActivity.MATCHING,
         ReadingActivity.WORD_SCRAMBLE,
     }:
         expected = structured_reading_answer(activity)
@@ -212,12 +237,23 @@ def reading_answer_score(activity, child_answer):
         score = 0
         for key, answer in expected.items():
             child_value = submitted.get(str(key), submitted.get(key, ''))
-            if activity.activity_type == ReadingActivity.MATCHING:
-                correct = str(child_value) == str(answer)
-            else:
-                correct = normalise_reading_answer(child_value) == normalise_reading_answer(answer)
+            correct = normalise_reading_answer(child_value) == normalise_reading_answer(answer)
             score += int(correct)
         return score, len(expected)
+
+    if activity.activity_type == ReadingActivity.MATCHING:
+        if isinstance(activity.options, dict):
+            expected = structured_reading_answer(activity)
+            submitted = child_answer if isinstance(child_answer, dict) else {}
+            score = 0
+            for key, answer in expected.items():
+                child_value = submitted.get(str(key), submitted.get(key, ''))
+                correct = str(child_value) == str(answer)
+                score += int(correct)
+            return score, len(expected)
+
+        correct = normalise_reading_answer(child_answer) == normalise_reading_answer(activity.correct_answer)
+        return (1 if correct else 0), 1
 
     correct = normalise_reading_answer(child_answer) == normalise_reading_answer(activity.correct_answer)
     return (1 if correct else 0), 1
@@ -237,6 +273,8 @@ def reading_model_answer(activity):
     }:
         return '; '.join(structured_reading_answer(activity).values())
     if activity.activity_type == ReadingActivity.MATCHING:
+        if not isinstance(activity.options, dict):
+            return str(activity.correct_answer or '')
         config = activity.options if isinstance(activity.options, dict) else {}
         prompts = {str(item.get('key')): item.get('text', '') for item in config.get('prompts', [])}
         choices = {str(item.get('key')): item.get('text', '') for item in config.get('choices', [])}
@@ -245,7 +283,6 @@ def reading_model_answer(activity):
             for prompt_key, choice_key in structured_reading_answer(activity).items()
         )
     return activity.correct_answer
-
 
 # ─────────────────────────────────────────────────────────────
 # OTP HELPERS
@@ -818,10 +855,15 @@ def check_reading_activity(request):
         has_answer = isinstance(child_answer, list) and bool(child_answer)
     elif activity.activity_type in {
         ReadingActivity.CROSSWORD,
-        ReadingActivity.MATCHING,
         ReadingActivity.WORD_SCRAMBLE,
     }:
         has_answer = isinstance(child_answer, dict) and bool(child_answer)
+    elif activity.activity_type == ReadingActivity.MATCHING:
+        has_answer = (
+            (isinstance(child_answer, dict) and bool(child_answer))
+            or (isinstance(child_answer, str) and bool(str(child_answer).strip()))
+            or (isinstance(child_answer, list) and bool(child_answer))
+        )
     else:
         has_answer = bool(str(child_answer or '').strip())
     if not has_answer:
@@ -841,6 +883,12 @@ def check_reading_activity(request):
                 'response': child_answer,
             },
         )
+
+    if activity.requires_review and isinstance(child_answer, str):
+        if activity.activity_type == ReadingActivity.OPEN_ENDED and not has_two_punctuated_sentences(child_answer):
+            return JsonResponse({'error': 'Please write two or more sentences and use your punctuation.'}, status=400)
+        if not looks_like_readable_english_text(child_answer):
+            return JsonResponse({'error': 'Please write your answer in readable English words.'}, status=400)
 
     review_required = activity.requires_review
     awarded, possible = reading_answer_score(activity, child_answer)
@@ -892,11 +940,12 @@ def check_reading_activity(request):
         message = 'Not quite. Read the story clue and compare it with the answer.'
 
     model_answer = reading_model_answer(activity)
-    correct_answer = structured_reading_answer(activity) if activity.activity_type in {
-        ReadingActivity.CROSSWORD,
-        ReadingActivity.MATCHING,
-        ReadingActivity.WORD_SCRAMBLE,
-    } else activity.correct_answer
+    if activity.activity_type in {ReadingActivity.CROSSWORD, ReadingActivity.WORD_SCRAMBLE}:
+        correct_answer = structured_reading_answer(activity)
+    elif activity.activity_type == ReadingActivity.MATCHING and isinstance(activity.options, dict):
+        correct_answer = structured_reading_answer(activity)
+    else:
+        correct_answer = activity.correct_answer
 
     return JsonResponse({
         'correct': is_correct,
