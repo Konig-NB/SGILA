@@ -95,6 +95,79 @@
   })();
   </script>
   {% endif %}
+  {% if request.session.account_role == 'learner' %}
+  <div class="learner-modal hidden" id="activity-pause-modal" role="dialog" aria-modal="true" aria-labelledby="activity-pause-title">
+    <div class="learner-modal-card">
+      <button type="button" class="learner-modal-close" aria-label="Close pause menu" data-close-modal>&times;</button>
+      <span class="learner-modal-banner">Pause activity</span>
+      <h2 id="activity-pause-title">Would you like to take a break?</h2>
+      <p>Your place will be saved so you can continue this activity later.</p>
+      <div class="learner-modal-options">
+        <button type="button" class="btn btn-primary" id="activity-pause">Take a break</button>
+        <button type="button" class="btn btn-light" id="activity-continue">Continue learning</button>
+      </div>
+    </div>
+  </div>
+  <script>
+  (function () {
+    var activityPath = /^\/lessons\/(\d+)\/(questions|visual-activity|pronunciation|spelling|vocabulary|sequencing|inference|prediction|feelings|cause-effect|theme|written-response)$/;
+    var current = window.location.pathname.match(activityPath);
+    if (!current) return;
+
+    var modal = document.getElementById('activity-pause-modal');
+    var pauseButton = document.getElementById('activity-pause');
+    var continueButton = document.getElementById('activity-continue');
+    var closeButton = modal.querySelector('[data-close-modal]');
+    var csrfToken = (document.cookie.match(/(?:^|; )csrftoken=([^;]*)/) || [])[1] || '';
+    var pauseTrigger = document.createElement('button');
+    pauseTrigger.type = 'button';
+    pauseTrigger.className = 'btn btn-light activity-pause-button';
+    pauseTrigger.textContent = 'Take a break';
+    document.querySelector('.activity-top').appendChild(pauseTrigger);
+
+    function closeModal() {
+      modal.classList.add('hidden');
+      modal.style.display = 'none';
+    }
+
+    function openModal() {
+      modal.classList.remove('hidden');
+      modal.style.display = 'grid';
+      continueButton.focus();
+    }
+
+    pauseTrigger.addEventListener('click', openModal);
+    continueButton.addEventListener('click', closeModal);
+    closeButton.addEventListener('click', closeModal);
+
+    pauseButton.addEventListener('click', async function () {
+      pauseButton.disabled = true;
+      pauseButton.textContent = 'Saving...';
+      var resumeUrl = window.location.pathname;
+      if (current[2] === 'questions' && typeof window.SgilaCurrentActivityIndex === 'function') {
+        resumeUrl += '?activity_index=' + window.SgilaCurrentActivityIndex();
+      }
+      try {
+        var response = await fetch('/lessons/' + current[1] + '/activity-pause', {
+          method: 'POST',
+          credentials: 'same-origin',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': decodeURIComponent(csrfToken)
+          },
+          body: JSON.stringify({resume_url: resumeUrl})
+        });
+        if (!response.ok) throw new Error('Could not save your place.');
+        window.location.href = '/grade/{{ request.session.child_grade }}';
+      } catch (error) {
+        pauseButton.disabled = false;
+        pauseButton.textContent = 'Take a break';
+        document.getElementById('activity-pause-title').textContent = 'We could not save your place';
+      }
+    });
+  })();
+  </script>
+  {% endif %}
   <script>
   (function () {
     var toggle = document.getElementById('theme-toggle');
