@@ -9853,7 +9853,6 @@ body:not(.diagram-body) #check-answers {
 .final-score-panel { margin-top: 22px; padding: 22px; border: 2px solid var(--success); border-radius: var(--radius); background: var(--mint-soft); }
 .final-score-panel h2 { margin-top: 0; }
 .final-score-number { display: block; margin: 8px 0 16px; font-size: 2rem; }
-.final-stars { margin: 8px 0 18px; color: #d6a51f; font-size: 2rem; letter-spacing: .08em; }
 .score-breakdown p { margin: 8px 0; }
 .score-breakdown span { color: var(--danger); }
 .score-breakdown span.correct { color: var(--success); }

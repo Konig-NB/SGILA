@@ -209,7 +209,7 @@ const bank = document.createElement('div'); bank.className = 'word-bank';
 data.act4_word_detective.word_bank.forEach((item) => {
   const wrapper = document.createElement('div'); wrapper.className = 'word-bank-item';
   const pill = document.createElement('button'); pill.type = 'button'; pill.className = 'word-pill'; pill.draggable = true; pill.dataset.word = item.word; pill.dataset.targetBlank = item.target_blank || '';
-  pill.innerHTML = `${item.icon} ${item.word}`;
+  pill.textContent = item.word;
   pill.addEventListener('dragstart', () => pill.classList.add('is-dragging'));
   pill.addEventListener('dragend', () => pill.classList.remove('is-dragging'));
   wrapper.append(pill, audio(item.word)); bank.append(wrapper);
