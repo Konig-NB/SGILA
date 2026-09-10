@@ -64,7 +64,7 @@ const storageKey = `sgila_lesson_${lessonId}`;
 const typeInstructions = {
   multiple_choice: 'Choose the best answer, then check it.',
   true_false: 'Decide whether the sentence is true or false.',
-  open_ended: 'Write one clear sentence in your own words.',
+  open_ended: 'Write two or more clear sentences and use your punctuation.',
   sequencing: 'Use the arrows to put the events in story order.',
   matching: 'Match each item with the best answer.',
   cloze: 'Choose the words that complete the sentence.',
@@ -432,9 +432,13 @@ function renderSequence(activity) {
   list.className = 'sequence-list';
   const config = activityConfig(activity);
   const itemImages = config.item_images || {};
+  let draggedRow = null;
 
   activity.items.forEach((item) => {
     const row = document.createElement('li');
+    row.draggable = true;
+    row.classList.add('sequence-draggable');
+    row.setAttribute('aria-label', `Drag to reorder: ${item}`);
     if (itemImages[item]) {
       row.classList.add('has-picture');
       row.appendChild(createActivityVisual(itemImages[item], item));
@@ -444,6 +448,38 @@ function renderSequence(activity) {
     text.textContent = item;
     const controls = document.createElement('div');
     controls.className = 'sequence-controls';
+
+    row.addEventListener('dragstart', (event) => {
+      draggedRow = row;
+      row.classList.add('is-dragging');
+      event.dataTransfer.effectAllowed = 'move';
+      event.dataTransfer.setData('text/plain', item);
+    });
+
+    row.addEventListener('dragend', () => {
+      draggedRow = null;
+      list.querySelectorAll('li').forEach((entry) => {
+        entry.classList.remove('is-dragging', 'drag-over');
+      });
+    });
+
+    row.addEventListener('dragover', (event) => {
+      event.preventDefault();
+      if (draggedRow && draggedRow !== row) row.classList.add('drag-over');
+    });
+
+    row.addEventListener('dragleave', () => row.classList.remove('drag-over'));
+
+    row.addEventListener('drop', (event) => {
+      event.preventDefault();
+      row.classList.remove('drag-over');
+      if (!draggedRow || draggedRow === row) return;
+      const rows = [...list.children];
+      const draggedIndex = rows.indexOf(draggedRow);
+      const targetIndex = rows.indexOf(row);
+      if (draggedIndex < targetIndex) list.insertBefore(draggedRow, row.nextSibling);
+      else list.insertBefore(draggedRow, row);
+    });
 
     const up = document.createElement('button');
     up.type = 'button';
@@ -727,9 +763,117 @@ function renderOral(activity) {
     : 'Tell the answer to a teacher, parent, or learning partner.';
   oral.append(title, help);
 
+  const label = document.createElement('label');
+  label.className = 'reading-response-label';
+  label.setAttribute('for', 'oral-response');
+  label.textContent = 'Your spoken answer';
+
+  const answer = document.createElement('textarea');
+  answer.id = 'oral-response';
+  answer.className = 'reading-response';
+  answer.rows = 3;
+  answer.maxLength = 600;
+  answer.placeholder = 'Speak or type your answer here.';
+
+  const dictationWrap = attachDictationToTextarea(answer);
+
   const submit = makeSubmitButton(config.focus_word ? 'I said the word' : 'I said my answer');
-  submit.addEventListener('click', () => submitActivity(activity, 'Answered aloud'));
-  responseArea.append(oral, submit);
+  submit.addEventListener('click', () => {
+    const spokenText = (answer.value || '').trim();
+    submitActivity(activity, spokenText || 'Answered aloud');
+  });
+
+  responseArea.append(label, dictationWrap || answer, submit);
+}
+
+function attachDictationToTextarea(textarea) {
+  const SpeechRecognitionCtor = window.SpeechRecognition || window.webkitSpeechRecognition || window.mozSpeechRecognition;
+  const wrap = document.createElement('div');
+  wrap.className = 'dictation-wrap';
+
+  const mic = document.createElement('button');
+  mic.type = 'button';
+  mic.className = 'btn btn-light dictation-btn';
+  mic.textContent = '🎙 Speak';
+  mic.title = 'Use microphone to dictate your answer';
+
+  if (!SpeechRecognitionCtor) {
+    mic.disabled = true;
+    mic.textContent = 'Mic unavailable';
+    mic.title = 'Speech recognition is not supported in this browser.';
+    wrap.append(textarea, mic);
+    return wrap;
+  }
+
+  let recognition = null;
+  let listening = false;
+
+  const stopListening = () => {
+    if (recognition) {
+      try { recognition.stop(); } catch (error) {}
+    }
+    listening = false;
+    mic.textContent = '🎙 Speak again';
+    mic.classList.remove('is-listening');
+  };
+
+  const startListening = () => {
+    recognition = new SpeechRecognitionCtor();
+    recognition.lang = 'en-ZA';
+    recognition.continuous = false;
+    recognition.interimResults = false;
+    recognition.maxAlternatives = 1;
+
+    recognition.onstart = () => {
+      listening = true;
+      mic.textContent = '⏹ Stop';
+      mic.classList.add('is-listening');
+      textarea.focus();
+    };
+
+    recognition.onresult = (event) => {
+      const transcript = Array.from(event.results)
+        .map((result) => result[0].transcript)
+        .join(' ')
+        .trim();
+
+      if (transcript) {
+        textarea.value = transcript;
+        textarea.focus();
+      }
+    };
+
+    recognition.onerror = (event) => {
+      const message = event.error === 'not-allowed'
+        ? 'Microphone permission is needed to use speech-to-text.'
+        : 'Speech recognition is not available right now. Please type your answer instead.';
+      textarea.setAttribute('placeholder', message);
+      stopListening();
+      textarea.focus();
+    };
+
+    recognition.onend = () => {
+      if (listening) stopListening();
+    };
+
+    try {
+      recognition.start();
+    } catch (error) {
+      stopListening();
+      textarea.focus();
+    }
+  };
+
+  mic.addEventListener('click', () => {
+    if (listening) {
+      stopListening();
+      return;
+    }
+    startListening();
+  });
+
+  wrap.append(textarea, mic);
+  return wrap;
 }
 
 function renderWritten(activity) {
@@ -743,7 +887,9 @@ function renderWritten(activity) {
   answer.className = 'reading-response';
   answer.rows = 3;
   answer.maxLength = 600;
-  answer.placeholder = activity.activity_type === 'prediction' ? 'I think ... because ...' : 'Write one clear sentence.';
+  answer.placeholder = activity.activity_type === 'prediction'
+    ? 'I think ... because ...'
+    : (activity.activity_type === 'open_ended' ? 'Write two or more sentences. Use punctuation.' : 'Write one clear sentence.');
 
   const submit = makeSubmitButton('Compare my answer');
   submit.addEventListener('click', () => submitActivity(activity, answer.value));

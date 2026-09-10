@@ -4131,6 +4131,28 @@ body:not(.diagram-body) .reading-response {
   line-height: 1.5;
 }
 
+body:not(.diagram-body) .dictation-wrap {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  width: 100%;
+}
+
+body:not(.diagram-body) .dictation-wrap .reading-response {
+  flex: 1 1 auto;
+}
+
+body:not(.diagram-body) .dictation-btn {
+  flex: 0 0 auto;
+  align-self: center;
+  min-width: 112px;
+}
+
+body:not(.diagram-body) .dictation-btn.is-listening {
+  background: #ffe9b3;
+  box-shadow: 0 0 0 3px rgba(226, 163, 34, .18);
+}
+
 body:not(.diagram-body) .reading-response:focus {
   border-color: #168b70;
   outline: 3px solid rgba(22, 139, 112, .16);
@@ -4160,6 +4182,21 @@ body:not(.diagram-body) .sequence-list li {
   border: 1px solid var(--auto-cad2df-bd);
   border-radius: 8px;
   background: var(--surface);
+}
+
+body:not(.diagram-body) .sequence-draggable {
+  cursor: grab;
+  touch-action: manipulation;
+}
+
+body:not(.diagram-body) .sequence-draggable.is-dragging {
+  opacity: .55;
+  cursor: grabbing;
+}
+
+body:not(.diagram-body) .sequence-draggable.drag-over {
+  border-color: #168b70;
+  background: #e8f7f1;
 }
 
 body:not(.diagram-body) .sequence-list li::before {

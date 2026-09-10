@@ -1394,7 +1394,7 @@ EXPANDED_STORIES = [
             _reasoning(
                 'inference',
                 'Why were the first-aid kits important?',
-                'The kits contained gloves, a clean dressing and a bandage that the girls used safely.',
+                'because it was used to help the dog get better',
             ),
             _choice(
                 'fact_vs_opinion',
