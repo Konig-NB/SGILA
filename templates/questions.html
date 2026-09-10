@@ -541,6 +541,12 @@ function renderCrossword(activity) {
   grid.style.setProperty('--crossword-columns', columns);
   grid.setAttribute('aria-label', 'Crossword answer grid');
 
+  const focusNextCrosswordCell = (input) => {
+    const cells = [...grid.querySelectorAll('input[data-cell]')];
+    const nextCell = cells[cells.indexOf(input) + 1];
+    if (nextCell) nextCell.focus();
+  };
+
   for (let row = 0; row < rows; row++) {
     for (let column = 0; column < columns; column++) {
       const key = `${row}-${column}`;
@@ -560,6 +566,10 @@ function renderCrossword(activity) {
         input.setAttribute('aria-label', `Crossword row ${row + 1}, column ${column + 1}`);
         input.addEventListener('input', () => {
           input.value = input.value.replace(/[^A-Za-z]/g, '').toUpperCase();
+          if (input.value) focusNextCrosswordCell(input);
+        });
+        input.addEventListener('click', () => {
+          if (input.value) focusNextCrosswordCell(input);
         });
         cell.appendChild(input);
       }
