@@ -1491,6 +1491,8 @@ def grade_home(request, grade):
     child, response = learner_required(request)
     if response:
         return response
+    if child.grade != grade:
+        return redirect_after_forbidden(request)
 
     if request.method == 'POST':
         class_code = request.POST.get('class_code', '').strip()
@@ -1583,7 +1585,7 @@ def story_page(request, lesson_id):
     child, response = learner_required(request)
     if response:
         return response
-    lesson = get_object_or_404(Lesson, id=lesson_id)
+    lesson = get_object_or_404(Lesson, id=lesson_id, grade=child.grade)
     if lesson.is_ai_generated and lesson.generated_for_id and lesson.generated_for_id != child.id:
         raise Http404('This generated story belongs to another learner.')
     pages = [{
@@ -1609,7 +1611,7 @@ def questions_page(request, lesson_id):
     child, response = learner_required(request)
     if response:
         return response
-    lesson = get_object_or_404(Lesson, id=lesson_id)
+    lesson = get_object_or_404(Lesson, id=lesson_id, grade=child.grade)
     total_questions = lesson.reading_activities.count() or ComprehensionQuestion.objects.filter(lesson=lesson).count()
     if lesson.reading_activities.filter(skill='spelling').exists():
         next_activity_url = f'/lessons/{lesson_id}/results'
@@ -1635,7 +1637,7 @@ def visual_activity_page(request, lesson_id):
     child, response = learner_required(request)
     if response:
         return response
-    lesson = get_object_or_404(Lesson, id=lesson_id)
+    lesson = get_object_or_404(Lesson, id=lesson_id, grade=child.grade)
     if lesson.grade == 3 and not lesson.visual_items.exists():
         if lesson.pronunciation_words.exists():
             return redirect(f'/lessons/{lesson_id}/pronunciation')
@@ -1653,7 +1655,7 @@ def pronunciation_page(request, lesson_id):
     child, response = learner_required(request)
     if response:
         return response
-    lesson = get_object_or_404(Lesson, id=lesson_id)
+    lesson = get_object_or_404(Lesson, id=lesson_id, grade=child.grade)
     return render(request, 'pronunciation.html', {
         'lesson': lesson,
         'words': lesson.pronunciation_words.all(),
@@ -1703,7 +1705,7 @@ def spelling_page(request, lesson_id):
     child, response = learner_required(request)
     if response:
         return response
-    lesson = get_object_or_404(Lesson, id=lesson_id)
+    lesson = get_object_or_404(Lesson, id=lesson_id, grade=child.grade)
     activities = list(lesson.spelling_activities.all())
 
     if request.method == 'POST':
@@ -1767,15 +1769,15 @@ def session_assessment_scores(request, lesson):
     )
 
     legacy_scores = [
-        ('sequencing', 'seq_score', 'seq_total'),
-        ('inference', 'inference_score', 'inference_total'),
-        ('emotional_literacy', 'feelings_score', 'feelings_total'),
-        ('cause_effect', 'ce_score', 'ce_total'),
-        ('summarising', 'theme_score', 'theme_total'),
-        ('prediction', 'prediction_score', 'prediction_total'),
+        ('sequencing', 'seq_score', 'seq_total', lesson.sequencing_activities.exists()),
+        ('inference', 'inference_score', 'inference_total', lesson.inference_questions.exists()),
+        ('emotional_literacy', 'feelings_score', 'feelings_total', lesson.feelings_questions.exists()),
+        ('cause_effect', 'ce_score', 'ce_total', lesson.cause_effect_pairs.exists()),
+        ('summarising', 'theme_score', 'theme_total', lesson.theme_questions.exists()),
+        ('prediction', 'prediction_score', 'prediction_total', lesson.prediction_questions.exists()),
     ]
-    for key, score_suffix, total_suffix in legacy_scores:
-        if f'{prefix}_{total_suffix}' in request.session:
+    for key, score_suffix, total_suffix, has_activity in legacy_scores:
+        if has_activity and f'{prefix}_{total_suffix}' in request.session:
             add_assessment_score(
                 scores,
                 key,
@@ -1789,7 +1791,7 @@ def results_page(request, lesson_id):
     child, response = learner_required(request)
     if response:
         return response
-    lesson = get_object_or_404(Lesson, id=lesson_id)
+    lesson = get_object_or_404(Lesson, id=lesson_id, grade=child.grade)
     prefix = f'lesson_{lesson_id}'
     fresh_suffixes = (
         'reading_skill_scores', 'comprehension_score', 'comprehension_total',
@@ -1834,12 +1836,14 @@ def results_page(request, lesson_id):
         if not record:
             messages.error(request, 'Complete the lesson before viewing results.')
             return redirect(f'/grade/{child.grade}')
-        total_score = record.total_score
-        total_possible = record.total_possible
-        percentage = record.percentage
+        breakdown = rows_for_record(record)
+        total_score = sum(item['score'] for item in breakdown)
+        total_possible = sum(item['total'] for item in breakdown)
+        percentage = round((total_score / total_possible) * 100) if total_possible else 0
         stars = record.stars_earned
 
-    breakdown = rows_for_record(record)
+    if has_fresh_result:
+        breakdown = rows_for_record(record)
     ranked = sorted(breakdown, key=lambda item: (-item['pct'], item['label']))
     focus_ranked = sorted(breakdown, key=lambda item: (item['pct'], item['label']))
     best_activities = [item for item in ranked if item['pct'] > 0][:2]
@@ -1868,7 +1872,7 @@ def legacy_results_page(request, lesson_id):
     child, response = learner_required(request)
     if response:
         return response
-    lesson = get_object_or_404(Lesson, id=lesson_id)
+    lesson = get_object_or_404(Lesson, id=lesson_id, grade=child.grade)
     prefix = f'lesson_{lesson_id}'
 
     # ── Grade 4 results path ──────────────────────────────────────────────────
@@ -1914,7 +1918,7 @@ def legacy_results_page(request, lesson_id):
         # Activity 1 — Comprehension Questions (seeded via ComprehensionQuestion)
         comp_score  = gs('comprehension_score');  comp_total  = gs('comprehension_total',  lesson.questions.count())
         # Activity 2 — Sequencing
-        seq_score   = gs('seq_score');            seq_total   = gs('seq_total',   1)
+        seq_score   = gs('seq_score');            seq_total   = gs('seq_total',   lesson.sequencing_activities.count())
         # Activity 3 — Inference
         inf_score   = gs('inference_score');      inf_total   = gs('inference_total',   lesson.inference_questions.count())
         # Activity 4 — Feelings
@@ -1922,7 +1926,7 @@ def legacy_results_page(request, lesson_id):
         # Activity 5 — Cause & Effect
         ce_score    = gs('ce_score');             ce_total    = gs('ce_total',    lesson.cause_effect_pairs.count())
         # Activity 6 — Theme / Main Lesson
-        theme_score = gs('theme_score');          theme_total = gs('theme_total', 1)
+        theme_score = gs('theme_score');          theme_total = gs('theme_total', lesson.theme_questions.count())
 
         total_score    = comp_score + seq_score + inf_score + feel_score + ce_score + theme_score
         total_possible = comp_total + seq_total + inf_total + feel_total + ce_total + theme_total
@@ -1972,6 +1976,7 @@ def legacy_results_page(request, lesson_id):
             {'label': 'Cause & Effect', 'score': ce_score,    'total': ce_total},
             {'label': 'Main Lesson',    'score': theme_score, 'total': theme_total},
         ]
+        breakdown = [item for item in breakdown if item['total'] > 0]
         all_scores = g4rec.activity_scores()
 
         # Clear session
@@ -2939,7 +2944,7 @@ def vocabulary_page(request, lesson_id):
     child, response = learner_required(request)
     if response:
         return response
-    lesson = get_object_or_404(Lesson, id=lesson_id)
+    lesson = get_object_or_404(Lesson, id=lesson_id, grade=child.grade)
     words = lesson.vocabulary_questions.all()
     return render(request, 'vocabulary.html', {
         'lesson': lesson,
@@ -2952,7 +2957,7 @@ def sequencing_page(request, lesson_id):
     child, response = learner_required(request)
     if response:
         return response
-    lesson = get_object_or_404(Lesson, id=lesson_id)
+    lesson = get_object_or_404(Lesson, id=lesson_id, grade=child.grade)
     activity = lesson.sequencing_activities.first()
     return render(request, 'sequencing.html', {
         'lesson': lesson,
@@ -2965,7 +2970,7 @@ def inference_page(request, lesson_id):
     child, response = learner_required(request)
     if response:
         return response
-    lesson = get_object_or_404(Lesson, id=lesson_id)
+    lesson = get_object_or_404(Lesson, id=lesson_id, grade=child.grade)
     questions = lesson.inference_questions.all()
     return render(request, 'inference.html', {
         'lesson': lesson,
@@ -2978,7 +2983,7 @@ def prediction_page(request, lesson_id):
     child, response = learner_required(request)
     if response:
         return response
-    lesson = get_object_or_404(Lesson, id=lesson_id)
+    lesson = get_object_or_404(Lesson, id=lesson_id, grade=child.grade)
     question = lesson.prediction_questions.first()
     return render(request, 'prediction.html', {
         'lesson': lesson,
@@ -2991,7 +2996,7 @@ def feelings_page(request, lesson_id):
     child, response = learner_required(request)
     if response:
         return response
-    lesson = get_object_or_404(Lesson, id=lesson_id)
+    lesson = get_object_or_404(Lesson, id=lesson_id, grade=child.grade)
     questions = lesson.feelings_questions.all()
     return render(request, 'feelings.html', {
         'lesson': lesson,
@@ -3004,7 +3009,7 @@ def cause_effect_page(request, lesson_id):
     child, response = learner_required(request)
     if response:
         return response
-    lesson = get_object_or_404(Lesson, id=lesson_id)
+    lesson = get_object_or_404(Lesson, id=lesson_id, grade=child.grade)
     pairs = lesson.cause_effect_pairs.all()
     return render(request, 'cause_effect.html', {
         'lesson': lesson,
@@ -3017,7 +3022,7 @@ def theme_page(request, lesson_id):
     child, response = learner_required(request)
     if response:
         return response
-    lesson = get_object_or_404(Lesson, id=lesson_id)
+    lesson = get_object_or_404(Lesson, id=lesson_id, grade=child.grade)
     question = lesson.theme_questions.first()
     return render(request, 'theme.html', {
         'lesson': lesson,
@@ -3030,7 +3035,7 @@ def written_response_page(request, lesson_id):
     child, response = learner_required(request)
     if response:
         return response
-    lesson = get_object_or_404(Lesson, id=lesson_id)
+    lesson = get_object_or_404(Lesson, id=lesson_id, grade=child.grade)
     prompt = lesson.written_prompts.first()
 
     if request.method == 'POST':
