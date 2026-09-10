@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>{% block title %}SGILA{% endblock %}</title>
   {% load static %}
-  <link rel="stylesheet" href="{% static 'css/sgila_web.css' %}?v=popup-title-visible-20260904-1">
+  <link rel="stylesheet" href="{% static 'css/sgila_web.css' %}?v=parent-dashboard-app-background-20260909-1">
 </head>
 <body class="{% block body_class %}{% endblock %}">
   <nav class="navbar app-navbar">
@@ -75,7 +75,7 @@
   </script>
   {% endif %}
   {% if request.session.account_role == 'learner' %}
-  <div class="learner-modal hidden" id="activity-pause-modal" role="dialog" aria-modal="true" aria-labelledby="activity-pause-title" style="position:fixed;inset:0;z-index:10000;place-items:center;padding:24px;background:rgba(24,25,38,.72);">
+  <div class="learner-modal hidden" id="activity-pause-modal" role="dialog" aria-modal="true" aria-labelledby="activity-pause-title">
     <div class="learner-modal-card">
       <button type="button" class="learner-modal-close" aria-label="Close pause menu" data-close-modal>&times;</button>
       <span class="learner-modal-banner">Pause</span>
@@ -103,6 +103,9 @@
       if (!current) return;
       nextUrl = options.nextUrl || '';
       resumeUrl = options.resumeUrl || location.pathname;
+      if (!options.resumeUrl && current[2] === 'questions' && typeof window.SgilaCurrentActivityIndex === 'function') {
+        resumeUrl += `?activity_index=${window.SgilaCurrentActivityIndex()}`;
+      }
       document.getElementById('activity-pause-title').textContent = options.completed
         ? 'Great work! Would you like to continue?'
         : 'Would you like to take a break?';

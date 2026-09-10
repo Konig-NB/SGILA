@@ -94,13 +94,16 @@ const KOALY_IMAGES = {
 
 let activities = [];
 let activityGroups = [];
-let current = 0;
+let current = Number(new URLSearchParams(window.location.search).get('activity_index') || 0);
+if (!Number.isInteger(current) || current < 0) current = 0;
 let score = 0;
 let completedCount = 0;
 const nextButton = document.getElementById('next-question-btn');
 const mascot = document.getElementById('mascot-reaction');
 const messageArea = document.getElementById('message-area');
 const responseArea = document.getElementById('response-area');
+
+window.SgilaCurrentActivityIndex = () => current;
 
 function setMascot(reaction, label) {
   mascot.className = `activity-coach koaly-${reaction}`;

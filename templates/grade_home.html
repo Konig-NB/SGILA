@@ -57,7 +57,7 @@
   {% endfor %}
 </section>
 
-<div class="learner-modal hidden" id="activity-picker" role="dialog" aria-modal="true" aria-labelledby="activity-picker-title" style="position:fixed;inset:0;z-index:10000;place-items:center;padding:24px;background:rgba(24,25,38,.72);">
+<div class="learner-modal hidden" id="activity-picker" role="dialog" aria-modal="true" aria-labelledby="activity-picker-title">
   <div class="learner-modal-card">
     <button type="button" class="learner-modal-close" aria-label="Close activity choices" id="activity-picker-close">&times;</button>
     <span class="learner-modal-banner">Let’s learn</span>
@@ -101,7 +101,7 @@
       options.innerHTML = '';
       if (card.dataset.resumeUrl) {
         const resume = document.createElement('a');
-        resume.className = 'btn btn-primary'; resume.href = withReturnToMenu(card.dataset.resumeUrl, card.dataset.lessonId);
+        resume.className = 'btn btn-primary'; resume.href = card.dataset.resumeUrl;
         resume.textContent = 'Continue where I paused'; options.appendChild(resume);
         detail.textContent = `You have a saved place in ${card.dataset.lessonTitle}. Or choose another activity.`;
       } else {

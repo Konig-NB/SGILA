@@ -364,6 +364,8 @@ def register_parent(request):
         code=code,
         pending_data=json.dumps(pending_data),
     )
+    if settings.DEBUG:
+        print(f'\n[SGILA OTP] Parent verification code for {email}: {code}\n', flush=True)
 
     # Send OTP email
     subject = "Your SGILA verification code"
@@ -414,6 +416,8 @@ def register_teacher(request):
         code=code,
         pending_data=json.dumps(pending_data),
     )
+    if settings.DEBUG:
+        print(f'\n[SGILA OTP] Teacher verification code for {email}: {code}\n', flush=True)
 
     subject = "Your SGILA verification code"
     message = (
@@ -503,6 +507,8 @@ def verify_otp_page(request):
                 code=new_code,
                 pending_data=old_otp.pending_data,
             )
+            if settings.DEBUG:
+                print(f'\n[SGILA OTP] Resent verification code for {old_otp.email}: {new_code}\n', flush=True)
             subject = "Your SGILA verification code"
             message = (
                 f"Hi {full_name},\n\n"
@@ -1359,7 +1365,7 @@ def grade_home(request, grade):
             'stars': range(record.stars_earned) if record else range(0),
             'is_current_ai_story': lesson.is_ai_generated and lesson.id == getattr(latest_ai_lesson, 'id', None),
             'activities': activity_choices_for(lesson),
-            'resume_url': request.session.get(f'lesson_{lesson.id}_resume_url'),
+            'resume_url': (child.paused_activities or {}).get(str(lesson.id)),
         })
 
     required_lessons = curated_lessons + public_ai_stories
@@ -1403,9 +1409,24 @@ def activity_pause(request, lesson_id):
         except json.JSONDecodeError:
             data = {}
         resume_url = data.get('resume_url', '')
+        parsed_resume_url = urllib.parse.urlsplit(resume_url)
         allowed_urls = {item['url'] for item in activity_choices_for(lesson)}
-        if resume_url not in allowed_urls:
+        if parsed_resume_url.path not in allowed_urls or parsed_resume_url.fragment:
             return JsonResponse({'error': 'Invalid activity to resume.'}, status=400)
+        if parsed_resume_url.path.endswith('/questions'):
+            query = urllib.parse.parse_qs(parsed_resume_url.query)
+            indexes = query.get('activity_index', [])
+            activity_index = int(indexes[0]) if len(indexes) == 1 and indexes[0].isdigit() else -1
+            activity_total = lesson.reading_activities.count() or lesson.questions.count()
+            if activity_index < 0 or activity_index >= activity_total:
+                return JsonResponse({'error': 'Invalid activity to resume.'}, status=400)
+            resume_url = f'{parsed_resume_url.path}?activity_index={activity_index}'
+        elif parsed_resume_url.query:
+            return JsonResponse({'error': 'Invalid activity to resume.'}, status=400)
+        paused_activities = dict(child.paused_activities or {})
+        paused_activities[str(lesson.id)] = resume_url
+        child.paused_activities = paused_activities
+        child.save(update_fields=['paused_activities'])
         request.session[f'lesson_{lesson.id}_resume_url'] = resume_url
         request.session.modified = True
 
@@ -1620,6 +1641,10 @@ def results_page(request, lesson_id):
     lesson = get_object_or_404(Lesson, id=lesson_id)
     prefix = f'lesson_{lesson_id}'
     # A completed lesson no longer needs its "continue later" marker.
+    paused_activities = dict(child.paused_activities or {})
+    paused_activities.pop(str(lesson_id), None)
+    child.paused_activities = paused_activities
+    child.save(update_fields=['paused_activities'])
     request.session.pop(f'{prefix}_resume_url', None)
 
     fresh_suffixes = (
