@@ -1769,15 +1769,15 @@ def session_assessment_scores(request, lesson):
     )
 
     legacy_scores = [
-        ('sequencing', 'seq_score', 'seq_total'),
-        ('inference', 'inference_score', 'inference_total'),
-        ('emotional_literacy', 'feelings_score', 'feelings_total'),
-        ('cause_effect', 'ce_score', 'ce_total'),
-        ('summarising', 'theme_score', 'theme_total'),
-        ('prediction', 'prediction_score', 'prediction_total'),
+        ('sequencing', 'seq_score', 'seq_total', lesson.sequencing_activities.exists()),
+        ('inference', 'inference_score', 'inference_total', lesson.inference_questions.exists()),
+        ('emotional_literacy', 'feelings_score', 'feelings_total', lesson.feelings_questions.exists()),
+        ('cause_effect', 'ce_score', 'ce_total', lesson.cause_effect_pairs.exists()),
+        ('summarising', 'theme_score', 'theme_total', lesson.theme_questions.exists()),
+        ('prediction', 'prediction_score', 'prediction_total', lesson.prediction_questions.exists()),
     ]
-    for key, score_suffix, total_suffix in legacy_scores:
-        if f'{prefix}_{total_suffix}' in request.session:
+    for key, score_suffix, total_suffix, has_activity in legacy_scores:
+        if has_activity and f'{prefix}_{total_suffix}' in request.session:
             add_assessment_score(
                 scores,
                 key,
@@ -1836,12 +1836,14 @@ def results_page(request, lesson_id):
         if not record:
             messages.error(request, 'Complete the lesson before viewing results.')
             return redirect(f'/grade/{child.grade}')
-        total_score = record.total_score
-        total_possible = record.total_possible
-        percentage = record.percentage
+        breakdown = rows_for_record(record)
+        total_score = sum(item['score'] for item in breakdown)
+        total_possible = sum(item['total'] for item in breakdown)
+        percentage = round((total_score / total_possible) * 100) if total_possible else 0
         stars = record.stars_earned
 
-    breakdown = rows_for_record(record)
+    if has_fresh_result:
+        breakdown = rows_for_record(record)
     ranked = sorted(breakdown, key=lambda item: (-item['pct'], item['label']))
     focus_ranked = sorted(breakdown, key=lambda item: (item['pct'], item['label']))
     best_activities = [item for item in ranked if item['pct'] > 0][:2]
@@ -1916,7 +1918,7 @@ def legacy_results_page(request, lesson_id):
         # Activity 1 — Comprehension Questions (seeded via ComprehensionQuestion)
         comp_score  = gs('comprehension_score');  comp_total  = gs('comprehension_total',  lesson.questions.count())
         # Activity 2 — Sequencing
-        seq_score   = gs('seq_score');            seq_total   = gs('seq_total',   1)
+        seq_score   = gs('seq_score');            seq_total   = gs('seq_total',   lesson.sequencing_activities.count())
         # Activity 3 — Inference
         inf_score   = gs('inference_score');      inf_total   = gs('inference_total',   lesson.inference_questions.count())
         # Activity 4 — Feelings
@@ -1924,7 +1926,7 @@ def legacy_results_page(request, lesson_id):
         # Activity 5 — Cause & Effect
         ce_score    = gs('ce_score');             ce_total    = gs('ce_total',    lesson.cause_effect_pairs.count())
         # Activity 6 — Theme / Main Lesson
-        theme_score = gs('theme_score');          theme_total = gs('theme_total', 1)
+        theme_score = gs('theme_score');          theme_total = gs('theme_total', lesson.theme_questions.count())
 
         total_score    = comp_score + seq_score + inf_score + feel_score + ce_score + theme_score
         total_possible = comp_total + seq_total + inf_total + feel_total + ce_total + theme_total
@@ -1974,6 +1976,7 @@ def legacy_results_page(request, lesson_id):
             {'label': 'Cause & Effect', 'score': ce_score,    'total': ce_total},
             {'label': 'Main Lesson',    'score': theme_score, 'total': theme_total},
         ]
+        breakdown = [item for item in breakdown if item['total'] > 0]
         all_scores = g4rec.activity_scores()
 
         # Clear session
