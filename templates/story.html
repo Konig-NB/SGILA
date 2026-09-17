@@ -47,25 +47,10 @@
     <button id="next-btn" class="btn btn-primary {% if not pages %}hidden{% endif %}">Next</button>
   </div>
   <div id="story-done" class="center {% if pages %}hidden{% endif %}">
-    <a href="{{ first_activity_url }}" class="btn btn-primary btn-large">Start an activity</a>
+    <a href="{{ activity_resume_url|default:first_activity_url }}" class="btn btn-primary btn-large">
+      {% if lesson.grade == 1 %}Start 3 activities{% else %}Answer questions{% endif %}
+    </a>
   </div>
-
-  <section class="story-activity-choices" aria-labelledby="activity-choice-title">
-    <div class="section-heading">
-      <p class="eyebrow">Choose your next step</p>
-      <h2 id="activity-choice-title">Story activities</h2>
-    </div>
-    <div class="activity-grid">
-      {% for activity in activity_choices %}
-        <a class="activity-card activity-choice" href="{{ activity.url }}">
-          <span class="badge badge-new">Activity {{ forloop.counter }}</span>
-          <h3>{{ activity.label }}</h3>
-          <p>{{ activity.detail }}</p>
-          <span class="btn btn-light">Start</span>
-        </a>
-      {% endfor %}
-    </div>
-  </section>
 </section>
 <script>
 const pages = document.querySelectorAll('.story-page');

@@ -100,6 +100,42 @@ def require_jwt(roles=None):
                     {"error": "You do not have permission to access this resource."},
                     status=403,
                 )
+            role = payload.get("role")
+            account_id = payload.get("sub")
+            if role == "parent":
+                from .models import Parent
+
+                parent = Parent.objects.filter(pk=account_id).only("is_active", "auth_version").first()
+                if (
+                    not parent
+                    or not parent.is_active
+                    or payload.get("auth_version", 0) != parent.auth_version
+                ):
+                    return JsonResponse({"error": "This account is deactivated or the session has expired."}, status=403)
+            elif role == "teacher":
+                from .models import Teacher
+
+                teacher = Teacher.objects.filter(pk=account_id).only("is_active", "auth_version").first()
+                if (
+                    not teacher
+                    or not teacher.is_active
+                    or payload.get("auth_version", 0) != teacher.auth_version
+                ):
+                    return JsonResponse({"error": "This account is deactivated or the session has expired."}, status=403)
+            elif role == "learner":
+                from .account_access import child_access_status, linked_parent_for_child
+                from .models import Child
+
+                child = Child.objects.select_related("parent").filter(pk=account_id).first()
+                if not child:
+                    return JsonResponse({"error": "Learner account not found."}, status=403)
+                allowed, reason = child_access_status(child)
+                parent = linked_parent_for_child(child)
+                if not allowed or (
+                    parent
+                    and payload.get("parent_auth_version", 0) != parent.auth_version
+                ):
+                    return JsonResponse({"error": "Learner access is paused.", "reason": reason}, status=403)
             return view_func(request, payload, *args, **kwargs)
         return _wrapped
     return decorator

@@ -5,7 +5,17 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>{% block title %}SGILA{% endblock %}</title>
   {% load static %}
-  <link rel="stylesheet" href="{% static 'css/sgila_web.css' %}?v=clean-styles-20260809-4">
+  <link rel="stylesheet" href="{% static 'css/sgila_app.css' %}?v=clean-styles-20260916-3">
+  <script>
+    // Applied before paint so the page never flashes the wrong theme on load.
+    (function () {
+      var saved = localStorage.getItem('sgila-theme');
+      var theme = saved || (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+      if (theme === 'dark') {
+        document.documentElement.setAttribute('data-theme', 'dark');
+      }
+    })();
+  </script>
 </head>
 <body class="{% block body_class %}{% endblock %}">
   <nav class="navbar app-navbar">
@@ -13,7 +23,18 @@
       <span class="brand-mark"><img src="{% static 'img/koaly_cutout.png' %}" alt="Koaly logo"></span>
       <span>SGILA</span>
     </a>
+    {% if request.path == '/' and not request.session.account_role %}
+    <div class="home-nav-links" aria-label="Homepage sections">
+      <a href="#stories">Stories</a>
+      <a href="#family-entry">For families</a>
+      <a href="#school-entry">For schools</a>
+    </div>
+    {% endif %}
     <div class="nav-links">
+      <button type="button" id="theme-toggle" class="theme-toggle" aria-label="Toggle dark mode" aria-pressed="false">
+        <span class="theme-toggle-icon" aria-hidden="true"></span>
+        <span class="theme-toggle-label">Dark mode</span>
+      </button>
       {% if request.session.account_role == 'learner' %}
         <span>{{ request.session.child_name }}</span>
         <a href="/grade/{{ request.session.child_grade }}">Lessons</a>
@@ -74,5 +95,107 @@
   })();
   </script>
   {% endif %}
+  {% if request.session.account_role == 'learner' %}
+  <div class="learner-modal hidden" id="activity-pause-modal" role="dialog" aria-modal="true" aria-labelledby="activity-pause-title">
+    <div class="learner-modal-card">
+      <button type="button" class="learner-modal-close" aria-label="Close pause menu" data-close-modal>&times;</button>
+      <span class="learner-modal-banner">Pause activity</span>
+      <h2 id="activity-pause-title">Would you like to take a break?</h2>
+      <p>Your place will be saved so you can continue this activity later.</p>
+      <div class="learner-modal-options">
+        <button type="button" class="btn btn-primary" id="activity-pause">Take a break</button>
+        <button type="button" class="btn btn-light" id="activity-continue">Continue learning</button>
+      </div>
+    </div>
+  </div>
+  <script>
+  (function () {
+    var activityPath = /^\/lessons\/(\d+)\/(questions|visual-activity|pronunciation|spelling|vocabulary|sequencing|inference|prediction|feelings|cause-effect|theme|written-response)$/;
+    var current = window.location.pathname.match(activityPath);
+    if (!current) return;
+
+    var modal = document.getElementById('activity-pause-modal');
+    var pauseButton = document.getElementById('activity-pause');
+    var continueButton = document.getElementById('activity-continue');
+    var closeButton = modal.querySelector('[data-close-modal]');
+    var csrfToken = (document.cookie.match(/(?:^|; )csrftoken=([^;]*)/) || [])[1] || '';
+    var pauseTrigger = document.createElement('button');
+    pauseTrigger.type = 'button';
+    pauseTrigger.className = 'btn btn-light activity-pause-button';
+    pauseTrigger.textContent = 'Take a break';
+    document.querySelector('.activity-top').appendChild(pauseTrigger);
+
+    function closeModal() {
+      modal.classList.add('hidden');
+      modal.style.display = 'none';
+    }
+
+    function openModal() {
+      modal.classList.remove('hidden');
+      modal.style.display = 'grid';
+      continueButton.focus();
+    }
+
+    pauseTrigger.addEventListener('click', openModal);
+    continueButton.addEventListener('click', closeModal);
+    closeButton.addEventListener('click', closeModal);
+
+    pauseButton.addEventListener('click', async function () {
+      pauseButton.disabled = true;
+      pauseButton.textContent = 'Saving...';
+      var resumeUrl = window.location.pathname;
+      if (current[2] === 'questions' && typeof window.SgilaCurrentActivityIndex === 'function') {
+        resumeUrl += '?activity_index=' + window.SgilaCurrentActivityIndex();
+      }
+      try {
+        var response = await fetch('/lessons/' + current[1] + '/activity-pause', {
+          method: 'POST',
+          credentials: 'same-origin',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': decodeURIComponent(csrfToken)
+          },
+          body: JSON.stringify({resume_url: resumeUrl})
+        });
+        if (!response.ok) throw new Error('Could not save your place.');
+        window.location.href = '/grade/{{ request.session.child_grade }}';
+      } catch (error) {
+        pauseButton.disabled = false;
+        pauseButton.textContent = 'Take a break';
+        document.getElementById('activity-pause-title').textContent = 'We could not save your place';
+      }
+    });
+  })();
+  </script>
+  {% endif %}
+  <script>
+  (function () {
+    var toggle = document.getElementById('theme-toggle');
+    if (!toggle) return;
+    var root = document.documentElement;
+
+    function isDark() {
+      return root.getAttribute('data-theme') === 'dark';
+    }
+
+    function reflect() {
+      toggle.setAttribute('aria-pressed', isDark() ? 'true' : 'false');
+      toggle.querySelector('.theme-toggle-label').textContent = isDark() ? 'Light mode' : 'Dark mode';
+    }
+
+    toggle.addEventListener('click', function () {
+      if (isDark()) {
+        root.removeAttribute('data-theme');
+        localStorage.setItem('sgila-theme', 'light');
+      } else {
+        root.setAttribute('data-theme', 'dark');
+        localStorage.setItem('sgila-theme', 'dark');
+      }
+      reflect();
+    });
+
+    reflect();
+  })();
+  </script>
 </body>
 </html>

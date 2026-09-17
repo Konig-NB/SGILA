@@ -1,0 +1,18 @@
+{% extends 'base.html' %}
+{% load static %}
+{% block title %}Page not found | SGILA{% endblock %}
+{% block body_class %}error-page{% endblock %}
+{% block content %}
+<section class="not-found" aria-labelledby="not-found-title">
+  <div class="not-found-copy">
+    <p class="not-found-kicker">404 / PAGE NOT FOUND</p>
+    <h1 id="not-found-title">This reading adventure is missing.</h1>
+    <p>The page you requested does not exist or may have moved. Let’s get you back to SGILA.</p>
+    <a class="not-found-button" href="/">Return home</a>
+  </div>
+  <div class="not-found-art" aria-hidden="true">
+    <span class="not-found-number">404</span>
+    <img src="{% static 'img/koaly_cutout.png' %}" alt="">
+  </div>
+</section>
+{% endblock %}

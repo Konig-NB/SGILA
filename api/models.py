@@ -1,6 +1,6 @@
 import random
 import string
-from datetime import date
+from datetime import date, timedelta
 
 from django.db import models
 from django.utils import timezone
@@ -25,6 +25,11 @@ def generate_class_code():
     return ''.join(random.choices(string.ascii_uppercase + string.digits, k=6))
 
 
+def current_school_year():
+    """South African school years run Jan-Dec, so the academic/school year is just the calendar year."""
+    return date.today().year
+
+
 class Parent(models.Model):
     """Guardian account that can manage one or more learner profiles."""
     full_name = models.CharField(max_length=120)
@@ -32,6 +37,9 @@ class Parent(models.Model):
     password = models.CharField(max_length=300)
     phone = models.CharField(max_length=30, blank=True)
     accepted_popia = models.BooleanField(default=False)
+    is_active = models.BooleanField(default=True)
+    deactivated_at = models.DateTimeField(null=True, blank=True)
+    auth_version = models.PositiveIntegerField(default=0)
     created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):
@@ -52,6 +60,9 @@ class Teacher(models.Model):
     phone = models.CharField(max_length=30, blank=True)
     accepted_popia = models.BooleanField(default=False)
     class_code = models.CharField(max_length=10, unique=True, null=True, blank=True)
+    is_active = models.BooleanField(default=True)
+    deactivated_at = models.DateTimeField(null=True, blank=True)
+    auth_version = models.PositiveIntegerField(default=0)
     created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):
@@ -79,11 +90,41 @@ class Child(models.Model):
     # whenever the child is loaded in a view — so it keeps itself correct every
     # birthday/new year without needing a scheduled task.
     age = models.IntegerField(null=True, blank=True)
-    grade = models.IntegerField()          # 1 to 4
+    grade = models.IntegerField()          # 1 to 4 — the grade the child is currently shown content for.
+    # The school year (calendar year) for which `grade` was last confirmed by a parent or
+    # teacher. This is what makes grade changes an explicit human decision rather than
+    # something the app infers from app usage — see needs_grade_confirmation() below and
+    # GradeHistory for the full record of what was confirmed each year.
+    grade_confirmed_year = models.IntegerField(null=True, blank=True)
+    # The school year we last emailed the parent a "please confirm the grade"
+    # reminder for. Separate from grade_confirmed_year so the reminder job can
+    # tell "already reminded, don't spam" apart from "already confirmed, don't remind".
+    grade_reminder_sent_year = models.IntegerField(null=True, blank=True)
     school_name = models.CharField(max_length=160, blank=True)
     parent_email = models.EmailField()
     photo = models.FileField(upload_to='child_photos/', blank=True)
     password = models.CharField(max_length=300)   # hashed by Django
+    paused_activities = models.JSONField(default=dict, blank=True)
+
+    # --- Deactivation ------------------------------------------------------
+    # A learner can be paused two ways: individually (a parent turns off just
+    # this one child from the learner report) or as part of the parent's own
+    # account being deactivated (every currently-active child is swept along
+    # with it). `deactivated_reason` is what lets reactivation tell those
+    # apart: reactivating the parent only brings back children whose reason
+    # is DEACTIVATED_PARENT_CASCADE. A child the parent paused on purpose
+    # (DEACTIVATED_MANUAL) stays off until reactivated on its own, even after
+    # the parent account comes back.
+    DEACTIVATED_PARENT_CASCADE = 'parent_cascade'
+    DEACTIVATED_MANUAL = 'manual'
+    DEACTIVATED_REASON_CHOICES = [
+        (DEACTIVATED_PARENT_CASCADE, "Parent account deactivated"),
+        (DEACTIVATED_MANUAL, "Deactivated individually"),
+    ]
+    is_active = models.BooleanField(default=True)
+    deactivated_at = models.DateTimeField(null=True, blank=True)
+    deactivated_reason = models.CharField(max_length=20, choices=DEACTIVATED_REASON_CHOICES, blank=True)
+
     created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):
@@ -119,7 +160,7 @@ class Child(models.Model):
             self.save(update_fields=['age'])
 
     def save(self, *args, **kwargs):
-        self.username = capitalize_first(self.username)
+        self.username = capitalize_first(self.username) or None
         self.first_name = title_case(self.first_name)
         self.last_name = title_case(self.last_name)
         self.name = title_case(self.name)
@@ -128,6 +169,103 @@ class Child(models.Model):
             self.age = self.calculate_age()
         super().save(*args, **kwargs)
 
+    def needs_grade_confirmation(self):
+        """True once a new school year has started and nobody has confirmed this
+        child's real-world grade for it yet.
+
+        The app never advances `grade` on its own — completing lessons proves
+        content mastery, not that the school promoted the child. Instead, once a
+        new school year begins, this flags the child so the parent/teacher
+        dashboard can ask a human: 'What grade is <name> actually in now?'
+        """
+        return self.grade_confirmed_year is None or self.grade_confirmed_year < current_school_year()
+
+    def reminder_already_sent_this_year(self):
+        """True if send_grade_reminders already emailed this child's parent for
+        the current school year — keeps the reminder to one email per year."""
+        return self.grade_reminder_sent_year == current_school_year()
+
+    def mark_reminder_sent(self):
+        self.grade_reminder_sent_year = current_school_year()
+        self.save(update_fields=['grade_reminder_sent_year'])
+
+    def suggested_next_grade(self):
+        """Default suggestion shown alongside the confirmation prompt — the parent
+        or teacher can accept it, pick a different grade (e.g. repeated), or leave
+        the child where they are. Never applied automatically."""
+        return min(self.grade + 1, 4)
+
+    def record_grade_confirmation(self, grade, confirmed_by, confirmed_by_name=''):
+        """Apply a human-confirmed grade for the current school year and log it.
+
+        `confirmed_by` should be one of GradeHistory.CONFIRMED_BY_CHOICES values.
+        This is the ONLY place `grade` should change after registration — it is
+        always the result of an explicit confirmation, never an automatic rollover.
+        """
+        year = current_school_year()
+        previous_grade = self.grade
+        self.grade = grade
+        self.grade_confirmed_year = year
+        self.save(update_fields=['grade', 'grade_confirmed_year'])
+        GradeHistory.objects.update_or_create(
+            child=self,
+            year=year,
+            defaults={
+                'grade': grade,
+                'repeated': confirmed_by != GradeHistory.REGISTRATION and grade == previous_grade,
+                'confirmed_by': confirmed_by,
+                'confirmed_by_name': confirmed_by_name,
+            },
+        )
+        return self
+
+    def deactivate(self, reason):
+        """Pause this learner's access. `reason` is one of DEACTIVATED_REASON_CHOICES."""
+        self.is_active = False
+        self.deactivated_at = timezone.now()
+        self.deactivated_reason = reason
+        self.save(update_fields=['is_active', 'deactivated_at', 'deactivated_reason'])
+
+    def reactivate(self):
+        self.is_active = True
+        self.deactivated_at = None
+        self.deactivated_reason = ''
+        self.save(update_fields=['is_active', 'deactivated_at', 'deactivated_reason'])
+
+
+class GradeHistory(models.Model):
+    """Records the human-confirmed grade for a child for one school year.
+
+    One row per child per year — this is the audit trail behind
+    Child.grade_confirmed_year, and lets a parent/teacher see a learner's real
+    grade progression over time (including repeated years).
+    """
+    PARENT = 'parent'
+    TEACHER = 'teacher'
+    REGISTRATION = 'registration'
+    CONFIRMED_BY_CHOICES = [
+        (PARENT, 'Parent'),
+        (TEACHER, 'Teacher'),
+        (REGISTRATION, 'Set at registration'),
+    ]
+
+    child = models.ForeignKey(Child, on_delete=models.CASCADE, related_name='grade_history')
+    year = models.IntegerField()
+    grade = models.IntegerField()
+    repeated = models.BooleanField(default=False)
+    confirmed_by = models.CharField(max_length=20, choices=CONFIRMED_BY_CHOICES)
+    confirmed_by_name = models.CharField(max_length=120, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-year']
+        constraints = [
+            models.UniqueConstraint(fields=['child', 'year'], name='unique_child_grade_year'),
+        ]
+
+    def __str__(self):
+        return f"{self.child.name} — {self.year} — Grade {self.grade}"
+
 
 class TeacherClass(models.Model):
     """Named class/group owned by a teacher and joined through a class code."""
@@ -135,6 +273,9 @@ class TeacherClass(models.Model):
     name = models.CharField(max_length=80)
     grade = models.IntegerField(default=1)
     class_code = models.CharField(max_length=10, unique=True, null=True, blank=True)
+    # Set true when the owning teacher is deactivated, so dashboards/admin can
+    # surface "this class needs a new teacher" instead of silently going quiet.
+    needs_new_teacher = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -666,6 +807,10 @@ class Subscription(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
+    # Free trial window, counted from created_at (the moment the subscription
+    # row was first created, i.e. the moment the trial started).
+    TRIAL_DAYS = 30
+
     def __str__(self):
         owner = self.parent or self.teacher
         return f"{self.get_plan_type_display()} - {owner} ({self.status})"
@@ -675,6 +820,33 @@ class Subscription(models.Model):
         for field in ('district_or_province', 'contact_name', 'funding_source', 'notes', 'payer_name', 'bank_name'):
             setattr(self, field, capitalize_first(getattr(self, field)))
         super().save(*args, **kwargs)
+
+    @property
+    def trial_ends_at(self):
+        """The datetime the 30-day free trial lapses, counted from created_at."""
+        from datetime import timedelta
+        return self.created_at + timedelta(days=self.TRIAL_DAYS)
+
+    @property
+    def is_trial_expired(self):
+        """True once a subscription still sitting in 'trial' status has passed
+        its 30-day window. Subscriptions that have moved to 'active' (paid),
+        'pending' (school awaiting approval), or 'cancelled' are never
+        considered trial-expired here — enterprise/school subscriptions are
+        redeemed via a package code straight into 'active', so this only ever
+        bites individual/family plans that haven't paid.
+        """
+        if self.status != 'trial':
+            return False
+        return timezone.now() >= self.trial_ends_at
+
+    @property
+    def trial_days_left(self):
+        """Whole days left in the trial, floored at 0. None if not on trial."""
+        if self.status != 'trial':
+            return None
+        remaining = self.trial_ends_at - timezone.now()
+        return max(0, remaining.days)
 
 
 class OTPToken(models.Model):
@@ -720,6 +892,56 @@ class PasswordResetToken(models.Model):
 
     def __str__(self):
         return f"PasswordReset for {self.email} ({'used' if self.is_used else 'active'})"
+
+
+class AccountActionOTP(models.Model):
+    """A short-lived, single-purpose OTP for sensitive account actions.
+
+    Belongs to either a parent or a teacher (never both) — see `account`.
+    """
+
+    REACTIVATE_PARENT = 'reactivate_parent'
+    REACTIVATE_TEACHER = 'reactivate_teacher'
+    ACTION_CHOICES = [
+        (REACTIVATE_PARENT, 'Reactivate parent account'),
+        (REACTIVATE_TEACHER, 'Reactivate teacher account'),
+    ]
+    MAX_ATTEMPTS = 5
+
+    parent = models.ForeignKey(
+        Parent,
+        on_delete=models.CASCADE,
+        null=True, blank=True,
+        related_name='account_action_otps',
+    )
+    teacher = models.ForeignKey(
+        Teacher,
+        on_delete=models.CASCADE,
+        null=True, blank=True,
+        related_name='account_action_otps',
+    )
+    action = models.CharField(max_length=32, choices=ACTION_CHOICES)
+    code_hash = models.CharField(max_length=300)
+    created_at = models.DateTimeField(default=timezone.now)
+    attempts = models.PositiveSmallIntegerField(default=0)
+    is_used = models.BooleanField(default=False)
+
+    class Meta:
+        ordering = ['-created_at']
+
+    def is_expired(self):
+        return timezone.now() > self.created_at + timedelta(minutes=10)
+
+    @property
+    def can_attempt(self):
+        return not self.is_used and not self.is_expired() and self.attempts < self.MAX_ATTEMPTS
+
+    @property
+    def account(self):
+        return self.parent or self.teacher
+
+    def __str__(self):
+        return f"{self.get_action_display()} for {self.account.email if self.account else 'unknown'}"
 
 
 # ─────────────────────────────────────────────

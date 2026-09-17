@@ -8,6 +8,7 @@ import hashlib
 import json
 import random
 import re
+import secrets
 import threading
 import time
 import urllib.parse
@@ -20,20 +21,24 @@ from django.conf import settings
 from django.core.mail import send_mail
 from django.contrib import messages
 from django.contrib.auth.hashers import check_password, make_password
+from django.db import transaction
 from django.db.models import Q
 from django.http import FileResponse, Http404, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
 from django.utils.dateparse import parse_date
 from django.views.decorators.http import require_http_methods
+from django.views.decorators.csrf import ensure_csrf_cookie
 
 from api.models import (
+    AccountActionOTP,
     AIStoryJob,
     CauseEffectPair,
     Child,
     ComprehensionQuestion,
     FeelingsQuestion,
     Grade4ActivityProgress,
+    GradeHistory,
     InferenceQuestion,
     Lesson,
     Message,
@@ -58,8 +63,10 @@ from api.models import (
     Subscription,
     PackageCode,
     capitalize_first,
+    current_school_year,
     title_case,
 )
+from api.account_access import child_access_status, subscription_allows_children
 from api.reporting import aggregate_rows, rows_for_record, rows_from_scores
 
 
@@ -80,6 +87,79 @@ def set_account_session(request, role, account, child=None):
         request.session['child_grade'] = child.grade
 
 
+def account_trial_expired(account):
+    """True if this Parent/Teacher's own subscription has run past its free trial."""
+    subscription = getattr(account, 'subscription', None)
+    return bool(subscription and subscription.is_trial_expired)
+
+
+def learner_trial_expired(child):
+    """A learner's access rides on their parent's subscription: if the parent's
+    free trial has lapsed, the child is blocked too. School-linked learners
+    (no parent account, added via a teacher/class code) aren't gated this way —
+    their access follows the school's package-code subscription instead.
+    """
+    if not child.parent_id:
+        return False
+    return account_trial_expired(child.parent)
+
+
+def payment_due_response(request, context=None):
+    """Renders the 'payment due' screen in place of blocked content."""
+    return render(request, 'payment_due.html', context or {})
+
+
+REACTIVATION_CHALLENGE_SECONDS = 15 * 60
+REACTIVATION_RESEND_SECONDS = 60
+
+
+def begin_account_reactivation(request, role, account):
+    request.session.flush()
+    request.session['pending_reactivation_role'] = role
+    request.session['pending_reactivation_account_id'] = account.id
+    request.session['pending_reactivation_verified_at'] = int(timezone.now().timestamp())
+
+
+def clear_account_reactivation(request):
+    request.session.pop('pending_reactivation_role', None)
+    request.session.pop('pending_reactivation_account_id', None)
+    request.session.pop('pending_reactivation_verified_at', None)
+    request.session.pop('reactivation_token_id', None)
+    request.session.modified = True
+
+
+def pending_reactivation_account(request):
+    """Return (role, account) for a reactivation in progress, or (None, None).
+
+    Shared by parent and teacher self-reactivation — both go through the same
+    'confirm the OTP we emailed you' screen.
+    """
+    role = request.session.get('pending_reactivation_role')
+    account_id = request.session.get('pending_reactivation_account_id')
+    verified_at = request.session.get('pending_reactivation_verified_at')
+    try:
+        challenge_age = timezone.now().timestamp() - int(verified_at)
+    except (TypeError, ValueError):
+        challenge_age = REACTIVATION_CHALLENGE_SECONDS + 1
+    if not role or not account_id or challenge_age > REACTIVATION_CHALLENGE_SECONDS:
+        clear_account_reactivation(request)
+        return None, None
+    model = {'parent': Parent, 'teacher': Teacher}.get(role)
+    if not model:
+        clear_account_reactivation(request)
+        return None, None
+    account = model.objects.filter(pk=account_id, is_active=False).first()
+    if not account:
+        clear_account_reactivation(request)
+        return None, None
+    return role, account
+
+
+def masked_email(email):
+    local, domain = email.split('@', 1)
+    return local[:2] + '*' * max(3, len(local) - 2) + '@' + domain[:2] + '*****'
+
+
 def learner_required(request):
     child_id = request.session.get('child_id')
     if not child_id:
@@ -89,7 +169,82 @@ def learner_required(request):
     # Self-heals the stored age against date_of_birth on every learner page load,
     # so it rolls over on the child's birthday without needing a scheduled task.
     child.refresh_age_if_stale()
+    if learner_trial_expired(child):
+        return child, payment_due_response(request, {'role': 'learner', 'child': child})
     return child, None
+
+
+def activity_choices_for(lesson):
+    """Return the learner-facing activity menu for a lesson."""
+    base = f'/lessons/{lesson.id}'
+    choices = [{'label': 'Read the story', 'url': f'{base}/story'}]
+    if lesson.grade == 3:
+        choices.append({
+            'label': 'Grade 3 activities',
+            'url': f'{base}/activities',
+        })
+    elif lesson.grade == 4:
+        choices.extend([
+            {'label': 'Comprehension', 'url': f'{base}/questions'},
+            {'label': 'Vocabulary', 'url': f'{base}/vocabulary'},
+            {'label': 'Sequencing', 'url': f'{base}/sequencing'},
+            {'label': 'Inference', 'url': f'{base}/inference'},
+            {'label': 'Prediction', 'url': f'{base}/prediction'},
+            {'label': 'Feelings', 'url': f'{base}/feelings'},
+            {'label': 'Cause and effect', 'url': f'{base}/cause-effect'},
+            {'label': 'Main lesson', 'url': f'{base}/theme'},
+            {'label': 'Written response', 'url': f'{base}/written-response'},
+        ])
+    else:
+        choices.extend([
+            {'label': 'Comprehension', 'url': f'{base}/questions'},
+            {'label': 'Visual matching', 'url': f'{base}/visual-activity'},
+            {'label': 'Pronunciation', 'url': f'{base}/pronunciation'},
+            {'label': 'Spelling', 'url': f'{base}/spelling'},
+        ])
+    return choices
+
+
+def activity_resume_url(request, child, lesson):
+    """Return the best saved destination when a learner reopens a story."""
+    answers = request.session.get(f'lesson_{lesson.id}_reading_activity_answers', {})
+    answered_ids = {
+        str(key).removeprefix('activity-')
+        for key in answers
+        if str(key).startswith('activity-')
+    }
+    activities = list(lesson.reading_activities.order_by('order', 'id'))
+    for index, activity in enumerate(activities):
+        if str(activity.id) not in answered_ids:
+            return f'/lessons/{lesson.id}/questions?activity_index={index}'
+
+    paused_url = (child.paused_activities or {}).get(str(lesson.id))
+    if paused_url:
+        return paused_url
+    return None
+
+
+def activity_score_summary(request, lesson):
+    """Summarise the in-progress attempt stored in the learner session."""
+    prefix = f'lesson_{lesson.id}_'
+    if lesson.grade == 4:
+        fields = [
+            ('comprehension_score', 'comprehension_total', lesson.questions.count()),
+            ('seq_score', 'seq_total', 1),
+            ('inference_score', 'inference_total', lesson.inference_questions.count()),
+            ('feelings_score', 'feelings_total', lesson.feelings_questions.count()),
+            ('ce_score', 'ce_total', lesson.cause_effect_pairs.count()),
+            ('theme_score', 'theme_total', 1),
+        ]
+    else:
+        fields = [
+            ('comprehension_score', 'comprehension_total', lesson.questions.count()),
+            ('visual_score', 'visual_total', lesson.visual_items.count()),
+            ('spelling_score', 'spelling_total', lesson.spelling_activities.count()),
+        ]
+    score = sum(int(request.session.get(prefix + score_key, 0)) for score_key, _, _ in fields)
+    possible = sum(int(request.session.get(prefix + total_key, default)) for _, total_key, default in fields)
+    return score, possible
 
 
 def parse_grades(grades_taught):
@@ -110,7 +265,7 @@ def unique_code_for(model):
 
 def normalize_child_username(raw_value):
     username = re.sub(r'[^A-Za-z]', '', (raw_value or '').strip())
-    return username[:40]
+    return capitalize_first(username[:40])
 
 
 def unique_child_username(raw_value):
@@ -174,6 +329,22 @@ def link_child_to_class(child, raw_code):
         if not child.school_name:
             child.school_name = teacher.school_name
     return bool(teacher)
+
+
+def mark_grade_confirmed_at_registration(child):
+    """Registering a child counts as confirming their grade for this school year.
+
+    Every year after this one, the parent/teacher dashboard will prompt for an
+    explicit confirmation instead of assuming the child moved up a grade — see
+    Child.needs_grade_confirmation().
+    """
+    child.grade_confirmed_year = current_school_year()
+    child.save(update_fields=['grade_confirmed_year'])
+    GradeHistory.objects.update_or_create(
+        child=child,
+        year=current_school_year(),
+        defaults={'grade': child.grade, 'confirmed_by': GradeHistory.REGISTRATION},
+    )
 
 
 def teacher_can_view_child(teacher, child):
@@ -283,6 +454,7 @@ def register_learner(request):
         teacher=teacher,
         teacher_class=teacher_class,
     )
+    mark_grade_confirmed_at_registration(child)
     set_account_session(request, 'learner', child, child)
     return redirect(f'/grade/{child.grade}')
 
@@ -314,6 +486,8 @@ def register_parent(request):
         code=code,
         pending_data=json.dumps(pending_data),
     )
+    if settings.DEBUG:
+        print(f'\n[SGILA OTP] Parent verification code for {email}: {code}\n', flush=True)
 
     # Send OTP email
     subject = "Your SGILA verification code"
@@ -364,6 +538,8 @@ def register_teacher(request):
         code=code,
         pending_data=json.dumps(pending_data),
     )
+    if settings.DEBUG:
+        print(f'\n[SGILA OTP] Teacher verification code for {email}: {code}\n', flush=True)
 
     subject = "Your SGILA verification code"
     message = (
@@ -405,8 +581,18 @@ def login_page(request):
 
         if account and password_matches(password, account.password):
             if role == 'learner':
+                allowed, reason = child_access_status(account)
+                if not allowed:
+                    request.session.flush()
+                    return redirect(f'/account-access?reason={reason}')
                 set_account_session(request, role, account, account)
                 return redirect(f'/grade/{account.grade}')
+            if role == 'parent' and not account.is_active:
+                begin_account_reactivation(request, 'parent', account)
+                return redirect('/account/reactivate')
+            if role == 'teacher' and not account.is_active:
+                begin_account_reactivation(request, 'teacher', account)
+                return redirect('/account/reactivate')
             set_account_session(request, role, account)
             return redirect(f'/{role}/dashboard')
 
@@ -421,6 +607,232 @@ def login_page(request):
 def logout_view(request):
     request.session.flush()
     return redirect('/')
+
+
+@require_http_methods(['GET'])
+def account_access_page(request):
+    reason = request.GET.get('reason', '')
+    content = {
+        'parent_deactivated': {
+            'title': 'Your SGILA access is paused',
+            'message': 'This learner profile is linked to a deactivated parent account. Ask your parent to sign in and reactivate their account.',
+        },
+        'teacher_deactivated': {
+            'title': 'Your SGILA access is paused',
+            'message': 'This account has been deactivated. Sign in again to start reactivating it.',
+        },
+        'learner_deactivated': {
+            'title': 'This learner profile is paused',
+            'message': 'A parent has paused this learner profile. Ask your parent to reactivate it from their dashboard.',
+        },
+        'subscription_inactive': {
+            'title': 'Your learning plan is paused',
+            'message': 'This learner profile needs an active SGILA plan. Ask your parent to sign in and update the family plan.',
+        },
+        'learner_not_found': {
+            'title': 'We could not find this learner profile',
+            'message': 'Ask your parent or teacher to check the learner account details.',
+        },
+    }.get(reason, {
+        'title': 'SGILA access is paused',
+        'message': 'Ask your parent to sign in and check the account.',
+    })
+    return render(request, 'account_access.html', content)
+
+
+@require_http_methods(['POST'])
+def parent_deactivate_account(request):
+    if request.session.get('account_role') != 'parent':
+        return redirect('/login?role=parent')
+
+    parent = get_object_or_404(Parent, id=request.session.get('account_id'))
+    password = request.POST.get('password', '')
+    if not password_matches(password, parent.password):
+        messages.error(request, 'Your password was incorrect. The account was not deactivated.')
+        return redirect('/parent/dashboard')
+
+    cancel_subscription = request.POST.get('cancel_subscription') == 'on'
+    with transaction.atomic():
+        parent = Parent.objects.select_for_update().get(pk=parent.pk)
+        if parent.is_active:
+            parent.is_active = False
+            parent.deactivated_at = timezone.now()
+            parent.auth_version += 1
+            parent.save(update_fields=['is_active', 'deactivated_at', 'auth_version'])
+        # Sweep every currently-active child along with the parent. Children
+        # already paused individually (deactivated_reason='manual') are left
+        # untouched, and they stay off even after the parent reactivates.
+        Child.objects.filter(
+            Q(parent=parent) | Q(parent_email__iexact=parent.email),
+            is_active=True,
+        ).update(
+            is_active=False,
+            deactivated_at=timezone.now(),
+            deactivated_reason=Child.DEACTIVATED_PARENT_CASCADE,
+        )
+        AccountActionOTP.objects.filter(parent=parent, is_used=False).update(is_used=True)
+        if cancel_subscription:
+            Subscription.objects.filter(parent=parent).update(
+                status='cancelled',
+                updated_at=timezone.now(),
+            )
+
+    request.session.flush()
+    messages.success(request, 'Your SGILA account is deactivated. Your records have been retained for possible reactivation.')
+    return redirect('/login?role=parent')
+
+
+@require_http_methods(['POST'])
+def teacher_deactivate_account(request):
+    if request.session.get('account_role') != 'teacher':
+        return redirect('/login?role=teacher')
+
+    teacher = get_object_or_404(Teacher, id=request.session.get('account_id'))
+    password = request.POST.get('password', '')
+    if not password_matches(password, teacher.password):
+        messages.error(request, 'Your password was incorrect. The account was not deactivated.')
+        return redirect('/teacher/dashboard')
+
+    cancel_subscription = request.POST.get('cancel_subscription') == 'on'
+    with transaction.atomic():
+        teacher = Teacher.objects.select_for_update().get(pk=teacher.pk)
+        if teacher.is_active:
+            teacher.is_active = False
+            teacher.deactivated_at = timezone.now()
+            teacher.auth_version += 1
+            teacher.save(update_fields=['is_active', 'deactivated_at', 'auth_version'])
+        AccountActionOTP.objects.filter(teacher=teacher, is_used=False).update(is_used=True)
+        # The teacher's classes stay put (learners keep their history), but they
+        # get flagged so the school knows those classes need a new teacher.
+        TeacherClass.objects.filter(teacher=teacher).update(needs_new_teacher=True)
+        if cancel_subscription:
+            Subscription.objects.filter(teacher=teacher).update(
+                status='cancelled',
+                updated_at=timezone.now(),
+            )
+
+    request.session.flush()
+    messages.success(request, 'Your SGILA account is deactivated. Your records have been retained for possible reactivation.')
+    return redirect('/login?role=teacher')
+
+
+@require_http_methods(['GET', 'POST'])
+def reactivate_account(request):
+    role, account = pending_reactivation_account(request)
+    if not account:
+        messages.error(request, 'Sign in with the deactivated account to start reactivation.')
+        return redirect('/login')
+
+    otp_field = {'parent': 'parent', 'teacher': 'teacher'}[role]
+    reactivate_action = {
+        'parent': AccountActionOTP.REACTIVATE_PARENT,
+        'teacher': AccountActionOTP.REACTIVATE_TEACHER,
+    }[role]
+
+    action = request.POST.get('action', '')
+    if request.method == 'POST' and action in {'send', 'resend'}:
+        latest = AccountActionOTP.objects.filter(
+            **{otp_field: account},
+            action=reactivate_action,
+        ).first()
+        if latest and (timezone.now() - latest.created_at).total_seconds() < REACTIVATION_RESEND_SECONDS:
+            if latest.can_attempt:
+                request.session['reactivation_token_id'] = latest.id
+                redirect_url = '/account/reactivate?sent=1'
+            else:
+                request.session.pop('reactivation_token_id', None)
+                redirect_url = '/account/reactivate'
+            messages.info(request, 'A code was sent recently. Please wait one minute before requesting another.')
+            return redirect(redirect_url)
+
+        AccountActionOTP.objects.filter(
+            **{otp_field: account},
+            action=reactivate_action,
+            is_used=False,
+        ).update(is_used=True)
+        code = f'{secrets.randbelow(900000) + 100000:06d}'
+        token = AccountActionOTP.objects.create(
+            **{otp_field: account},
+            action=reactivate_action,
+            code_hash=make_password(code),
+        )
+        try:
+            send_mail(
+                'Reactivate your SGILA account',
+                (
+                    f'Hi {account.full_name},\n\n'
+                    f'Your SGILA reactivation code is: {code}\n\n'
+                    'This code expires in 10 minutes. Do not share it with anyone.\n\n'
+                    'If you did not request this, you can ignore this email.\n\n'
+                    '- The SGILA Team'
+                ),
+                settings.DEFAULT_FROM_EMAIL,
+                [account.email],
+                fail_silently=False,
+            )
+        except Exception:
+            token.delete()
+            messages.error(request, 'We could not send the email right now. Your account is still deactivated; please try again.')
+            return redirect('/account/reactivate')
+
+        request.session['reactivation_token_id'] = token.id
+        messages.success(request, 'A reactivation code has been sent to your email.')
+        return redirect('/account/reactivate?sent=1')
+
+    if request.method == 'POST' and action == 'verify':
+        token_id = request.session.get('reactivation_token_id')
+        code = request.POST.get('code', '').strip()
+        with transaction.atomic():
+            token = AccountActionOTP.objects.select_for_update().filter(
+                pk=token_id,
+                **{otp_field: account},
+                action=reactivate_action,
+            ).first()
+            if not token or not token.can_attempt:
+                messages.error(request, 'That code is expired or no longer valid. Request a new code.')
+                return redirect('/account/reactivate')
+            if not check_password(code, token.code_hash):
+                token.attempts += 1
+                if token.attempts >= AccountActionOTP.MAX_ATTEMPTS:
+                    token.is_used = True
+                token.save(update_fields=['attempts', 'is_used'])
+                remaining = max(0, AccountActionOTP.MAX_ATTEMPTS - token.attempts)
+                messages.error(request, f'Incorrect code. {remaining} attempt(s) remaining.')
+                return redirect('/account/reactivate?sent=1')
+
+            token.is_used = True
+            token.save(update_fields=['is_used'])
+            model = {'parent': Parent, 'teacher': Teacher}[role]
+            account = model.objects.select_for_update().get(pk=account.pk)
+            account.is_active = True
+            account.deactivated_at = None
+            account.auth_version += 1
+            account.save(update_fields=['is_active', 'deactivated_at', 'auth_version'])
+            if role == 'teacher':
+                TeacherClass.objects.filter(teacher=account).update(needs_new_teacher=False)
+            AccountActionOTP.objects.filter(**{otp_field: account}, is_used=False).update(is_used=True)
+
+        clear_account_reactivation(request)
+        set_account_session(request, role, account)
+        if role == 'teacher':
+            messages.success(request, 'Your SGILA account is active again.')
+            return redirect('/teacher/dashboard')
+        if subscription_allows_children(account):
+            messages.success(request, 'Your SGILA account and learner access are active again.')
+            return redirect('/parent/dashboard')
+        messages.warning(request, 'Your account is active again. Choose or reactivate a plan to restore learner access.')
+        return redirect('/subscription')
+
+    token_id = request.session.get('reactivation_token_id')
+    token = AccountActionOTP.objects.filter(
+        pk=token_id,
+        **{otp_field: account},
+        is_used=False,
+    ).first()
+    return render(request, 'reactivate_account.html', {
+        'masked_email': masked_email(account.email),
+        'otp_sent': bool(token and token.can_attempt),
+    })
 
 
 @require_http_methods(["GET", "POST"])
@@ -453,6 +865,8 @@ def verify_otp_page(request):
                 code=new_code,
                 pending_data=old_otp.pending_data,
             )
+            if settings.DEBUG:
+                print(f'\n[SGILA OTP] Resent verification code for {old_otp.email}: {new_code}\n', flush=True)
             subject = "Your SGILA verification code"
             message = (
                 f"Hi {full_name},\n\n"
@@ -818,7 +1232,7 @@ def parent_add_child(request):
                     messages.error(request, 'That teacher class code was not found.')
                     return render(request, 'add_child.html', {'parent': parent})
 
-            Child.objects.create(
+            child = Child.objects.create(
                 parent=parent,
                 username=username,
                 first_name=first_name,
@@ -834,29 +1248,11 @@ def parent_add_child(request):
                 teacher=teacher,
                 teacher_class=teacher_class,
             )
+            mark_grade_confirmed_at_registration(child)
             messages.success(request, 'Child profile added.')
             return redirect('/parent/dashboard')
 
     return render(request, 'add_child.html', {'parent': parent})
-
-
-@require_http_methods(['POST'])
-def parent_delete_child(request, child_id):
-    if request.session.get('account_role') != 'parent':
-        return redirect('/login?role=parent')
-    parent = get_object_or_404(Parent, id=request.session['account_id'])
-    child = Child.objects.filter(
-        id=child_id,
-    ).filter(
-        Q(parent=parent) | Q(parent_email__iexact=parent.email)
-    ).first()
-    if not child:
-        messages.error(request, 'Child profile not found or access denied.')
-        return redirect('/parent/dashboard')
-
-    child.delete()
-    messages.success(request, 'Child profile deleted permanently.')
-    return redirect('/parent/dashboard')
 
 
 # ───────────────────────── AI story generation ─────────────────────────
@@ -1255,10 +1651,60 @@ def ai_story_job_status(request, job_id):
     return JsonResponse(data)
 
 
+def grade3_activities_page(request, lesson_id):
+    child, response = learner_required(request)
+    if response:
+        return response
+    lesson = get_object_or_404(Lesson, id=lesson_id, grade=3)
+    return render(request, 'grade3_activities.html', {
+        'lesson': lesson,
+        'child': child,
+    })
+
+
+@require_http_methods(['POST'])
+def complete_grade3_activities(request, lesson_id):
+    child, response = learner_required(request)
+    if response:
+        return response
+    lesson = get_object_or_404(Lesson, id=lesson_id, grade=3)
+    try:
+        scores = json.loads(request.body or '{}')
+        total_score = int(scores.get('total_score', 0))
+        total_possible = int(scores.get('total_possible', 24))
+    except (TypeError, ValueError, json.JSONDecodeError):
+        return JsonResponse({'error': 'Invalid activity score.'}, status=400)
+    Progress.objects.update_or_create(
+        child=child,
+        lesson=lesson,
+        defaults={
+            'comprehension_score': int(scores.get('comprehension_score', 0)),
+            'visual_score': int(scores.get('visual_score', 0)),
+            'spelling_score': int(scores.get('spelling_score', 0)),
+            'total_score': total_score,
+            'total_possible': total_possible,
+            'stars_earned': (
+                3 if total_score / max(total_possible, 1) >= .9
+                else 2 if total_score / max(total_possible, 1) >= .7
+                else 1
+            ),
+            'assessment_scores': {
+                'grade3_activities': {
+                    'score': total_score,
+                    'total': total_possible,
+                },
+            },
+        },
+    )
+    return JsonResponse({'completed': True})
+
+
 def grade_home(request, grade):
     child, response = learner_required(request)
     if response:
         return response
+    if child.grade != grade:
+        return redirect_after_forbidden(request)
 
     if request.method == 'POST':
         class_code = request.POST.get('class_code', '').strip()
@@ -1300,20 +1746,27 @@ def grade_home(request, grade):
     lesson_data = []
     for lesson in lessons:
         record = progress_by_lesson.get(lesson.id)
-        grade3_completed = bool(
-            record
-            and lesson.grade == 3
-            and isinstance(record.assessment_scores, dict)
-            and record.assessment_scores.get('grade3_activities', {}).get('total') == 24
+        group_sizes = {}
+        for group_number in lesson.reading_activities.values_list('group_number', flat=True):
+            if group_number:
+                group_sizes[group_number] = group_sizes.get(group_number, 0) + 1
+        questions_per_activity = (
+            next(iter(group_sizes.values()))
+            if group_sizes and len(set(group_sizes.values())) == 1
+            else None
         )
         lesson_data.append({
             'id': lesson.id,
             'title': lesson.title,
             'grade': lesson.grade,
             'thumbnail_image': lesson.thumbnail_image,
-            'completed': grade3_completed if lesson.grade == 3 else bool(record),
+            'completed': bool(record),
             'stars': range(record.stars_earned) if record else range(0),
             'is_current_ai_story': lesson.is_ai_generated and lesson.id == getattr(latest_ai_lesson, 'id', None),
+            'activities': activity_choices_for(lesson),
+            'resume_url': (child.paused_activities or {}).get(str(lesson.id)),
+            'activity_count': len(group_sizes),
+            'questions_per_activity': questions_per_activity,
         })
 
     required_lessons = curated_lessons + public_ai_stories
@@ -1342,21 +1795,53 @@ def grade_home(request, grade):
     })
 
 
+@ensure_csrf_cookie
+@require_http_methods(["GET", "POST"])
+def activity_pause(request, lesson_id):
+    """Provide the running score and save a safe resume destination for a learner."""
+    child, response = learner_required(request)
+    if response:
+        return response
+    lesson = get_object_or_404(Lesson, id=lesson_id, grade=child.grade)
+
+    if request.method == 'POST':
+        try:
+            data = json.loads(request.body or '{}')
+        except json.JSONDecodeError:
+            data = {}
+        resume_url = data.get('resume_url', '')
+        parsed_resume_url = urllib.parse.urlsplit(resume_url)
+        allowed_urls = {item['url'] for item in activity_choices_for(lesson)}
+        if parsed_resume_url.path not in allowed_urls or parsed_resume_url.fragment:
+            return JsonResponse({'error': 'Invalid activity to resume.'}, status=400)
+        if parsed_resume_url.path.endswith('/questions'):
+            query = urllib.parse.parse_qs(parsed_resume_url.query)
+            indexes = query.get('activity_index', [])
+            activity_index = int(indexes[0]) if len(indexes) == 1 and indexes[0].isdigit() else -1
+            activity_total = lesson.reading_activities.count() or lesson.questions.count()
+            if activity_index < 0 or activity_index >= activity_total:
+                return JsonResponse({'error': 'Invalid activity to resume.'}, status=400)
+            resume_url = f'{parsed_resume_url.path}?activity_index={activity_index}'
+        elif parsed_resume_url.query:
+            return JsonResponse({'error': 'Invalid activity to resume.'}, status=400)
+        paused_activities = dict(child.paused_activities or {})
+        paused_activities[str(lesson.id)] = resume_url
+        child.paused_activities = paused_activities
+        child.save(update_fields=['paused_activities'])
+        request.session[f'lesson_{lesson.id}_resume_url'] = resume_url
+        request.session.modified = True
+
+    score, possible = activity_score_summary(request, lesson)
+    return JsonResponse({'score': score, 'total': possible})
+
+
 def story_page(request, lesson_id):
     child, response = learner_required(request)
     if response:
         return response
-    lesson = get_object_or_404(Lesson, id=lesson_id)
+    lesson = get_object_or_404(Lesson, id=lesson_id, grade=child.grade)
     if lesson.is_ai_generated and lesson.generated_for_id and lesson.generated_for_id != child.id:
         raise Http404('This generated story belongs to another learner.')
-    if lesson.grade == 3:
-        activity_choices = [{
-            'label': 'Post-reading activities',
-            'detail': 'Pictures, facts, words, and spelling',
-            'url': f'/lessons/{lesson_id}/activities',
-        }]
-    else:
-        activity_choices = []
     pages = [{
         'page_number': p.page_number,
         'text': p.text,
@@ -1364,84 +1849,26 @@ def story_page(request, lesson_id):
         'audio_url': p.audio_url,
         'highlighted_words': p.get_highlighted_words(),
     } for p in lesson.pages.all()]
-    if lesson.grade != 3 and (lesson.reading_activities.exists() or lesson.questions.exists()):
-        activity_choices.append({
-            'label': 'Reading questions',
-            'detail': 'Answer questions about the story',
-            'url': f'/lessons/{lesson_id}/questions',
-        })
-    if lesson.grade != 3 and lesson.pronunciation_words.exists():
-        activity_choices.append({
-            'label': 'Pronunciation',
-            'detail': 'Listen and say the story words',
-            'url': f'/lessons/{lesson_id}/pronunciation',
-        })
-    if lesson.grade != 3 and lesson.spelling_activities.exists():
-        activity_choices.append({
-            'label': 'Spelling',
-            'detail': 'Build the story words',
-            'url': f'/lessons/{lesson_id}/spelling',
-        })
-    if lesson.grade != 3 and lesson.visual_items.exists():
-        activity_choices.append({
-            'label': 'Picture matching',
-            'detail': 'Match pictures to story words',
-            'url': f'/lessons/{lesson_id}/visual-activity',
-        })
-    first_activity_url = activity_choices[0]['url'] if activity_choices else f'/grade/{lesson.grade}'
+    if lesson.grade == 3:
+        first_activity_url = f'/lessons/{lesson_id}/activities'
+    else:
+        first_activity_url = f'/lessons/{lesson_id}/questions'
     return render(request, 'story.html', {
         'lesson': lesson,
         'pages': pages,
         'child': child,
+        'activity_resume_url': activity_resume_url(request, child, lesson),
         'first_activity_url': first_activity_url,
-        'activity_choices': activity_choices,
     })
-
-
-def grade3_activities_page(request, lesson_id):
-    child, response = learner_required(request)
-    if response:
-        return response
-    lesson = get_object_or_404(Lesson, id=lesson_id, grade=3)
-    return render(request, 'grade3_activities.html', {
-        'lesson': lesson,
-        'child': child,
-    })
-
-
-@require_http_methods(['POST'])
-def complete_grade3_activities(request, lesson_id):
-    child, response = learner_required(request)
-    if response:
-        return response
-    lesson = get_object_or_404(Lesson, id=lesson_id, grade=3)
-    try:
-        scores = json.loads(request.body or '{}')
-        total_score = int(scores.get('total_score', 0))
-        total_possible = int(scores.get('total_possible', 24))
-    except (TypeError, ValueError, json.JSONDecodeError):
-        return JsonResponse({'error': 'Invalid activity score.'}, status=400)
-    Progress.objects.update_or_create(
-        child=child,
-        lesson=lesson,
-        defaults={
-            'comprehension_score': int(scores.get('comprehension_score', 0)),
-            'visual_score': int(scores.get('visual_score', 0)),
-            'spelling_score': int(scores.get('spelling_score', 0)),
-            'total_score': total_score,
-            'total_possible': total_possible,
-            'stars_earned': 3 if total_score / max(total_possible, 1) >= .9 else 2 if total_score / max(total_possible, 1) >= .7 else 1,
-            'assessment_scores': {'grade3_activities': {'score': total_score, 'total': total_possible}},
-        },
-    )
-    return JsonResponse({'completed': True})
 
 
 def questions_page(request, lesson_id):
     child, response = learner_required(request)
     if response:
         return response
-    lesson = get_object_or_404(Lesson, id=lesson_id)
+    lesson = get_object_or_404(Lesson, id=lesson_id, grade=child.grade)
+    if lesson.grade == 3:
+        return redirect(f'/lessons/{lesson_id}/activities')
     total_questions = lesson.reading_activities.count() or ComprehensionQuestion.objects.filter(lesson=lesson).count()
     if lesson.reading_activities.filter(skill='spelling').exists():
         next_activity_url = f'/lessons/{lesson_id}/results'
@@ -1460,7 +1887,6 @@ def questions_page(request, lesson_id):
         'child_id': child.id,
         'total_questions': total_questions,
         'next_activity_url': next_activity_url,
-        'previous_activity_url': f'/lessons/{lesson_id}/story',
     })
 
 
@@ -1468,7 +1894,7 @@ def visual_activity_page(request, lesson_id):
     child, response = learner_required(request)
     if response:
         return response
-    lesson = get_object_or_404(Lesson, id=lesson_id)
+    lesson = get_object_or_404(Lesson, id=lesson_id, grade=child.grade)
     if lesson.grade == 3 and not lesson.visual_items.exists():
         if lesson.pronunciation_words.exists():
             return redirect(f'/lessons/{lesson_id}/pronunciation')
@@ -1479,13 +1905,6 @@ def visual_activity_page(request, lesson_id):
         'lesson': lesson,
         'child': child,
         'items': lesson.visual_items.all(),
-        'next_activity_url': (
-            f'/lessons/{lesson_id}/pronunciation'
-            if lesson.pronunciation_words.exists()
-            else f'/lessons/{lesson_id}/spelling'
-            if lesson.spelling_activities.exists()
-            else f'/lessons/{lesson_id}/results'
-        ),
     })
 
 
@@ -1493,15 +1912,10 @@ def pronunciation_page(request, lesson_id):
     child, response = learner_required(request)
     if response:
         return response
-    lesson = get_object_or_404(Lesson, id=lesson_id)
+    lesson = get_object_or_404(Lesson, id=lesson_id, grade=child.grade)
     return render(request, 'pronunciation.html', {
         'lesson': lesson,
         'words': lesson.pronunciation_words.all(),
-        'previous_activity_url': (
-            f'/lessons/{lesson_id}/visual-activity'
-            if lesson.visual_items.exists() else f'/lessons/{lesson_id}/questions'
-        ),
-        'next_activity_url': f'/lessons/{lesson_id}/spelling' if lesson.spelling_activities.exists() else f'/lessons/{lesson_id}/results',
     })
 
 
@@ -1548,10 +1962,21 @@ def spelling_page(request, lesson_id):
     child, response = learner_required(request)
     if response:
         return response
-    lesson = get_object_or_404(Lesson, id=lesson_id)
-    if lesson.grade != 3:
-        raise Http404('Listen and spell is available for Grade 3 stories only.')
-    return redirect(f'/lessons/{lesson_id}/activities')
+    lesson = get_object_or_404(Lesson, id=lesson_id, grade=child.grade)
+    activities = list(lesson.spelling_activities.all())
+
+    if request.method == 'POST':
+        spelling_score = 0
+        for activity in activities:
+            answer = request.POST.get(f'activity_{activity.id}', '').strip()
+            if spelling_answer_is_correct(activity, answer):
+                spelling_score += 1
+
+        request.session[f'lesson_{lesson_id}_spelling_score'] = spelling_score
+        request.session[f'lesson_{lesson_id}_spelling_total'] = len(activities)
+        return redirect(f'/lessons/{lesson_id}/results')
+
+    return render(request, 'spelling.html', {'lesson': lesson, 'activities': activities, 'child': child})
 
 
 def add_assessment_score(scores, key, score, total):
@@ -1601,15 +2026,15 @@ def session_assessment_scores(request, lesson):
     )
 
     legacy_scores = [
-        ('sequencing', 'seq_score', 'seq_total'),
-        ('inference', 'inference_score', 'inference_total'),
-        ('emotional_literacy', 'feelings_score', 'feelings_total'),
-        ('cause_effect', 'ce_score', 'ce_total'),
-        ('summarising', 'theme_score', 'theme_total'),
-        ('prediction', 'prediction_score', 'prediction_total'),
+        ('sequencing', 'seq_score', 'seq_total', lesson.sequencing_activities.exists()),
+        ('inference', 'inference_score', 'inference_total', lesson.inference_questions.exists()),
+        ('emotional_literacy', 'feelings_score', 'feelings_total', lesson.feelings_questions.exists()),
+        ('cause_effect', 'ce_score', 'ce_total', lesson.cause_effect_pairs.exists()),
+        ('summarising', 'theme_score', 'theme_total', lesson.theme_questions.exists()),
+        ('prediction', 'prediction_score', 'prediction_total', lesson.prediction_questions.exists()),
     ]
-    for key, score_suffix, total_suffix in legacy_scores:
-        if f'{prefix}_{total_suffix}' in request.session:
+    for key, score_suffix, total_suffix, has_activity in legacy_scores:
+        if has_activity and f'{prefix}_{total_suffix}' in request.session:
             add_assessment_score(
                 scores,
                 key,
@@ -1623,8 +2048,15 @@ def results_page(request, lesson_id):
     child, response = learner_required(request)
     if response:
         return response
-    lesson = get_object_or_404(Lesson, id=lesson_id)
+    lesson = get_object_or_404(Lesson, id=lesson_id, grade=child.grade)
     prefix = f'lesson_{lesson_id}'
+    # A completed lesson no longer needs its "continue later" marker.
+    paused_activities = dict(child.paused_activities or {})
+    paused_activities.pop(str(lesson_id), None)
+    child.paused_activities = paused_activities
+    child.save(update_fields=['paused_activities'])
+    request.session.pop(f'{prefix}_resume_url', None)
+
     fresh_suffixes = (
         'reading_skill_scores', 'comprehension_score', 'comprehension_total',
         'visual_score', 'visual_total', 'spelling_score', 'spelling_total',
@@ -1668,12 +2100,14 @@ def results_page(request, lesson_id):
         if not record:
             messages.error(request, 'Complete the lesson before viewing results.')
             return redirect(f'/grade/{child.grade}')
-        total_score = record.total_score
-        total_possible = record.total_possible
-        percentage = record.percentage
+        breakdown = rows_for_record(record)
+        total_score = sum(item['score'] for item in breakdown)
+        total_possible = sum(item['total'] for item in breakdown)
+        percentage = round((total_score / total_possible) * 100) if total_possible else 0
         stars = record.stars_earned
 
-    breakdown = rows_for_record(record)
+    if has_fresh_result:
+        breakdown = rows_for_record(record)
     ranked = sorted(breakdown, key=lambda item: (-item['pct'], item['label']))
     focus_ranked = sorted(breakdown, key=lambda item: (item['pct'], item['label']))
     best_activities = [item for item in ranked if item['pct'] > 0][:2]
@@ -1702,7 +2136,7 @@ def legacy_results_page(request, lesson_id):
     child, response = learner_required(request)
     if response:
         return response
-    lesson = get_object_or_404(Lesson, id=lesson_id)
+    lesson = get_object_or_404(Lesson, id=lesson_id, grade=child.grade)
     prefix = f'lesson_{lesson_id}'
 
     # ── Grade 4 results path ──────────────────────────────────────────────────
@@ -1748,7 +2182,7 @@ def legacy_results_page(request, lesson_id):
         # Activity 1 — Comprehension Questions (seeded via ComprehensionQuestion)
         comp_score  = gs('comprehension_score');  comp_total  = gs('comprehension_total',  lesson.questions.count())
         # Activity 2 — Sequencing
-        seq_score   = gs('seq_score');            seq_total   = gs('seq_total',   1)
+        seq_score   = gs('seq_score');            seq_total   = gs('seq_total',   lesson.sequencing_activities.count())
         # Activity 3 — Inference
         inf_score   = gs('inference_score');      inf_total   = gs('inference_total',   lesson.inference_questions.count())
         # Activity 4 — Feelings
@@ -1756,7 +2190,7 @@ def legacy_results_page(request, lesson_id):
         # Activity 5 — Cause & Effect
         ce_score    = gs('ce_score');             ce_total    = gs('ce_total',    lesson.cause_effect_pairs.count())
         # Activity 6 — Theme / Main Lesson
-        theme_score = gs('theme_score');          theme_total = gs('theme_total', 1)
+        theme_score = gs('theme_score');          theme_total = gs('theme_total', lesson.theme_questions.count())
 
         total_score    = comp_score + seq_score + inf_score + feel_score + ce_score + theme_score
         total_possible = comp_total + seq_total + inf_total + feel_total + ce_total + theme_total
@@ -1806,6 +2240,7 @@ def legacy_results_page(request, lesson_id):
             {'label': 'Cause & Effect', 'score': ce_score,    'total': ce_total},
             {'label': 'Main Lesson',    'score': theme_score, 'total': theme_total},
         ]
+        breakdown = [item for item in breakdown if item['total'] > 0]
         all_scores = g4rec.activity_scores()
 
         # Clear session
@@ -2490,7 +2925,42 @@ def dashboard_page(request, child_id):
         'search_query': search_query,
         'sort_value': sort_value,
         'visible_story_count': len(story_rows),
+        # Only the child's own parent can pause/resume the learner profile —
+        # a teacher viewing the same report should not see the control.
+        'can_manage_activation': role == 'parent',
     })
+
+
+@require_http_methods(['POST'])
+def deactivate_child(request, child_id):
+    if request.session.get('account_role') != 'parent':
+        return redirect('/login?role=parent')
+
+    child = get_object_or_404(Child, id=child_id)
+    if not user_can_view_child(request, child):
+        messages.error(request, 'You do not have access to that learner report.')
+        return redirect_after_forbidden(request)
+
+    if child.is_active:
+        child.deactivate(Child.DEACTIVATED_MANUAL)
+    messages.success(request, f'{child.name}\u2019s profile is paused. They will not be able to sign in until you reactivate it.')
+    return redirect(f'/dashboard/{child.id}')
+
+
+@require_http_methods(['POST'])
+def reactivate_child(request, child_id):
+    if request.session.get('account_role') != 'parent':
+        return redirect('/login?role=parent')
+
+    child = get_object_or_404(Child, id=child_id)
+    if not user_can_view_child(request, child):
+        messages.error(request, 'You do not have access to that learner report.')
+        return redirect_after_forbidden(request)
+
+    if not child.is_active:
+        child.reactivate()
+    messages.success(request, f'{child.name}\u2019s profile is active again.')
+    return redirect(f'/dashboard/{child.id}')
 
 
 def story_report_page(request, child_id, lesson_id):
@@ -2549,6 +3019,7 @@ def story_report_page(request, child_id, lesson_id):
 
 
 def build_dashboard_row(child):
+    access_allowed, access_reason = child_access_status(child)
     records = list(
         Progress.objects.filter(child=child)
         .select_related('lesson')
@@ -2605,6 +3076,8 @@ def build_dashboard_row(child):
     return {
         'child': child,
         'learner': child,
+        'access_allowed': access_allowed,
+        'access_reason': access_reason,
         'teacher': child.teacher,
         'teacher_class': child.teacher_class,
         'lessons_done': lessons_done,
@@ -2624,6 +3097,8 @@ def build_dashboard_row(child):
         'needs_help': bool(percentages) and average < 70,
         'perfect_work': perfect_work,
         'assessment_rows': assessment_rows,
+        'needs_grade_confirmation': child.needs_grade_confirmation(),
+        'suggested_grade': child.suggested_next_grade(),
     }
 
 
@@ -2631,6 +3106,8 @@ def parent_dashboard(request):
     if request.session.get('account_role') != 'parent':
         return redirect('/login?role=parent')
     parent = get_object_or_404(Parent, id=request.session['account_id'])
+    if account_trial_expired(parent):
+        return payment_due_response(request, {'role': 'parent'})
     children = Child.objects.filter(Q(parent=parent) | Q(parent_email__iexact=parent.email)).distinct().order_by('name')
     for child in children:
         # Self-heals the stored age against date_of_birth whenever a parent views
@@ -2643,6 +3120,7 @@ def parent_dashboard(request):
     total_lessons_done = sum(card['lessons_done'] for card in cards)
     total_stars = sum(card['stars'] for card in cards)
     needs_help_count = sum(1 for card in cards if card['needs_help'])
+    grade_confirmation_cards = [card for card in cards if card['needs_grade_confirmation']]
 
     return render(request, 'parent_dashboard.html', {
         'parent': parent,
@@ -2651,6 +3129,8 @@ def parent_dashboard(request):
         'total_lessons_done': total_lessons_done,
         'total_stars': total_stars,
         'needs_help_count': needs_help_count,
+        'grade_confirmation_cards': grade_confirmation_cards,
+        'children_access_allowed': subscription_allows_children(parent),
     })
 
 
@@ -2658,6 +3138,8 @@ def teacher_dashboard(request):
     if request.session.get('account_role') != 'teacher':
         return redirect('/login?role=teacher')
     teacher = get_object_or_404(Teacher, id=request.session['account_id'])
+    if account_trial_expired(teacher):
+        return payment_due_response(request, {'role': 'teacher'})
     teacher_classes = ensure_teacher_codes(teacher)
     learners = Child.objects.filter(
         Q(teacher=teacher) | Q(school_name__iexact=teacher.school_name)
@@ -2682,6 +3164,9 @@ def teacher_dashboard(request):
         })
 
     class_average = round(sum(row['average'] for row in active_rows) / len(active_rows)) if active_rows else 0
+    grade_confirmation_rows = [row for row in learner_rows if row['needs_grade_confirmation']]
+    preview_learners = learner_rows[:3]
+    first_grade_anchor = f"grade-section-{grade_sections[0]['grade']}" if grade_sections else ''
     return render(request, 'teacher_dashboard.html', {
         'teacher': teacher,
         'learner_rows': learner_rows,
@@ -2691,8 +3176,63 @@ def teacher_dashboard(request):
         'total_lessons_done': sum(row['lessons_done'] for row in learner_rows),
         'total_stars': sum(row['stars'] for row in learner_rows),
         'needs_help_count': sum(1 for row in learner_rows if row['needs_help']),
+        'preview_learners': preview_learners,
+        'first_grade_anchor': first_grade_anchor,
         'teacher_classes': teacher_classes,
+        'grade_confirmation_rows': grade_confirmation_rows,
     })
+
+
+@require_http_methods(['POST'])
+def confirm_child_grade(request, child_id):
+    """Yearly grade-confirmation step (see Child.needs_grade_confirmation).
+
+    The app never advances a learner's grade by itself. Once a new school year
+    starts, the parent or teacher dashboard shows a prompt for each learner who
+    hasn't been confirmed yet; this view applies exactly what they choose —
+    moved up, repeated, or anything else — and logs it to GradeHistory.
+    """
+    role = request.session.get('account_role')
+
+    if role == 'parent':
+        parent = get_object_or_404(Parent, id=request.session['account_id'])
+        child = Child.objects.filter(id=child_id).filter(
+            Q(parent=parent) | Q(parent_email__iexact=parent.email)
+        ).first()
+        confirmed_by, confirmed_by_name, redirect_to = GradeHistory.PARENT, parent.full_name, '/parent/dashboard'
+    elif role == 'teacher':
+        teacher = get_object_or_404(Teacher, id=request.session['account_id'])
+        child = Child.objects.filter(id=child_id).first()
+        if child and not teacher_can_view_child(teacher, child):
+            child = None
+        confirmed_by, confirmed_by_name, redirect_to = GradeHistory.TEACHER, teacher.full_name, '/teacher/dashboard'
+    else:
+        return redirect('/login')
+
+    if not child:
+        messages.error(request, 'Learner profile not found or access denied.')
+        return redirect(redirect_to)
+
+    try:
+        grade = int(request.POST.get('grade', ''))
+    except (TypeError, ValueError):
+        grade = None
+
+    if grade not in (1, 2, 3, 4):
+        messages.error(request, 'Please choose a valid grade (1 to 4).')
+        return redirect(redirect_to)
+
+    previous_grade = child.grade
+    child.record_grade_confirmation(grade, confirmed_by=confirmed_by, confirmed_by_name=confirmed_by_name)
+
+    if grade > previous_grade:
+        messages.success(request, f'{child.name} is now set to Grade {grade}. Their lessons will update to match.')
+    elif grade == previous_grade:
+        messages.success(request, f'{child.name} stays in Grade {grade} this year.')
+    else:
+        messages.success(request, f'{child.name} has been moved back to Grade {grade}.')
+
+    return redirect(redirect_to)
 
 
 # ─────────────────────────────────────────────────────────────
@@ -2703,7 +3243,7 @@ def vocabulary_page(request, lesson_id):
     child, response = learner_required(request)
     if response:
         return response
-    lesson = get_object_or_404(Lesson, id=lesson_id)
+    lesson = get_object_or_404(Lesson, id=lesson_id, grade=child.grade)
     words = lesson.vocabulary_questions.all()
     return render(request, 'vocabulary.html', {
         'lesson': lesson,
@@ -2716,7 +3256,7 @@ def sequencing_page(request, lesson_id):
     child, response = learner_required(request)
     if response:
         return response
-    lesson = get_object_or_404(Lesson, id=lesson_id)
+    lesson = get_object_or_404(Lesson, id=lesson_id, grade=child.grade)
     activity = lesson.sequencing_activities.first()
     return render(request, 'sequencing.html', {
         'lesson': lesson,
@@ -2729,7 +3269,7 @@ def inference_page(request, lesson_id):
     child, response = learner_required(request)
     if response:
         return response
-    lesson = get_object_or_404(Lesson, id=lesson_id)
+    lesson = get_object_or_404(Lesson, id=lesson_id, grade=child.grade)
     questions = lesson.inference_questions.all()
     return render(request, 'inference.html', {
         'lesson': lesson,
@@ -2742,7 +3282,7 @@ def prediction_page(request, lesson_id):
     child, response = learner_required(request)
     if response:
         return response
-    lesson = get_object_or_404(Lesson, id=lesson_id)
+    lesson = get_object_or_404(Lesson, id=lesson_id, grade=child.grade)
     question = lesson.prediction_questions.first()
     return render(request, 'prediction.html', {
         'lesson': lesson,
@@ -2755,7 +3295,7 @@ def feelings_page(request, lesson_id):
     child, response = learner_required(request)
     if response:
         return response
-    lesson = get_object_or_404(Lesson, id=lesson_id)
+    lesson = get_object_or_404(Lesson, id=lesson_id, grade=child.grade)
     questions = lesson.feelings_questions.all()
     return render(request, 'feelings.html', {
         'lesson': lesson,
@@ -2768,7 +3308,7 @@ def cause_effect_page(request, lesson_id):
     child, response = learner_required(request)
     if response:
         return response
-    lesson = get_object_or_404(Lesson, id=lesson_id)
+    lesson = get_object_or_404(Lesson, id=lesson_id, grade=child.grade)
     pairs = lesson.cause_effect_pairs.all()
     return render(request, 'cause_effect.html', {
         'lesson': lesson,
@@ -2781,7 +3321,7 @@ def theme_page(request, lesson_id):
     child, response = learner_required(request)
     if response:
         return response
-    lesson = get_object_or_404(Lesson, id=lesson_id)
+    lesson = get_object_or_404(Lesson, id=lesson_id, grade=child.grade)
     question = lesson.theme_questions.first()
     return render(request, 'theme.html', {
         'lesson': lesson,
@@ -2794,7 +3334,7 @@ def written_response_page(request, lesson_id):
     child, response = learner_required(request)
     if response:
         return response
-    lesson = get_object_or_404(Lesson, id=lesson_id)
+    lesson = get_object_or_404(Lesson, id=lesson_id, grade=child.grade)
     prompt = lesson.written_prompts.first()
 
     if request.method == 'POST':
