@@ -6404,6 +6404,36 @@ body:not(.diagram-body) .lr-btn {
   appearance: none;
 }
 
+body:not(.diagram-body) .lr-row.is-paused {
+  filter: grayscale(.55);
+  opacity: .82;
+}
+
+body:not(.diagram-body) .lr-paused-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-top: 4px;
+  padding: 3px 10px;
+  border: 1px solid #f0c36b;
+  border-radius: 999px;
+  color: #6a3d08;
+  font-size: .72rem;
+  font-weight: 900;
+  letter-spacing: .02em;
+  text-transform: uppercase;
+  background: #fff4d8;
+  width: fit-content;
+}
+
+body:not(.diagram-body) .lr-paused-badge::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #d99a2b;
+}
+
 body:not(.diagram-body) .lr-actions {
   display: grid;
   grid-template-columns: minmax(0, max-content);
@@ -11722,6 +11752,133 @@ body:not(.diagram-body) .account-status-banner a {
   font-weight: 900;
 }
 
+body:not(.diagram-body) .learner-activation-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 18px;
+  padding: 14px 18px;
+  border: 1px solid rgba(36, 48, 68, .08);
+  border-radius: 14px;
+  background: rgba(var(--surface-rgb), var(--scrim-72));
+  color: var(--auto-5f6878-t);
+  font-size: .88rem;
+}
+
+body:not(.diagram-body) .learner-activation-row--paused {
+  border-color: #f0c36b;
+  background: #fff4d8;
+  color: #6a3d08;
+}
+
+body:not(.diagram-body) .learner-activation-row .lr-paused-badge {
+  margin-top: 0;
+}
+
+body:not(.diagram-body) .learner-activation-btn {
+  white-space: nowrap;
+}
+
+body:not(.diagram-body) .learner-activation-btn--reactivate {
+  color: #fff;
+  background: #30cb7f;
+}
+
+body:not(.diagram-body) .learner-activation-dialog .account-dialog-form {
+  gap: 18px;
+}
+
+body:not(.diagram-body) .learner-activation-dialog .account-dialog-form > p {
+  margin: 0;
+  color: #566176;
+  line-height: 1.6;
+}
+
+body:not(.diagram-body) .learner-activation-continue {
+  border: 1px solid #c93b49;
+  color: #fff;
+  background: #c93b49;
+}
+
+body:not(.diagram-body) .learner-activation-continue.is-reactivate {
+  border-color: #1c9b67;
+  background: #30cb7f;
+}
+
+[data-theme="dark"] body:not(.diagram-body) .learner-activation-dialog {
+  border-color: var(--line);
+  color: var(--ink);
+  background: var(--surface);
+  box-shadow: 0 28px 80px rgba(0, 0, 0, .42);
+}
+
+[data-theme="dark"] body:not(.diagram-body) .learner-activation-dialog::backdrop {
+  background: rgba(5, 17, 25, .72);
+}
+
+[data-theme="dark"] body:not(.diagram-body) .learner-activation-dialog .account-dialog-heading h2 {
+  color: var(--ink);
+}
+
+[data-theme="dark"] body:not(.diagram-body) .learner-activation-dialog .account-dialog-form > p {
+  color: var(--muted);
+}
+
+[data-theme="dark"] body:not(.diagram-body) .learner-activation-dialog .account-dialog-icon {
+  background: var(--sun);
+  color: #12323f;
+}
+
+[data-theme="dark"] body:not(.diagram-body) .learner-activation-dialog .btn-light {
+  border-color: var(--line);
+  background: #294b57;
+  color: var(--ink);
+}
+
+[data-theme="dark"] body:not(.diagram-body) .learner-activation-continue {
+  border-color: #ff9a9a;
+  background: #d65c68;
+}
+
+[data-theme="dark"] body:not(.diagram-body) .learner-activation-continue.is-reactivate {
+  border-color: #9af0da;
+  background: var(--mint);
+  color: #12323f;
+}
+
+[data-theme="dark"] body:not(.diagram-body) .account-state-card {
+  border-color: var(--line);
+  background: var(--surface);
+  box-shadow: 0 24px 70px rgba(0, 0, 0, .34);
+}
+
+[data-theme="dark"] body:not(.diagram-body) .account-state-card-child .account-state-mark {
+  background: var(--sun);
+  color: #12323f;
+}
+
+[data-theme="dark"] body:not(.diagram-body) .account-state-card h1 {
+  color: var(--ink);
+}
+
+[data-theme="dark"] body:not(.diagram-body) .account-state-card > p {
+  color: var(--muted);
+}
+
+[data-theme="dark"] body:not(.diagram-body) .account-state-actions .btn-light {
+  border-color: var(--line);
+  background: #294b57;
+  color: var(--ink);
+}
+
+[data-theme="dark"] body:not(.diagram-body) .account-state-actions .btn-primary {
+  border-color: #9af0da;
+  background: var(--mint);
+  color: #12323f;
+}
+
 body:not(.diagram-body) .account-danger-zone {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
@@ -11944,4 +12101,38 @@ body:not(.diagram-body) .learner-access-badge {
     display: grid;
     grid-template-columns: 1fr;
   }
+}
+
+body:not(.diagram-body) .learner-activation-btn:not(.learner-activation-btn--reactivate) {
+  border: 1px solid #c93b49 !important;
+  color: #fff !important;
+  background: #c93b49 !important;
+}
+
+body:not(.diagram-body) .learner-activation-btn:not(.learner-activation-btn--reactivate):hover {
+  background: #a92d3b !important;
+}
+
+[data-theme="dark"] body:not(.diagram-body) .learner-activation-dialog {
+  border-color: var(--line) !important;
+  color: var(--ink) !important;
+  background: var(--surface) !important;
+  box-shadow: 0 28px 80px rgba(0, 0, 0, .42) !important;
+}
+
+[data-theme="dark"] body:not(.diagram-body) .learner-activation-dialog::backdrop {
+  background: rgba(5, 17, 25, .76) !important;
+}
+
+[data-theme="dark"] body:not(.diagram-body) .learner-activation-dialog .account-dialog-heading h2 {
+  color: var(--ink) !important;
+}
+
+[data-theme="dark"] body:not(.diagram-body) .learner-activation-dialog .account-dialog-form > p {
+  color: var(--muted) !important;
+}
+
+[data-theme="dark"] body:not(.diagram-body) .learner-activation-dialog .account-dialog-icon {
+  background: var(--sun) !important;
+  color: #12323f !important;
 }

@@ -102,8 +102,8 @@ class SpellingActivityAdmin(admin.ModelAdmin):
 
 @admin.register(Child)
 class ChildAdmin(admin.ModelAdmin):
-    list_display = ('name', 'username', 'grade', 'grade_confirmed_year', 'school_name', 'parent_email', 'parent', 'teacher', 'teacher_class', 'created_at')
-    list_filter = ('grade', 'school_name')
+    list_display = ('name', 'username', 'grade', 'grade_confirmed_year', 'school_name', 'parent_email', 'parent', 'teacher', 'teacher_class', 'is_active', 'deactivated_reason', 'created_at')
+    list_filter = ('grade', 'school_name', 'is_active')
     search_fields = ('name', 'username', 'parent_email', 'school_name')
 
 
@@ -125,10 +125,10 @@ class ParentAdmin(admin.ModelAdmin):
 
 @admin.register(AccountActionOTP)
 class AccountActionOTPAdmin(admin.ModelAdmin):
-    list_display = ('parent', 'action', 'created_at', 'attempts', 'is_used')
+    list_display = ('account', 'action', 'created_at', 'attempts', 'is_used')
     list_filter = ('action', 'is_used')
-    search_fields = ('parent__full_name', 'parent__email')
-    readonly_fields = ('parent', 'action', 'code_hash', 'created_at', 'attempts', 'is_used')
+    search_fields = ('parent__full_name', 'parent__email', 'teacher__full_name', 'teacher__email')
+    readonly_fields = ('parent', 'teacher', 'action', 'code_hash', 'created_at', 'attempts', 'is_used')
 
     def has_add_permission(self, request):
         return False
@@ -136,15 +136,15 @@ class AccountActionOTPAdmin(admin.ModelAdmin):
 
 @admin.register(Teacher)
 class TeacherAdmin(admin.ModelAdmin):
-    list_display = ('full_name', 'email', 'school_name', 'grades_taught', 'class_code', 'created_at')
-    list_filter = ('school_name',)
+    list_display = ('full_name', 'email', 'school_name', 'grades_taught', 'class_code', 'is_active', 'deactivated_at', 'created_at')
+    list_filter = ('school_name', 'is_active')
     search_fields = ('full_name', 'email', 'school_name', 'class_code')
 
 
 @admin.register(TeacherClass)
 class TeacherClassAdmin(admin.ModelAdmin):
-    list_display = ('name', 'grade', 'teacher', 'class_code', 'created_at')
-    list_filter = ('grade', 'teacher')
+    list_display = ('name', 'grade', 'teacher', 'class_code', 'needs_new_teacher', 'created_at')
+    list_filter = ('grade', 'teacher', 'needs_new_teacher')
     search_fields = ('name', 'class_code', 'teacher__full_name')
 
 

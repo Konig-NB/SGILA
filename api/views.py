@@ -560,9 +560,10 @@ def login(request):
             return JsonResponse({'login_successful': False, 'message': 'Incorrect email or password.'}, status=401)
         if not password_matches(password, account.password):
             return JsonResponse({'login_successful': False, 'message': 'Incorrect email or password.'}, status=401)
-        if role == 'parent' and not account.is_active:
+        if role in ('parent', 'teacher') and not account.is_active:
             request.session.flush()
-            request.session['pending_reactivation_parent_id'] = account.id
+            request.session['pending_reactivation_role'] = role
+            request.session['pending_reactivation_account_id'] = account.id
             request.session['pending_reactivation_verified_at'] = int(timezone.now().timestamp())
             return JsonResponse({
                 'login_successful': False,
