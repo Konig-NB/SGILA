@@ -112,6 +112,16 @@ def require_jwt(roles=None):
                     or payload.get("auth_version", 0) != parent.auth_version
                 ):
                     return JsonResponse({"error": "This account is deactivated or the session has expired."}, status=403)
+            elif role == "teacher":
+                from .models import Teacher
+
+                teacher = Teacher.objects.filter(pk=account_id).only("is_active", "auth_version").first()
+                if (
+                    not teacher
+                    or not teacher.is_active
+                    or payload.get("auth_version", 0) != teacher.auth_version
+                ):
+                    return JsonResponse({"error": "This account is deactivated or the session has expired."}, status=403)
             elif role == "learner":
                 from .account_access import child_access_status, linked_parent_for_child
                 from .models import Child

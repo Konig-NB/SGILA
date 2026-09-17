@@ -4,6 +4,8 @@ from .models import Parent, Subscription
 
 
 ACCESS_PARENT_DEACTIVATED = 'parent_deactivated'
+ACCESS_TEACHER_DEACTIVATED = 'teacher_deactivated'
+ACCESS_LEARNER_DEACTIVATED = 'learner_deactivated'
 ACCESS_SUBSCRIPTION_INACTIVE = 'subscription_inactive'
 
 
@@ -27,10 +29,16 @@ def subscription_allows_children(parent):
 
 def child_access_status(child):
     parent = linked_parent_for_child(child)
-    if not parent:
-        return True, ''
-    if not parent.is_active:
+    if parent and not parent.is_active:
         return False, ACCESS_PARENT_DEACTIVATED
-    if not subscription_allows_children(parent):
+    if not child.is_active:
+        return False, ACCESS_LEARNER_DEACTIVATED
+    if parent and not subscription_allows_children(parent):
         return False, ACCESS_SUBSCRIPTION_INACTIVE
+    return True, ''
+
+
+def teacher_access_status(teacher):
+    if not teacher.is_active:
+        return False, ACCESS_TEACHER_DEACTIVATED
     return True, ''
