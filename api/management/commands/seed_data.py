@@ -144,7 +144,7 @@ class Command(BaseCommand):
             grade=4,
             class_code='MKGRD4',
         )
-        TeacherClass.objects.create(
+        grade_three = TeacherClass.objects.create(
             teacher=teacher2,
             name='Grade 3',
             grade=3,
@@ -165,11 +165,26 @@ class Command(BaseCommand):
             photo='child_photos/demo_child_photo.jpeg',
             password=make_password('password123'),
         )
+        Child.objects.create(
+            parent=parent2,
+            teacher=teacher2,
+            teacher_class=grade_three,
+            username='lerato_m',
+            first_name='Lerato',
+            last_name='Mabunda',
+            name='Lerato Mabunda',
+            age=9,
+            grade=3,
+            school_name='MK-Khambani Primary',
+            parent_email='learner3@sgila.test',
+            photo='child_photos/demo_child_photo.jpeg',
+            password=make_password('password123'),
+        )
 
         self.create_big_book_lessons()
 
         self.stdout.write(self.style.SUCCESS(
-            "Demo data loaded. Logins: sipho_d / parent@sgila.test / teacher@sgila.test, password password123. Class code RAINB1."
+            "Demo data loaded. Learner logins: sipho_d, lerato_m, nhlulelo_m; password password123."
         ))
 
     def add_reading_activities(self, lesson, activities):

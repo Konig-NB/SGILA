@@ -33,10 +33,12 @@ installs dependencies, prepares the database, and starts the local server.
 All demo accounts use the password `password123`.
 
 - Learner: `learner@sgila.test`
+- Grade 3 learner username: `lerato_m`
 - Parent: `parent@sgila.test`
 - Teacher: `teacher@sgila.test`
 
-Demo class codes: `SGILA1`, `RAINB1`, `RAINB2`, `RAINB3`, and `RAINB4`.
+All demo learner accounts use the password `password123`.
+Demo class codes: `SGILA1`, `RAINB1`, `RAINB2`, `RAINB3`, `RAINB4`, `MKGRD3`, and `MKGRD4`.
 
 `load_curriculum_content` is safe to run again: it updates the Grade 1-4 lessons
 without deleting registered users or their progress. Use `seed_data` only when you
