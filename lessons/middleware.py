@@ -4,7 +4,7 @@ from django.http import JsonResponse
 from django.shortcuts import redirect
 
 from api.account_access import child_access_status
-from api.models import Child, Parent
+from api.models import Child, Parent, Teacher
 
 
 class AccountAccessMiddleware:
@@ -22,6 +22,12 @@ class AccountAccessMiddleware:
             if not parent or not parent.is_active:
                 request.session.flush()
                 return self._blocked_response(request, 'parent_deactivated')
+
+        if role == 'teacher' and account_id:
+            teacher = Teacher.objects.filter(pk=account_id).only('is_active').first()
+            if not teacher or not teacher.is_active:
+                request.session.flush()
+                return self._blocked_response(request, 'teacher_deactivated')
 
         if role == 'learner' and account_id:
             child = Child.objects.select_related('parent').filter(pk=account_id).first()
