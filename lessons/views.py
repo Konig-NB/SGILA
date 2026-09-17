@@ -28,6 +28,7 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
 from django.utils.dateparse import parse_date
 from django.views.decorators.http import require_http_methods
+from django.views.decorators.csrf import ensure_csrf_cookie
 
 from api.models import (
     AccountActionOTP,
@@ -155,6 +156,74 @@ def learner_required(request):
     if learner_trial_expired(child):
         return child, payment_due_response(request, {'role': 'learner', 'child': child})
     return child, None
+
+
+def activity_choices_for(lesson):
+    """Return the learner-facing activity menu for a lesson."""
+    base = f'/lessons/{lesson.id}'
+    choices = [{'label': 'Read the story', 'url': f'{base}/story'}]
+    if lesson.grade == 4:
+        choices.extend([
+            {'label': 'Comprehension', 'url': f'{base}/questions'},
+            {'label': 'Vocabulary', 'url': f'{base}/vocabulary'},
+            {'label': 'Sequencing', 'url': f'{base}/sequencing'},
+            {'label': 'Inference', 'url': f'{base}/inference'},
+            {'label': 'Prediction', 'url': f'{base}/prediction'},
+            {'label': 'Feelings', 'url': f'{base}/feelings'},
+            {'label': 'Cause and effect', 'url': f'{base}/cause-effect'},
+            {'label': 'Main lesson', 'url': f'{base}/theme'},
+            {'label': 'Written response', 'url': f'{base}/written-response'},
+        ])
+    else:
+        choices.extend([
+            {'label': 'Comprehension', 'url': f'{base}/questions'},
+            {'label': 'Visual matching', 'url': f'{base}/visual-activity'},
+            {'label': 'Pronunciation', 'url': f'{base}/pronunciation'},
+            {'label': 'Spelling', 'url': f'{base}/spelling'},
+        ])
+    return choices
+
+
+def activity_resume_url(request, child, lesson):
+    """Return the best saved destination when a learner reopens a story."""
+    answers = request.session.get(f'lesson_{lesson.id}_reading_activity_answers', {})
+    answered_ids = {
+        str(key).removeprefix('activity-')
+        for key in answers
+        if str(key).startswith('activity-')
+    }
+    activities = list(lesson.reading_activities.order_by('order', 'id'))
+    for index, activity in enumerate(activities):
+        if str(activity.id) not in answered_ids:
+            return f'/lessons/{lesson.id}/questions?activity_index={index}'
+
+    paused_url = (child.paused_activities or {}).get(str(lesson.id))
+    if paused_url:
+        return paused_url
+    return None
+
+
+def activity_score_summary(request, lesson):
+    """Summarise the in-progress attempt stored in the learner session."""
+    prefix = f'lesson_{lesson.id}_'
+    if lesson.grade == 4:
+        fields = [
+            ('comprehension_score', 'comprehension_total', lesson.questions.count()),
+            ('seq_score', 'seq_total', 1),
+            ('inference_score', 'inference_total', lesson.inference_questions.count()),
+            ('feelings_score', 'feelings_total', lesson.feelings_questions.count()),
+            ('ce_score', 'ce_total', lesson.cause_effect_pairs.count()),
+            ('theme_score', 'theme_total', 1),
+        ]
+    else:
+        fields = [
+            ('comprehension_score', 'comprehension_total', lesson.questions.count()),
+            ('visual_score', 'visual_total', lesson.visual_items.count()),
+            ('spelling_score', 'spelling_total', lesson.spelling_activities.count()),
+        ]
+    score = sum(int(request.session.get(prefix + score_key, 0)) for score_key, _, _ in fields)
+    possible = sum(int(request.session.get(prefix + total_key, default)) for _, total_key, default in fields)
+    return score, possible
 
 
 def parse_grades(grades_taught):
@@ -396,6 +465,8 @@ def register_parent(request):
         code=code,
         pending_data=json.dumps(pending_data),
     )
+    if settings.DEBUG:
+        print(f'\n[SGILA OTP] Parent verification code for {email}: {code}\n', flush=True)
 
     # Send OTP email
     subject = "Your SGILA verification code"
@@ -446,6 +517,8 @@ def register_teacher(request):
         code=code,
         pending_data=json.dumps(pending_data),
     )
+    if settings.DEBUG:
+        print(f'\n[SGILA OTP] Teacher verification code for {email}: {code}\n', flush=True)
 
     subject = "Your SGILA verification code"
     message = (
@@ -703,6 +776,8 @@ def verify_otp_page(request):
                 code=new_code,
                 pending_data=old_otp.pending_data,
             )
+            if settings.DEBUG:
+                print(f'\n[SGILA OTP] Resent verification code for {old_otp.email}: {new_code}\n', flush=True)
             subject = "Your SGILA verification code"
             message = (
                 f"Hi {full_name},\n\n"
@@ -1551,6 +1626,8 @@ def grade_home(request, grade):
             'completed': bool(record),
             'stars': range(record.stars_earned) if record else range(0),
             'is_current_ai_story': lesson.is_ai_generated and lesson.id == getattr(latest_ai_lesson, 'id', None),
+            'activities': activity_choices_for(lesson),
+            'resume_url': (child.paused_activities or {}).get(str(lesson.id)),
             'activity_count': len(group_sizes),
             'questions_per_activity': questions_per_activity,
         })
@@ -1581,6 +1658,46 @@ def grade_home(request, grade):
     })
 
 
+@ensure_csrf_cookie
+@require_http_methods(["GET", "POST"])
+def activity_pause(request, lesson_id):
+    """Provide the running score and save a safe resume destination for a learner."""
+    child, response = learner_required(request)
+    if response:
+        return response
+    lesson = get_object_or_404(Lesson, id=lesson_id, grade=child.grade)
+
+    if request.method == 'POST':
+        try:
+            data = json.loads(request.body or '{}')
+        except json.JSONDecodeError:
+            data = {}
+        resume_url = data.get('resume_url', '')
+        parsed_resume_url = urllib.parse.urlsplit(resume_url)
+        allowed_urls = {item['url'] for item in activity_choices_for(lesson)}
+        if parsed_resume_url.path not in allowed_urls or parsed_resume_url.fragment:
+            return JsonResponse({'error': 'Invalid activity to resume.'}, status=400)
+        if parsed_resume_url.path.endswith('/questions'):
+            query = urllib.parse.parse_qs(parsed_resume_url.query)
+            indexes = query.get('activity_index', [])
+            activity_index = int(indexes[0]) if len(indexes) == 1 and indexes[0].isdigit() else -1
+            activity_total = lesson.reading_activities.count() or lesson.questions.count()
+            if activity_index < 0 or activity_index >= activity_total:
+                return JsonResponse({'error': 'Invalid activity to resume.'}, status=400)
+            resume_url = f'{parsed_resume_url.path}?activity_index={activity_index}'
+        elif parsed_resume_url.query:
+            return JsonResponse({'error': 'Invalid activity to resume.'}, status=400)
+        paused_activities = dict(child.paused_activities or {})
+        paused_activities[str(lesson.id)] = resume_url
+        child.paused_activities = paused_activities
+        child.save(update_fields=['paused_activities'])
+        request.session[f'lesson_{lesson.id}_resume_url'] = resume_url
+        request.session.modified = True
+
+    score, possible = activity_score_summary(request, lesson)
+    return JsonResponse({'score': score, 'total': possible})
+
+
 def story_page(request, lesson_id):
     child, response = learner_required(request)
     if response:
@@ -1603,6 +1720,7 @@ def story_page(request, lesson_id):
         'lesson': lesson,
         'pages': pages,
         'child': child,
+        'activity_resume_url': activity_resume_url(request, child, lesson),
         'first_activity_url': first_activity_url,
     })
 
@@ -1793,6 +1911,13 @@ def results_page(request, lesson_id):
         return response
     lesson = get_object_or_404(Lesson, id=lesson_id, grade=child.grade)
     prefix = f'lesson_{lesson_id}'
+    # A completed lesson no longer needs its "continue later" marker.
+    paused_activities = dict(child.paused_activities or {})
+    paused_activities.pop(str(lesson_id), None)
+    child.paused_activities = paused_activities
+    child.save(update_fields=['paused_activities'])
+    request.session.pop(f'{prefix}_resume_url', None)
+
     fresh_suffixes = (
         'reading_skill_scores', 'comprehension_score', 'comprehension_total',
         'visual_score', 'visual_total', 'spelling_score', 'spelling_total',

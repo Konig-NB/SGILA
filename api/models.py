@@ -101,6 +101,7 @@ class Child(models.Model):
     parent_email = models.EmailField()
     photo = models.FileField(upload_to='child_photos/', blank=True)
     password = models.CharField(max_length=300)   # hashed by Django
+    paused_activities = models.JSONField(default=dict, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):
