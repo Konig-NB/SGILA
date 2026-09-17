@@ -12485,6 +12485,27 @@ body:not(.diagram-body) .text-option {
   cursor: pointer;
 }
 
+body:not(.diagram-body) .true-button,
+body:not(.diagram-body) .false-button {
+  min-width: 112px;
+  min-height: 44px;
+  padding: 10px 18px;
+  border: 2px solid var(--line);
+  border-radius: 999px;
+  color: var(--ink);
+  font: inherit;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+body:not(.diagram-body) .true-button {
+  background: var(--mint-soft);
+}
+
+body:not(.diagram-body) .false-button {
+  background: var(--sun-soft);
+}
+
 body:not(.diagram-body) .text-option + .text-option {
   margin-top: 10px;
 }
@@ -12622,4 +12643,79 @@ body:not(.diagram-body) .truth-card > img {
   body:not(.diagram-body) .sequence-slot {
     min-height: 100px;
   }
+}
+
+/* Keep the Grade 3 workbook readable in the master dark theme. */
+[data-theme="dark"] body:not(.diagram-body) .activity-picker button,
+[data-theme="dark"] body:not(.diagram-body) .grade3-question-card,
+[data-theme="dark"] body:not(.diagram-body) .truth-card,
+[data-theme="dark"] body:not(.diagram-body) .text-option,
+[data-theme="dark"] body:not(.diagram-body) .true-button,
+[data-theme="dark"] body:not(.diagram-body) .false-button,
+[data-theme="dark"] body:not(.diagram-body) .picture-option,
+[data-theme="dark"] body:not(.diagram-body) .sequence-card,
+[data-theme="dark"] body:not(.diagram-body) .listen-spell-row,
+[data-theme="dark"] body:not(.diagram-body) .word-pill {
+  border-color: var(--line);
+  background: var(--surface);
+  color: var(--ink);
+}
+
+[data-theme="dark"] body:not(.diagram-body) .activity-picker button.active {
+  border-color: var(--sun);
+  background: var(--sun);
+  color: #12323f;
+}
+
+[data-theme="dark"] body:not(.diagram-body) .detective-sentence,
+[data-theme="dark"] body:not(.diagram-body) .sequence-slot,
+[data-theme="dark"] body:not(.diagram-body) .spelling-input {
+  border-color: var(--line);
+  background: var(--paper);
+  color: var(--ink);
+}
+
+[data-theme="dark"] body:not(.diagram-body) .word-blank {
+  border-color: var(--lavender);
+  background: var(--lavender-soft);
+  color: var(--ink);
+}
+
+[data-theme="dark"] body:not(.diagram-body) .word-blank.filled,
+[data-theme="dark"] body:not(.diagram-body) .word-blank.is-correct,
+[data-theme="dark"] body:not(.diagram-body) .listen-spell-row.is-correct,
+[data-theme="dark"] body:not(.diagram-body) .sequence-slot.is-correct,
+[data-theme="dark"] body:not(.diagram-body) .text-option.is-correct {
+  border-color: var(--success);
+  background: var(--mint-soft);
+}
+
+[data-theme="dark"] body:not(.diagram-body) .word-blank.is-wrong,
+[data-theme="dark"] body:not(.diagram-body) .listen-spell-row.is-wrong,
+[data-theme="dark"] body:not(.diagram-body) .sequence-slot.is-wrong,
+[data-theme="dark"] body:not(.diagram-body) .text-option.is-wrong,
+[data-theme="dark"] body:not(.diagram-body) .picture-option.is-wrong {
+  border-color: var(--danger);
+  background: #501b1b;
+}
+
+[data-theme="dark"] body:not(.diagram-body) .word-pill:hover,
+[data-theme="dark"] body:not(.diagram-body) .word-pill:focus-visible,
+[data-theme="dark"] body:not(.diagram-body) .activity-picker button:hover,
+[data-theme="dark"] body:not(.diagram-body) .activity-picker button:focus-visible,
+[data-theme="dark"] body:not(.diagram-body) .text-option:hover,
+[data-theme="dark"] body:not(.diagram-body) .text-option:focus-visible,
+[data-theme="dark"] body:not(.diagram-body) .true-button:hover,
+[data-theme="dark"] body:not(.diagram-body) .true-button:focus-visible,
+[data-theme="dark"] body:not(.diagram-body) .false-button:hover,
+[data-theme="dark"] body:not(.diagram-body) .false-button:focus-visible {
+  border-color: var(--mint);
+  background: var(--mint-soft);
+  color: var(--ink);
+}
+
+[data-theme="dark"] body:not(.diagram-body) .final-score-panel {
+  border-color: var(--success);
+  background: var(--mint-soft);
+  color: var(--ink);
 }
