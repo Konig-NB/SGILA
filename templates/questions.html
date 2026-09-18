@@ -162,19 +162,34 @@ function renderChoice(activity) {
   grid.className = 'options-grid';
   let selectedAnswer = '';
   let selectedButton = null;
+  const config = activity.options || {};
+  const options = Array.isArray(activity.options)
+    ? activity.options
+    : (Array.isArray(config.choices) ? config.choices : []);
 
-  activity.options.forEach((option, index) => {
+  options.forEach((option, index) => {
+    const answer = typeof option === 'object' ? (option.value || option.label || '') : option;
+    const label = typeof option === 'object' ? (option.label || option.value || '') : option;
     const button = document.createElement('button');
     button.className = 'btn btn-option';
     button.type = 'button';
-    button.dataset.answer = option;
+    button.dataset.answer = answer;
     button.setAttribute('aria-pressed', 'false');
 
     const marker = document.createElement('span');
     marker.className = 'option-marker';
     marker.textContent = String.fromCharCode(65 + index);
     const copy = document.createElement('span');
-    copy.textContent = option;
+    if (typeof option === 'object' && option.image_url) {
+      const image = document.createElement('img');
+      image.src = option.image_url;
+      image.alt = option.alt || label;
+      image.className = 'activity-option-image';
+      copy.appendChild(image);
+    }
+    const text = document.createElement('span');
+    text.textContent = label;
+    copy.appendChild(text);
     button.append(marker, copy);
 
     button.addEventListener('click', () => {
@@ -184,7 +199,7 @@ function renderChoice(activity) {
       });
       button.classList.add('is-selected');
       button.setAttribute('aria-pressed', 'true');
-      selectedAnswer = option;
+      selectedAnswer = answer;
       selectedButton = button;
       submit.disabled = false;
     });
@@ -201,11 +216,14 @@ function renderCloze(activity) {
   const bank = document.createElement('div');
   bank.className = 'cloze-word-bank';
   bank.setAttribute('aria-label', 'Word bank');
-  
-  const selectedAnswers = []; // Array to hold up to 3 selected words
-  const selectedButtons = []; // Track which buttons are selected
+  const config = activity.options || {};
+  const choices = Array.isArray(activity.options)
+    ? activity.options
+    : (Array.isArray(config.choices) ? config.choices : []);
+  let selectedAnswer = '';
+  let selectedButton = null;
 
-  activity.options.forEach((word) => {
+  choices.forEach((word) => {
     const button = document.createElement('button');
     button.type = 'button';
     button.className = 'cloze-chip';
@@ -214,47 +232,25 @@ function renderCloze(activity) {
     button.setAttribute('aria-pressed', 'false');
     
     button.addEventListener('click', () => {
-      const isSelected = button.classList.contains('is-selected');
-      
-      if (isSelected) {
-        // Deselect if already selected
-        button.classList.remove('is-selected');
-        button.setAttribute('aria-pressed', 'false');
-        const index = selectedButtons.indexOf(button);
-        selectedAnswers.splice(index, 1);
-        selectedButtons.splice(index, 1);
-      } else if (selectedAnswers.length < 3) {
-        // Select if less than 3 are selected
-        button.classList.add('is-selected');
-        button.setAttribute('aria-pressed', 'true');
-        selectedAnswers.push(word);
-        selectedButtons.push(button);
-      } else {
-        // Show message if trying to select more than 3
-        alert('You can only select 3 words!');
-        return;
-      }
-      
-      // Enable submit only if exactly 3 words selected
-      submit.disabled = selectedAnswers.length !== 3;
+      bank.querySelectorAll('.cloze-chip').forEach((choice) => {
+        choice.classList.remove('is-selected');
+        choice.setAttribute('aria-pressed', 'false');
+      });
+      button.classList.add('is-selected');
+      button.setAttribute('aria-pressed', 'true');
+      selectedAnswer = word;
+      selectedButton = button;
+      submit.disabled = false;
     });
-    
+
     bank.appendChild(button);
   });
 
   const submit = makeSubmitButton('Check the words');
   submit.disabled = true;
-  
-  submit.addEventListener('click', () => {
-    // Format answer as object: {1: word1, 2: word2, 3: word3}
-    const formattedAnswer = {
-      '1': selectedAnswers[0],
-      '2': selectedAnswers[1],
-      '3': selectedAnswers[2]
-    };
-    submitActivity(activity, formattedAnswer, selectedButtons[0]);
-  });
-  
+
+  submit.addEventListener('click', () => submitActivity(activity, selectedAnswer, selectedButton));
+
   responseArea.append(bank, submit);
 }
 function renderSequence(activity) {
@@ -1026,7 +1022,8 @@ nextButton.addEventListener('click', () => {
 });
 
 loadActivities();
-<script>
+</script>
+<script type="text/plain" data-legacy-question-loader>
 const childId = {{ child_id }};
 const lessonId = {{ lesson_id }};
 const totalQuestions = {{ total_questions }};
