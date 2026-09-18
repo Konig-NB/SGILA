@@ -230,9 +230,8 @@ class Command(BaseCommand):
         )
 
         self.stdout.write(self.style.SUCCESS(
-            "Demo data loaded. Learner logins: sipho_d, lerato_m, nhlulelo_m; "
-            "password password123. Logins: parent@sgila.test / teacher@sgila.test, "
-            "class code RAINB1. Expired-trial demo: parent3@sgila.test / lindiwe_n."
+            "Demo data loaded. Logins: sipho_d / parent@sgila.test / teacher@sgila.test, password password123. Class code RAINB1. "
+            "Expired-trial demo: parent3@sgila.test / lindiwe_n, password password123 (trial started 40 days ago, payment is due)."
         ))
         self.stdout.write(
             "Both demo learners are marked as grade-confirmed for this school year, same as real "
@@ -335,7 +334,6 @@ class Command(BaseCommand):
 
         lesson.visual_items.all().delete()
         lesson.pronunciation_words.all().delete()
-        lesson.spelling_activities.all().delete()
         lesson_words = LESSON_WORDS.get(lesson.title)
         pronunciation_words = PRONUNCIATION_WORDS.get(lesson.title, lesson_words)
         vocab_sheet = VISUAL_VOCAB_SHEETS.get(lesson.title)
@@ -373,26 +371,10 @@ class Command(BaseCommand):
                 isizulu_word=isizulu_word,
             )
 
-        if lesson.grade != 3:
-            return
-
-        spelling_words = list(LESSON_SPELLING.get(lesson.title, []))
-        existing_answers = {answer.lower() for _display_text, answer in spelling_words}
-        for word, _isizulu_word, _image_source in lesson_words:
-            if len(spelling_words) >= 5:
-                break
-            if word.lower() in existing_answers:
-                continue
-            display_text = word
-            for vowel in 'aeiouAEIOU':
-                if vowel in display_text:
-                    display_text = display_text.replace(vowel, '_', 1)
-                    break
-            spelling_words.append((display_text, word))
-            existing_answers.add(word.lower())
-
+        spelling_words = LESSON_SPELLING.get(lesson.title)
         if spelling_words:
-            for display_text, answer in spelling_words[:5]:
+            lesson.spelling_activities.all().delete()
+            for display_text, answer in spelling_words:
                 SpellingActivity.objects.create(
                     lesson=lesson,
                     activity_type=SpellingActivity.FILL_VOWEL,
