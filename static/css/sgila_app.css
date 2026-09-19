@@ -2167,7 +2167,7 @@ body:not(.diagram-body) .activity-pause-button { margin-left: auto; }
   height: 10px;
   border-radius: 999px;
   background: currentColor;
-  box-shadow: 0 0 0 5px rgba(255,255,255,.92), 0 8px 18px rgba(72, 86, 112, .16);
+  box-shadow: 0 0 0 5px rgba(var(--surface-rgb),.92), 0 8px 18px rgba(72, 86, 112, .16);
 }
 
 .connector-head {
@@ -3169,6 +3169,17 @@ body:not(.diagram-body) .btn {
 
 body:not(.diagram-body) .btn-primary {
   background: #ffd22e;
+}
+
+[data-theme="dark"] body:not(.diagram-body) .btn-primary,
+[data-theme="dark"] body:not(.diagram-body) .yellow-btn,
+[data-theme="dark"] body:not(.diagram-body) .phone-tabs .learner-tab,
+[data-theme="dark"] body:not(.diagram-body) .screen-tabs .learner-tab,
+[data-theme="dark"] body:not(.diagram-body) .role-row button:nth-child(1),
+[data-theme="dark"] body:not(.diagram-body) .service-chips span:nth-child(3),
+[data-theme="dark"] body:not(.diagram-body) .preview-pill-row span:nth-child(2),
+[data-theme="dark"] body:not(.diagram-body) .tabs a:nth-child(1).active {
+  color: #111827;
 }
 
 body:not(.diagram-body) .btn-mint {
@@ -11041,9 +11052,10 @@ body.home-page .nav-links .nav-cta {
 }
 
 [data-theme="dark"] .studio-kicker-slash {
-  padding-inline: 2px;
-  border-radius: 2px;
-  background: #e9f2f4;
+  padding-inline: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--studio-muted);
 }
 
 .studio-hero h1 {
