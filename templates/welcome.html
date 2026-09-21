@@ -6,34 +6,30 @@
 <div class="studio-home">
   <section class="studio-hero" aria-labelledby="studio-home-title">
     <div class="studio-hero-copy">
-      <p class="studio-kicker">READ / LISTEN / UNDERSTAND</p>
+      <p class="studio-kicker"><span class="studio-kicker-read">READ</span> <span class="studio-kicker-slash">/</span> <span class="studio-kicker-listen">LISTEN</span> <span class="studio-kicker-slash">/</span> <span class="studio-kicker-understand">UNDERSTAND</span></p>
       <h1 id="studio-home-title">SGILA reading adventures</h1>
       <p class="studio-tagline">Stories that grow with every reader.</p>
       <p class="studio-support">CAPS-aligned reading adventures for Grades 1-4.</p>
 
       <div class="studio-hero-actions">
         <a class="studio-button studio-button-primary" href="/login?role=learner">Start reading</a>
-        <a class="studio-text-link" href="#choose-role">I'm a parent or teacher</a>
       </div>
 
       <nav class="studio-role-selector" id="choose-role" aria-label="Choose your SGILA role">
         <a class="studio-role studio-role-learner is-active" href="/login?role=learner">
-          <span class="studio-role-mark" aria-hidden="true">L</span>
           <span>Learner</span>
         </a>
         <a class="studio-role studio-role-parent-option" id="family-entry" href="/register?role=parent">
-          <span class="studio-role-mark studio-role-parent" aria-hidden="true">P</span>
           <span>Parent</span>
         </a>
         <a class="studio-role studio-role-teacher-option" id="school-entry" href="/register?role=teacher">
-          <span class="studio-role-mark studio-role-teacher" aria-hidden="true">T</span>
           <span>Teacher</span>
         </a>
       </nav>
     </div>
 
     <div class="studio-hero-media">
-      <img src="{% static 'img/home_reading_studio.png' %}" alt="Three learners reading with Koaly in a bright school library">
+      <img src="{% static 'img/home_reading_studio_v2.png' %}" alt="Four learners reading with Koaly in a bright school library">
     </div>
   </section>
 
@@ -49,34 +45,51 @@
     <div class="studio-story-grid">
       <a class="studio-story-card" href="/login?role=learner">
         <div class="studio-story-image">
-          <img src="{% static 'img/lerato/lerato_market.png' %}" alt="Lerato at the fruit market">
+          <img src="{% static 'img/covers/g1_lerato_fruit_basket.webp' %}" alt="Cover art for Lerato's Fruit Basket">
           <span class="studio-grade studio-grade-one">Grade 1</span>
         </div>
         <div class="studio-story-meta">
           <h3>Lerato's Fruit Basket</h3>
-          <span>Market adventure</span>
         </div>
       </a>
 
       <a class="studio-story-card" href="/login?role=learner">
         <div class="studio-story-image">
-          <img src="{% static 'img/storyboards/g2_dan_storyboard.png' %}" alt="Scenes from Dan Has a Bad Week">
-          <span class="studio-grade studio-grade-two">Grade 2</span>
+          <img src="{% static 'img/covers/g1_very_hot_day.webp' %}" alt="Cover art for A Very Hot Day">
+          <span class="studio-grade studio-grade-one">Grade 1</span>
         </div>
         <div class="studio-story-meta">
-          <h3>Dan Has a Bad Week</h3>
-          <span>School-day story</span>
+          <h3>A Very Hot Day</h3>
         </div>
       </a>
 
       <a class="studio-story-card" href="/login?role=learner">
         <div class="studio-story-image">
-          <img src="{% static 'img/storyboards/g4_mandu_shoes_storyboard.png' %}" alt="Scenes from Mandu's Running Shoes">
-          <span class="studio-grade studio-grade-four">Grade 4</span>
+          <img src="{% static 'img/covers/g1_ben_goes_to_school.webp' %}" alt="Cover art for Ben Goes to School">
+          <span class="studio-grade studio-grade-one">Grade 1</span>
         </div>
         <div class="studio-story-meta">
-          <h3>Mandu's Running Shoes</h3>
-          <span>Determination and courage</span>
+          <h3>Ben Goes to School</h3>
+        </div>
+      </a>
+
+      <a class="studio-story-card" href="/login?role=learner">
+        <div class="studio-story-image">
+          <img src="{% static 'img/covers/g1_olwethu_first_day.webp' %}" alt="Cover art for Olwethu's First Day">
+          <span class="studio-grade studio-grade-one">Grade 1</span>
+        </div>
+        <div class="studio-story-meta">
+          <h3>Olwethu's First Day</h3>
+        </div>
+      </a>
+
+      <a class="studio-story-card" href="/login?role=learner">
+        <div class="studio-story-image">
+          <img src="{% static 'img/covers/g1_bongi_waits.webp' %}" alt="Cover art for Bongi Waits">
+          <span class="studio-grade studio-grade-one">Grade 1</span>
+        </div>
+        <div class="studio-story-meta">
+          <h3>Bongi Waits</h3>
         </div>
       </a>
     </div>

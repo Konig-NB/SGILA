@@ -60,6 +60,9 @@ class Teacher(models.Model):
     phone = models.CharField(max_length=30, blank=True)
     accepted_popia = models.BooleanField(default=False)
     class_code = models.CharField(max_length=10, unique=True, null=True, blank=True)
+    is_active = models.BooleanField(default=True)
+    deactivated_at = models.DateTimeField(null=True, blank=True)
+    auth_version = models.PositiveIntegerField(default=0)
     created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):
@@ -102,6 +105,26 @@ class Child(models.Model):
     photo = models.FileField(upload_to='child_photos/', blank=True)
     password = models.CharField(max_length=300)   # hashed by Django
     paused_activities = models.JSONField(default=dict, blank=True)
+
+    # --- Deactivation ------------------------------------------------------
+    # A learner can be paused two ways: individually (a parent turns off just
+    # this one child from the learner report) or as part of the parent's own
+    # account being deactivated (every currently-active child is swept along
+    # with it). `deactivated_reason` is what lets reactivation tell those
+    # apart: reactivating the parent only brings back children whose reason
+    # is DEACTIVATED_PARENT_CASCADE. A child the parent paused on purpose
+    # (DEACTIVATED_MANUAL) stays off until reactivated on its own, even after
+    # the parent account comes back.
+    DEACTIVATED_PARENT_CASCADE = 'parent_cascade'
+    DEACTIVATED_MANUAL = 'manual'
+    DEACTIVATED_REASON_CHOICES = [
+        (DEACTIVATED_PARENT_CASCADE, "Parent account deactivated"),
+        (DEACTIVATED_MANUAL, "Deactivated individually"),
+    ]
+    is_active = models.BooleanField(default=True)
+    deactivated_at = models.DateTimeField(null=True, blank=True)
+    deactivated_reason = models.CharField(max_length=20, choices=DEACTIVATED_REASON_CHOICES, blank=True)
+
     created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):
@@ -196,6 +219,19 @@ class Child(models.Model):
         )
         return self
 
+    def deactivate(self, reason):
+        """Pause this learner's access. `reason` is one of DEACTIVATED_REASON_CHOICES."""
+        self.is_active = False
+        self.deactivated_at = timezone.now()
+        self.deactivated_reason = reason
+        self.save(update_fields=['is_active', 'deactivated_at', 'deactivated_reason'])
+
+    def reactivate(self):
+        self.is_active = True
+        self.deactivated_at = None
+        self.deactivated_reason = ''
+        self.save(update_fields=['is_active', 'deactivated_at', 'deactivated_reason'])
+
 
 class GradeHistory(models.Model):
     """Records the human-confirmed grade for a child for one school year.
@@ -237,6 +273,9 @@ class TeacherClass(models.Model):
     name = models.CharField(max_length=80)
     grade = models.IntegerField(default=1)
     class_code = models.CharField(max_length=10, unique=True, null=True, blank=True)
+    # Set true when the owning teacher is deactivated, so dashboards/admin can
+    # surface "this class needs a new teacher" instead of silently going quiet.
+    needs_new_teacher = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -857,15 +896,29 @@ class PasswordResetToken(models.Model):
 
 
 class AccountActionOTP(models.Model):
-    """A short-lived, single-purpose OTP for sensitive account actions."""
+    """A short-lived, single-purpose OTP for sensitive account actions.
+
+    Belongs to either a parent or a teacher (never both) — see `account`.
+    """
 
     REACTIVATE_PARENT = 'reactivate_parent'
-    ACTION_CHOICES = [(REACTIVATE_PARENT, 'Reactivate parent account')]
+    REACTIVATE_TEACHER = 'reactivate_teacher'
+    ACTION_CHOICES = [
+        (REACTIVATE_PARENT, 'Reactivate parent account'),
+        (REACTIVATE_TEACHER, 'Reactivate teacher account'),
+    ]
     MAX_ATTEMPTS = 5
 
     parent = models.ForeignKey(
         Parent,
         on_delete=models.CASCADE,
+        null=True, blank=True,
+        related_name='account_action_otps',
+    )
+    teacher = models.ForeignKey(
+        Teacher,
+        on_delete=models.CASCADE,
+        null=True, blank=True,
         related_name='account_action_otps',
     )
     action = models.CharField(max_length=32, choices=ACTION_CHOICES)
@@ -884,8 +937,12 @@ class AccountActionOTP(models.Model):
     def can_attempt(self):
         return not self.is_used and not self.is_expired() and self.attempts < self.MAX_ATTEMPTS
 
+    @property
+    def account(self):
+        return self.parent or self.teacher
+
     def __str__(self):
-        return f"{self.get_action_display()} for {self.parent.email}"
+        return f"{self.get_action_display()} for {self.account.email if self.account else 'unknown'}"
 
 
 # ─────────────────────────────────────────────

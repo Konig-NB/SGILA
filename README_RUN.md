@@ -34,10 +34,12 @@ installs dependencies, prepares the database, and starts the local server.
 All demo accounts use the password `password123`.
 
 - Learner: `learner@sgila.test`
+- Grade 3 learner username: `lerato_m`
 - Parent: `parent@sgila.test`
 - Teacher: `teacher@sgila.test`
 
-Demo class codes: `SGILA1`, `RAINB1`, `RAINB2`, `RAINB3`, and `RAINB4`.
+All demo learner accounts use the password `password123`.
+Demo class codes: `SGILA1`, `RAINB1`, `RAINB2`, `RAINB3`, `RAINB4`, `MKGRD3`, and `MKGRD4`.
 
 **Order matters:** `load_curriculum_content` rewrites each lesson's activities, so
 it clears the Grade 2 ones. Always run `sync_grade2_activities` *after* it, never

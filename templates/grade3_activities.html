@@ -1,0 +1,254 @@
+{% extends 'base.html' %}
+{% block title %}Activities - {{ lesson.title }}{% endblock %}
+{% load static %}
+{% block content %}
+<section class="activity-shell grade3-activities" data-story-title="{{ lesson.title }}" data-lesson-id="{{ lesson.id }}">
+  <div class="activity-top">
+    <a href="/lessons/{{ lesson.id }}/story" class="back-link">Back to story</a>
+    <span class="step-pill">Grade 3 activities</span>
+  </div>
+  <p class="eyebrow">Post-reading practice</p>
+  <h1 id="activity-title">Story activities</h1>
+  <nav id="activity-picker" class="activity-picker" aria-label="Choose an activity"></nav>
+  <div id="activity-app" aria-live="polite"></div>
+</section>
+<script>
+const imageSets = {
+  "Mandu's Secret Diary": ['g3_mandu_01.png', 'g3_mandu_02.png', 'g3_mandu_03.png', 'g3_mandu_04.png', 'g3_mandu_05.png', 'g3_mandu_06.png'],
+  'Soccer Trouble': ['g3_soccer_01.png', 'g3_soccer_02.png', 'g3_soccer_01.png', 'g3_soccer_02.png', 'g3_soccer_01.png'],
+  'The River Mistake': ['g3_river_01.png', 'g3_river_02.png', 'g3_river_01.png', 'g3_river_02.png', 'g3_river_01.png'],
+  'Stage Fright': ['g3_stage_01.png', 'g3_stage_02.png', 'g3_stage_01.png', 'g3_stage_02.png', 'g3_stage_01.png'],
+  'The Juice Spill': ['g3_juice_01.png', 'g3_juice_02.png', 'g3_juice_01.png', 'g3_juice_02.png', 'g3_juice_01.png'],
+};
+const assetPath = (fileName) => `/static/img/caps/${fileName}`;
+const storyboardSets = {
+  "Mandu's Secret Diary": 'g3_mandu_storyboard.png',
+  'Soccer Trouble': 'g3_soccer_storyboard.png',
+  'The River Mistake': 'g3_river_storyboard.png',
+  'Stage Fright': 'g3_stage_storyboard.png',
+  'The Juice Spill': 'g3_juice_storyboard.png',
+};
+async function initActivities() {
+const response = await fetch('{% static "data/grade3_activities.json" %}?v=storyboard-panels-20260904', { cache: 'no-store' });
+if (!response.ok) throw new Error('Activity data could not be loaded.');
+const payload = await response.json();
+const title = document.querySelector('.grade3-activities').dataset.storyTitle;
+const storyData = Object.fromEntries(payload.stories.map((story) => [story.title, story.activities]));
+const data = storyData[title] || storyData["Mandu's Secret Diary"];
+const storyImages = imageSets[title] || imageSets["Mandu's Secret Diary"];
+const app = document.getElementById('activity-app');
+document.getElementById('activity-title').textContent = title;
+let voicesPromise = null;
+
+function loadActivityVoices() {
+  if (!('speechSynthesis' in window)) return Promise.resolve([]);
+  const voices = window.speechSynthesis.getVoices();
+  if (voices.length) return Promise.resolve(voices);
+  if (voicesPromise) return voicesPromise;
+  voicesPromise = new Promise((resolve) => {
+    const finish = () => resolve(window.speechSynthesis.getVoices());
+    window.speechSynthesis.addEventListener('voiceschanged', finish, { once: true });
+    window.setTimeout(finish, 1200);
+  });
+  return voicesPromise;
+}
+
+function getTherapeuticVoice(voices) {
+  const english = voices.filter((voice) => voice.lang.toLowerCase().startsWith('en'));
+  const preferred = ['zira', 'susan', 'aria', 'sonia', 'hazel', 'google uk english female', 'natural'];
+  return english.find((voice) => preferred.some((name) => voice.name.toLowerCase().includes(name))) || english[0] || voices[0] || null;
+}
+
+function audio(label, highlightTarget = null) {
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.className = 'btn btn-light audio-assist';
+  button.innerHTML = '&#128266; Play audio';
+  button.addEventListener('click', async () => {
+    console.log(`Playing therapeutic voiceover: ${label}`);
+    if (!('speechSynthesis' in window)) return;
+    button.disabled = true;
+    const voices = await loadActivityVoices();
+    const utterance = new SpeechSynthesisUtterance(label);
+    utterance.voice = getTherapeuticVoice(voices);
+    utterance.lang = utterance.voice?.lang || 'en-ZA';
+    utterance.rate = 0.8;
+    utterance.pitch = 1.15;
+    utterance.volume = 1;
+    utterance.onend = () => { button.disabled = false; };
+    utterance.onerror = () => { button.disabled = false; };
+    const words = highlightTarget ? label.split(/(\s+)/) : [];
+    if (highlightTarget) {
+      highlightTarget.innerHTML = words.map((word, index) => word.trim()
+        ? `<span class="speech-word" data-speech-index="${index}">${word}</span>`
+        : word).join('');
+      utterance.onboundary = (event) => {
+        if (event.name !== 'word') return;
+        const current = event.charIndex;
+        let offset = 0;
+        highlightTarget.querySelectorAll('.speech-word').forEach((word) => {
+          const startsAt = offset;
+          offset += word.textContent.length;
+          word.classList.toggle('is-speaking', current >= startsAt && current < offset);
+        });
+      };
+      const clearHighlight = () => highlightTarget.querySelectorAll('.speech-word').forEach((word) => word.classList.remove('is-speaking'));
+      utterance.onstart = () => {};
+      utterance.onend = () => { clearHighlight(); button.disabled = false; };
+      utterance.onerror = () => { clearHighlight(); button.disabled = false; };
+    }
+    window.speechSynthesis.cancel();
+    window.speechSynthesis.speak(utterance);
+  });
+  return button;
+}
+function heading(number, label, instruction) {
+  const header = document.createElement('div');
+  header.className = 'grade3-section-heading';
+  header.innerHTML = `<span class="activity-number">${number}</span><div><h2>${label}</h2><p>${instruction}</p></div>`;
+  header.append(audio(instruction, header.querySelector('p')));
+  return header;
+}
+function image(name, alt) {
+  const img = document.createElement('img');
+  const imageIndex = Math.abs([...name].reduce((sum, character) => sum + character.charCodeAt(0), 0)) % storyImages.length;
+  img.src = assetPath(storyImages[imageIndex]); img.alt = alt || name.replaceAll('_', ' ');
+  return img;
+}
+function section(number, label, instruction) {
+  const element = document.createElement('section');
+  element.className = 'grade3-activity-section';
+  element.dataset.activityNumber = number;
+  element.dataset.activityLabel = label;
+  element.append(heading(number, label, instruction));
+  app.append(element);
+  return element;
+}
+
+let totalScore = 0;
+let totalPossible = 0;
+const completedActivities = new Set();
+const activityScores = new Map();
+function finishActivity(activity, score, possible, message) {
+  if (completedActivities.has(activity)) return;
+  completedActivities.add(activity);
+  totalScore += score;
+  totalPossible += possible;
+  activityScores.set(activity.dataset.activityNumber, { score, possible, label: activity.dataset.activityLabel });
+  const feedback = document.createElement('p');
+  feedback.className = `activity-feedback ${score === possible ? 'correct' : 'wrong'}`;
+  feedback.textContent = score === possible
+    ? 'All answers are correct.'
+    : 'You have some answers to review. Read the correct answers and focus on the next activity.';
+  activity.append(feedback);
+  if (completedActivities.size === 5) {
+    document.getElementById('final-score-button').hidden = false;
+    fetch(`/lessons/${document.querySelector('.grade3-activities').dataset.lessonId}/activities/complete`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRFToken': '{{ csrf_token }}' },
+      body: JSON.stringify({ total_score: totalScore, total_possible: totalPossible, comprehension_score: activityScores.get('1').score + activityScores.get('3').score, visual_score: activityScores.get('2').score + activityScores.get('4').score, spelling_score: activityScores.get('5').score }),
+    });
+  }
+}
+
+const visual = section(1, 'Comprehension check', 'Listen, then choose the best answer.');
+const visualSelections = new Map();
+data.act1_visual_mc.forEach((item, index) => {
+  const card = document.createElement('article'); card.className = 'grade3-question-card';
+  const question = document.createElement('div'); question.className = 'question-with-audio';
+  question.innerHTML = `<span class="question-number">Question ${index + 1}</span><strong>${item.question}</strong>`; question.append(audio(item.question, question.querySelector('strong'))); card.append(question);
+  const options = document.createElement('div'); options.className = 'visual-options';
+  item.options.forEach((option, index) => {
+    const button = document.createElement('button'); button.type = 'button'; button.className = 'text-option'; button.textContent = `${String.fromCharCode(65 + index)}) ${option.text}`;
+    button.addEventListener('click', () => { if (completedActivities.has(visual)) return; options.querySelectorAll('button').forEach((b) => b.classList.remove('selected')); button.classList.add('selected'); visualSelections.set(item, option); });
+    options.append(button);
+  }); card.append(options);
+  visual.append(card);
+});
+const visualCheck = document.createElement('button'); visualCheck.type = 'button'; visualCheck.className = 'btn btn-primary'; visualCheck.textContent = 'Check answers';
+visualCheck.addEventListener('click', () => { let score = 0; visual.querySelectorAll('.grade3-question-card').forEach((card, index) => { const item = data.act1_visual_mc[index]; const choice = visualSelections.get(item); const correct = Boolean(choice && choice.isCorrect); if (correct) score += 1; card.querySelectorAll('.text-option').forEach((button) => button.disabled = true); const selected = card.querySelector('.selected'); if (selected) selected.classList.add(correct ? 'is-correct' : 'is-wrong'); const result = document.createElement('p'); result.className = `answer-review ${correct ? 'correct' : 'wrong'}`; result.textContent = `Your answer: ${choice ? choice.text : 'No answer selected.'}${correct ? '' : ` Correct answer: ${item.options.find((option) => option.isCorrect).text}`}`; card.append(result); }); visualCheck.disabled = true; finishActivity(visual, score, data.act1_visual_mc.length, score === data.act1_visual_mc.length ? 'Great work! You got every answer right.' : 'Good try! Keep going. You can learn from each answer.'); });
+  visual.append(visualCheck);
+
+const sequencer = section(2, 'Story sequencer', 'Drag the events to show what happened first, next, and last.');
+const slots = document.createElement('div'); slots.className = 'sequence-slots';
+const cards = document.createElement('div'); cards.className = 'sequence-cards';
+const shuffled = [...data.act2_sequencer].sort(() => Math.random() - .5);
+function sequenceCard(item) { const card = document.createElement('button'); card.type = 'button'; card.className = 'sequence-card'; card.draggable = true; card.dataset.order = item.order; const panel = item.panel || item.order; const illustration = document.createElement('span'); illustration.className = `sequence-illustration storyboard-panel-${panel}`; const illustrationImage = document.createElement('img'); illustrationImage.src = `/static/img/storyboards/${storyboardSets[title]}?v=story-events-20260904-3`; illustrationImage.alt = item.text; illustration.append(illustrationImage); const caption = document.createElement('span'); caption.className = 'sequence-caption'; caption.textContent = item.text; card.append(illustration, caption); card.addEventListener('dragstart', () => card.classList.add('is-dragging')); card.addEventListener('dragend', () => card.classList.remove('is-dragging')); return card; }
+for (let index = 0; index < 5; index++) { const slot = document.createElement('div'); slot.className = 'sequence-slot'; slot.dataset.order = index + 1; slot.innerHTML = `<span>${index + 1}</span>`; slot.addEventListener('dragover', (event) => event.preventDefault()); slot.addEventListener('drop', () => { const moving = document.querySelector('.is-dragging'); if (moving) slot.append(moving); }); slots.append(slot); }
+shuffled.forEach((item) => cards.append(sequenceCard(item)));
+const sequenceReviews = document.createElement('div'); sequenceReviews.className = 'sequence-reviews';
+const sequenceCheck = document.createElement('button'); sequenceCheck.type = 'button'; sequenceCheck.className = 'btn btn-primary'; sequenceCheck.textContent = 'Check order';
+sequenceCheck.addEventListener('click', () => { let score = 0; sequenceReviews.innerHTML = ''; slots.querySelectorAll('.sequence-slot').forEach((slot, index) => { const card = slot.querySelector('.sequence-card'); const correct = Boolean(card && Number(card.dataset.order) === index + 1); if (correct) score += 1; slot.classList.toggle('is-correct', correct); slot.classList.toggle('is-wrong', !correct); if (!correct) { const review = document.createElement('p'); review.className = 'answer-review wrong'; review.textContent = `Slot ${index + 1} correct event: ${data.act2_sequencer[index].text}`; sequenceReviews.append(review); } }); sequenceCheck.disabled = true; cards.querySelectorAll('.sequence-card').forEach((card) => { card.draggable = false; card.disabled = true; }); finishActivity(sequencer, score, 5, score === 5 ? 'Excellent order! You got them all right.' : 'Review the corrections below, then move to another activity.'); });
+sequencer.append(slots, cards, sequenceCheck, sequenceReviews);
+
+const truth = section(3, 'Fact or fiction', 'Listen to the sentence. Is it true or false?');
+const truthSelections = new Map();
+data.act3_true_false.forEach((item, index) => { const card = document.createElement('article'); card.className = 'truth-card'; const line = document.createElement('div'); line.className = 'question-with-audio'; line.innerHTML = `<span class="question-number">Question ${index + 1}</span><strong>${item.text}</strong>`; line.append(audio(item.text, line.querySelector('strong'))); card.append(line); const choices = document.createElement('div'); choices.className = 'truth-choices'; [['True', true], ['False', false]].forEach(([label, value]) => { const button = document.createElement('button'); button.type = 'button'; button.className = `btn ${value ? 'true-button' : 'false-button'}`; button.textContent = label; button.addEventListener('click', () => { if (completedActivities.has(truth)) return; choices.querySelectorAll('button').forEach((b) => b.classList.remove('selected')); button.classList.add('selected'); truthSelections.set(item, value); }); choices.append(button); }); card.append(choices); truth.append(card); });
+const truthCheck = document.createElement('button'); truthCheck.type = 'button'; truthCheck.className = 'btn btn-primary'; truthCheck.textContent = 'Check answers'; truthCheck.addEventListener('click', () => { let score = 0; truth.querySelectorAll('.truth-card').forEach((card, index) => { const item = data.act3_true_false[index]; const selectedValue = truthSelections.get(item); const correct = selectedValue === item.isTrue; if (correct) score += 1; card.querySelectorAll('button').forEach((button) => button.disabled = true); const selected = card.querySelector('.selected'); if (selected) selected.classList.add(correct ? 'is-correct' : 'is-wrong'); const result = document.createElement('p'); result.className = `answer-review ${correct ? 'correct' : 'wrong'}`; result.textContent = `Your answer: ${selectedValue === undefined ? 'No answer selected.' : selectedValue ? 'True' : 'False'}${correct ? '' : ` Correct answer: ${item.isTrue ? 'True' : 'False'}`}`; card.append(result); }); truthCheck.disabled = true; finishActivity(truth, score, data.act3_true_false.length, score === data.act3_true_false.length ? 'Well done! Every fact is correct.' : 'Keep going! You are building strong story skills.'); }); truth.append(truthCheck);
+
+const detective = section(4, 'Word detective', 'Listen, then place the right word in each blank.');
+const sentence = document.createElement('div'); sentence.className = 'detective-sentence';
+const blanks = {};
+data.act4_word_detective.text_segments.forEach((text, index) => {
+  sentence.append(document.createTextNode(text));
+  const blankData = data.act4_word_detective.blanks[index];
+  if (!blankData) return;
+  const blank = document.createElement('span');
+  blank.className = `word-blank ${blankData.color}`;
+  blank.textContent = '?';
+  blank.dataset.id = blankData.id;
+  blank.addEventListener('dragover', (event) => event.preventDefault());
+  blank.addEventListener('drop', () => {
+    const item = document.querySelector('.word-pill.is-dragging');
+    if (item) { blank.textContent = item.dataset.word; blank.classList.add('filled'); }
+  });
+  blanks[blankData.id] = blank;
+  sentence.append(blank);
+});
+detective.append(sentence);
+const bank = document.createElement('div'); bank.className = 'word-bank';
+data.act4_word_detective.word_bank.forEach((item) => {
+  const wrapper = document.createElement('div'); wrapper.className = 'word-bank-item';
+  const pill = document.createElement('button'); pill.type = 'button'; pill.className = 'word-pill'; pill.draggable = true; pill.dataset.word = item.word; pill.dataset.targetBlank = item.target_blank || '';
+  pill.textContent = item.word;
+  pill.addEventListener('dragstart', () => pill.classList.add('is-dragging'));
+  pill.addEventListener('dragend', () => pill.classList.remove('is-dragging'));
+  wrapper.append(pill, audio(item.word)); bank.append(wrapper);
+});
+const detectiveCheck = document.createElement('button'); detectiveCheck.type = 'button'; detectiveCheck.className = 'btn btn-primary'; detectiveCheck.textContent = 'Check words';
+detectiveCheck.addEventListener('click', () => { let score = 0; Object.entries(blanks).forEach(([blankId, blank]) => { const correct = data.act4_word_detective.word_bank.find((item) => item.target_blank === blankId); const selectedWord = blank.textContent.trim(); const isCorrect = Boolean(correct && selectedWord.toLowerCase() === correct.word.toLowerCase()); if (isCorrect) score += 1; blank.classList.toggle('is-correct', isCorrect); blank.classList.toggle('is-wrong', !isCorrect); if (!isCorrect) { const review = document.createElement('small'); review.className = 'answer-review wrong'; review.textContent = `Your answer: ${selectedWord}. Correct: ${correct ? correct.word : 'No answer.'}`; blank.parentElement.append(review); } }); detectiveCheck.disabled = true; bank.querySelectorAll('button').forEach((button) => { button.disabled = true; button.draggable = false; }); finishActivity(detective, score, Object.keys(blanks).length, score === Object.keys(blanks).length ? 'Amazing! You solved every word.' : 'Good effort! Keep learning one word at a time.'); });
+detective.append(bank, detectiveCheck);
+
+const spelling = section(5, 'Listen and spell', 'Listen to each word, then write it down.'); const spellingList = document.createElement('div'); spellingList.className = 'listen-spell-list'; data.act5_listen_spell.forEach((item) => { const row = document.createElement('div'); row.className = 'listen-spell-row'; row.innerHTML = `<span class="spelling-number">${item.id}</span>`; const play = audio(item.word); play.setAttribute('aria-label', `Play spelling word ${item.id}`); row.append(play); const input = document.createElement('input'); input.className = 'spelling-input'; input.type = 'text'; input.placeholder = 'Write the word'; input.autocomplete = 'off'; row.append(input); const result = document.createElement('span'); result.className = 'spelling-result'; result.dataset.answer = item.word; row.append(result); spellingList.append(row); }); const check = document.createElement('button'); check.type = 'button'; check.className = 'btn btn-primary btn-large btn-full'; check.textContent = 'Check answers'; check.addEventListener('click', () => { let score = 0; spellingList.querySelectorAll('.listen-spell-row').forEach((row) => { const answer = row.querySelector('.spelling-result'); const input = row.querySelector('input'); const typed = input.value.trim(); const correct = typed.toLowerCase() === answer.dataset.answer.trim().toLowerCase(); if (correct) score += 1; row.classList.toggle('is-correct', correct); row.classList.toggle('is-wrong', !correct); answer.textContent = correct ? '✓' : '✕'; if (!correct) { const review = document.createElement('small'); review.className = 'answer-review wrong'; review.textContent = `Your answer: ${typed || 'No answer.'} Correct: ${answer.dataset.answer}`; row.append(review); } input.disabled = true; }); spellingList.querySelectorAll('.audio-assist').forEach((button) => { button.disabled = true; }); check.disabled = true; finishActivity(spelling, score, data.act5_listen_spell.length, score === data.act5_listen_spell.length ? 'Fantastic spelling! You got them all right.' : 'Nice try! Keep practising and do not give up.'); }); spelling.append(spellingList, check);
+
+const activitySections = [...app.querySelectorAll('.grade3-activity-section')];
+const picker = document.getElementById('activity-picker');
+const finalScorePanel = document.createElement('div'); finalScorePanel.id = 'final-score-panel'; finalScorePanel.className = 'final-score-panel'; finalScorePanel.hidden = true;
+const finalScoreButton = document.createElement('button'); finalScoreButton.id = 'final-score-button'; finalScoreButton.type = 'button'; finalScoreButton.className = 'btn btn-primary btn-large btn-full'; finalScoreButton.textContent = 'View final score'; finalScoreButton.hidden = true;
+finalScoreButton.addEventListener('click', () => { const improvements = [...activityScores.values()].filter((item) => item.score < item.possible); const stars = totalScore / totalPossible >= .9 ? 3 : totalScore / totalPossible >= .7 ? 2 : 1; finalScorePanel.hidden = false; finalScorePanel.innerHTML = `<h2>Final score</h2><strong class="final-score-number">${totalScore} / ${totalPossible}</strong><p class="final-stars" aria-label="${stars} stars earned">${'★'.repeat(stars)}${'☆'.repeat(3 - stars)}</p><div class="score-breakdown">${[...activityScores.values()].map((item) => `<p><b>${item.label}:</b> ${item.score} / ${item.possible}${item.score < item.possible ? ` <span>Review this activity.</span>` : ' <span class="correct">Complete</span>'}</p>`).join('')}</div><p class="improvement-note">${improvements.length ? `Focus next on: ${improvements.map((item) => item.label).join(', ')}.` : 'You completed every activity correctly.'}</p>`; finalScorePanel.scrollIntoView({ behavior: 'smooth', block: 'start' }); });
+const navigation = document.createElement('div'); navigation.className = 'activity-navigation';
+const previous = document.createElement('button'); previous.type = 'button'; previous.className = 'btn btn-light'; previous.textContent = 'Previous activity';
+const next = document.createElement('button'); next.type = 'button'; next.className = 'btn btn-primary'; next.textContent = 'Next activity';
+navigation.append(previous, next);
+app.append(navigation);
+app.append(finalScoreButton);
+app.append(finalScorePanel);
+let activeActivity = 0;
+function showActivity(index) {
+  activeActivity = Math.max(0, Math.min(index, activitySections.length - 1));
+  activitySections.forEach((activity, activityIndex) => activity.classList.toggle('activity-current', activityIndex === activeActivity));
+  picker.querySelectorAll('button').forEach((button, buttonIndex) => { button.classList.toggle('active', buttonIndex === activeActivity); button.setAttribute('aria-current', buttonIndex === activeActivity ? 'step' : 'false'); });
+  previous.disabled = activeActivity === 0;
+  next.disabled = activeActivity === activitySections.length - 1;
+  activitySections[activeActivity].scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+activitySections.forEach((activity, index) => { const button = document.createElement('button'); button.type = 'button'; button.textContent = `${activity.dataset.activityNumber}. ${activity.dataset.activityLabel}`; button.addEventListener('click', () => showActivity(index)); picker.append(button); });
+previous.addEventListener('click', () => showActivity(activeActivity - 1));
+next.addEventListener('click', () => showActivity(activeActivity + 1));
+showActivity(0);
+}
+
+initActivities().catch((error) => {
+  document.getElementById('activity-app').textContent = error.message;
+});
+</script>
+{% endblock %}

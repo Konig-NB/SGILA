@@ -11,7 +11,35 @@ from api.models import Lesson, ReadingActivity
 EXPECTED_GROUP_TITLES = {
     1: 'Phonics & Story-Word Spelling',
     2: 'Short Sentences & Picture Matching',
-    3: 'Opposites & Contrasting Concepts',
+    3: 'Story Sentence Completion',
+}
+
+EXPECTED_ACTIVITY_THREE = {
+    "Lerato's Fruit Basket": [
+        ('The apple is ..........', ['Red', 'Green'], 'Red'),
+        ('The banana is ..........', ['Yellow', 'Blue'], 'Yellow'),
+        ('Lerato wants to be ..........', ['Strong', 'Weak'], 'Strong'),
+    ],
+    'A Very Hot Day': [
+        ('The day is ..........', ['Hot', 'Cold'], 'Hot'),
+        ('Karabo jumps into the ..........', ['Pond', 'School'], 'Pond'),
+        ('Karabo is .......... with Cathy.', ['Happy', 'Sad'], 'Happy'),
+    ],
+    'Ben Goes to School': [
+        ('Ben goes to ..........', ['School', 'Home'], 'School'),
+        ('The children are .......... together.', ['Singing', 'Sleeping'], 'Singing'),
+        ('Jabu is .......... to see Ben.', ['Happy', 'Sad'], 'Happy'),
+    ],
+    "Olwethu's First Day": [
+        ('Olwethu goes to ..........', ['School', 'The beach'], 'School'),
+        ('Olwethu has new ..........', ['Shoes', 'Toys'], 'Shoes'),
+        ('Olwethu feels .......... at first.', ['Scared', 'Happy'], 'Scared'),
+    ],
+    'Bongi Waits': [
+        ('Bongi waits ..........', ['Outside', 'Inside'], 'Outside'),
+        ('Bongi hugs ..........', ['Granny and Grandpa', 'The teacher'], 'Granny and Grandpa'),
+        ('Bongi is ..........', ['Happy', 'Sad'], 'Happy'),
+    ],
 }
 
 
@@ -36,6 +64,30 @@ class GradeOneBlueprintTests(SimpleTestCase):
         for title, activities in GRADE_ONE_ACTIVITY_BLUEPRINTS.items():
             with self.subTest(title=title):
                 self.assertFalse({item['activity_type'] for item in activities} & old_types)
+
+    def test_activity_three_matches_the_revised_question_specification(self):
+        for title, expected_questions in EXPECTED_ACTIVITY_THREE.items():
+            with self.subTest(title=title):
+                activity_three = [
+                    activity
+                    for activity in GRADE_ONE_ACTIVITY_BLUEPRINTS[title]
+                    if activity['group_number'] == 3
+                ]
+                actual_questions = [
+                    (
+                        activity['question'],
+                        activity['options']['choices'],
+                        activity['correct_answer'],
+                    )
+                    for activity in activity_three
+                ]
+                self.assertEqual(actual_questions, expected_questions)
+                for activity in activity_three:
+                    self.assertEqual(activity['options']['audio_text'], activity['question'])
+                    self.assertEqual(
+                        activity['options']['instruction'],
+                        'Listen to the sentence, then choose the missing word.',
+                    )
 
 
 class SyncGradeOneActivitiesTests(TestCase):
