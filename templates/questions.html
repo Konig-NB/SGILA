@@ -67,6 +67,7 @@ const typeInstructions = {
   open_ended: 'Write two or more clear sentences and use your punctuation.',
   sequencing: 'Use the arrows to put the events in story order.',
   matching: 'Match each item with the best answer.',
+  match_it: 'Choose a match for all four, then check your answers. One option on the right belongs to no one. Match each one on the left to what happened on the right.',
   cloze: 'Choose the words that complete the sentence.',
   oral_response: 'Say your answer out loud. You do not need to type.',
   prediction: 'Write what you think will happen and give a story clue.',
@@ -103,6 +104,8 @@ const nextButton = document.getElementById('next-question-btn');
 const mascot = document.getElementById('mascot-reaction');
 const messageArea = document.getElementById('message-area');
 const responseArea = document.getElementById('response-area');
+let currentMatches = {};
+let activePromptKey = null;
 
 window.SgilaCurrentActivityIndex = () => current;
 
@@ -186,27 +189,35 @@ function createActivityVisual(imageUrl, alt, modifier = '') {
   return frame;
 }
 
-function prepareActivitySpeechWords(element) {
-  if (!element) return [];
-  const rawText = element.dataset.speechText || element.textContent.trim();
-  element.dataset.speechText = rawText;
-  element.innerHTML = '';
-  let characterIndex = 0;
-  rawText.split(/(\s+)/).forEach((token) => {
-    if (!token) return;
-    if (/^\s+$/.test(token)) {
-      element.appendChild(document.createTextNode(token));
-    } else {
-      const word = document.createElement('span');
-      word.className = 'activity-speech-word';
-      word.dataset.start = characterIndex;
-      word.dataset.end = characterIndex + token.length;
-      word.textContent = token;
-      element.appendChild(word);
-    }
-    characterIndex += token.length;
+function prepareActivitySpeechWords(elements) {
+  if (!elements) return [];
+  if (!Array.isArray(elements)) elements = [elements];
+  const allWords = [];
+  let globalCharIndex = 0;
+
+  elements.forEach((element) => {
+    if (!element) return;
+    const rawText = element.dataset.speechText || element.textContent.trim();
+    element.dataset.speechText = rawText;
+    element.innerHTML = '';
+    rawText.split(/(\s+)/).forEach((token) => {
+      if (!token) return;
+      if (/^\s+$/.test(token)) {
+        element.appendChild(document.createTextNode(token));
+      } else {
+        const word = document.createElement('span');
+        word.className = 'activity-speech-word';
+        word.dataset.start = globalCharIndex;
+        word.dataset.end = globalCharIndex + token.length;
+        word.textContent = token;
+        element.appendChild(word);
+        allWords.push(word);
+      }
+      globalCharIndex += token.length;
+    });
   });
-  return [...element.querySelectorAll('.activity-speech-word')];
+
+  return allWords;
 }
 
 function clearActivitySpeechWords(words) {
@@ -223,10 +234,11 @@ function highlightActivityWord(words, characterIndex) {
   currentWord.classList.add('spoken-word', 'current-word');
 }
 
-function speakActivityText(text, button, highlightElement = null) {
+function speakActivityText(text, button, highlightElements = null) {
   if (!text || !('speechSynthesis' in window)) return;
   window.speechSynthesis.cancel();
-  const words = prepareActivitySpeechWords(highlightElement);
+  const elements = highlightElements || [];
+  const words = prepareActivitySpeechWords(elements);
   clearActivitySpeechWords(words);
   const utterance = new SpeechSynthesisUtterance(text);
   const voices = window.speechSynthesis.getVoices();
@@ -257,7 +269,7 @@ function speakActivityText(text, button, highlightElement = null) {
   window.speechSynthesis.speak(utterance);
 }
 
-function renderActivityMedia(activity, questionText) {
+function renderActivityMedia(activity, questionText, instructionText) {
   const config = activityConfig(activity);
   if (!config.prompt_image && !config.audio_text && !config.focus_word) return;
 
@@ -314,12 +326,25 @@ function renderActivityMedia(activity, questionText) {
     listen.className = 'btn btn-light activity-listen';
     listen.textContent = 'Listen';
     const isPhonicsWord = config.presentation === 'grade1_phonics';
-    const spokenText = isPhonicsWord ? config.audio_text : activity.question;
-    listen.addEventListener('click', () => speakActivityText(
-      spokenText,
-      listen,
-      isPhonicsWord ? null : questionText,
-    ));
+    if (isPhonicsWord) {
+      const spokenText = config.audio_text;
+      listen.addEventListener('click', () => speakActivityText(
+        spokenText,
+        listen,
+        null,
+      ));
+    } else {
+      const instructionEl = document.getElementById('activity-instruction');
+      const instruction = instructionText || typeInstructions[activity.activity_type] || '';
+      const question = activity.question;
+      const spokenText = instruction;
+      const highlightElements = instructionEl ? [instructionEl, questionText] : [questionText];
+      listen.addEventListener('click', () => speakActivityText(
+        spokenText,
+        listen,
+        highlightElements,
+      ));
+    }
     actions.appendChild(listen);
   }
   media.appendChild(actions);
@@ -700,32 +725,114 @@ function renderMatching(activity) {
     renderDragMatch(activity);
     return;
   }
-  const rows = document.createElement('div');
-  rows.className = 'matching-rows';
-  (config.prompts || []).forEach((prompt) => {
-    const row = document.createElement('label');
-    row.className = 'matching-row';
-    const word = document.createElement('strong');
-    word.textContent = prompt.text;
-    const select = document.createElement('select');
-    select.dataset.prompt = prompt.key;
-    select.innerHTML = '<option value="">Choose a meaning</option>';
-    (config.choices || []).forEach((choice) => {
-      const option = document.createElement('option');
-      option.value = choice.key;
-      option.textContent = `${choice.key}. ${choice.text}`;
-      select.appendChild(option);
+  const promptColors = ['blue', 'orange', 'yellow', 'purple'];
+  currentMatches = {};
+  activePromptKey = null;
+
+  const board = document.createElement('div');
+  board.className = 'matching-board';
+
+  const promptsCol = document.createElement('div');
+  promptsCol.className = 'matching-prompt-cards';
+
+  const choicesCol = document.createElement('div');
+  choicesCol.className = 'matching-choice-cards';
+
+  const pairsCol = document.createElement('div');
+  pairsCol.className = 'matching-pairs';
+
+  const promptCards = {};
+  const choiceCards = {};
+
+  function removePair(promptKey) {
+    const pair = pairsCol.querySelector(`[data-prompt="${promptKey}"]`);
+    if (!pair) return;
+    const choiceKey = currentMatches[promptKey];
+    const promptCard = promptCards[promptKey];
+    const choiceCard = choiceCards[choiceKey];
+    promptCard.classList.remove('is-matched');
+    choiceCard.classList.remove('is-matched');
+    choiceCard.style.borderColor = '';
+    choiceCard.style.backgroundColor = '';
+    pair.remove();
+    delete currentMatches[promptKey];
+    if (activePromptKey === promptKey) {
+      activePromptKey = null;
+      promptsCol.querySelectorAll('.matching-prompt-card').forEach((c) => c.classList.remove('is-active'));
+    }
+  }
+
+
+  (config.prompts || []).forEach((prompt, promptIndex) => {
+    const color = promptColors[promptIndex % promptColors.length];
+    const card = document.createElement('button');
+    card.type = 'button';
+    card.className = 'matching-prompt-card';
+    card.dataset.prompt = prompt.key;
+    card.dataset.color = color;
+    card.setAttribute('aria-label', `Prompt ${promptIndex + 1}: ${prompt.text}`);
+    card.style.borderColor = color;
+    card.innerHTML = `<span class="matching-dot" style="background:${color}" aria-hidden="true"></span><span class="badge" aria-hidden="true">${promptIndex + 1}</span> ${prompt.text}`;
+    card.addEventListener('click', () => {
+      if (activePromptKey === prompt.key) {
+        activePromptKey = null;
+        card.classList.remove('is-active');
+      } else {
+        promptsCol.querySelectorAll('.matching-prompt-card').forEach((c) => c.classList.remove('is-active'));
+        activePromptKey = prompt.key;
+        card.classList.add('is-active');
+      }
     });
-    row.append(word, select);
-    rows.appendChild(row);
+    promptCards[prompt.key] = card;
+    promptsCol.appendChild(card);
   });
+
+  (config.choices || []).forEach((choice) => {
+    const card = document.createElement('button');
+    card.type = 'button';
+    card.className = 'matching-choice-card';
+    card.dataset.choice = choice.key;
+    card.setAttribute('aria-label', `Choice ${choice.key}: ${choice.text}`);
+    card.innerHTML = `<span class="matching-dot" aria-hidden="true"></span><span class="badge" aria-hidden="true">${choice.key}</span> ${choice.text}`;
+    card.addEventListener('click', () => {
+      if (!activePromptKey) return;
+      const choiceKey = card.dataset.choice;
+      if (currentMatches[activePromptKey] === choiceKey) {
+        removePair(activePromptKey);
+        return;
+      }
+      Object.keys(currentMatches).forEach((pk) => {
+        if (currentMatches[pk] === choiceKey) {
+          removePair(pk);
+        }
+      });
+      currentMatches[activePromptKey] = choiceKey;
+      const promptCard = promptCards[activePromptKey];
+      const color = promptCard.dataset.color;
+      const pair = document.createElement('div');
+      pair.className = 'matching-pair';
+      pair.dataset.prompt = activePromptKey;
+      pair.dataset.choice = choiceKey;
+      promptCard.classList.add('is-matched');
+      card.classList.add('is-matched');
+      card.style.borderColor = color;
+      card.style.backgroundColor = color + '18';
+      pair.appendChild(promptCard);
+      pair.appendChild(card);
+      pairsCol.appendChild(pair);
+    });
+    choiceCards[choice.key] = card;
+    choicesCol.appendChild(card);
+  });
+
+  board.append(promptsCol, choicesCol, pairsCol);
+  responseArea.append(board);
+
   const submit = makeSubmitButton('Check matches');
   submit.addEventListener('click', () => {
-    const answer = {};
-    rows.querySelectorAll('select').forEach((select) => answer[select.dataset.prompt] = select.value);
-    submitActivity(activity, answer);
+    submitActivity(activity, { ...currentMatches });
   });
-  responseArea.append(rows, submit);
+  responseArea.append(submit);
 }
 
 function renderWordScramble(activity) {
@@ -1005,17 +1112,26 @@ function renderActivity() {
   document.getElementById('skill-label').textContent = `${group ? group.title : 'Story activity'} - ${skillLabels[activity.skill] || 'Read for meaning'}`;
   const config = activityConfig(activity);
   const isGradeOnePhonics = config.presentation === 'grade1_phonics';
-  const instruction = config.instruction;
-  document.getElementById('activity-instruction').textContent = instruction
-    || typeInstructions[activity.activity_type]
-    || 'Use the story to answer.';
+  const isMatchIt = activity.group_title === 'Match It!';
+  const isFixMistake = activity.group_title === 'Fix the Mistake';
+  const isVisualMatch = activity.group_title === 'Visual Matching';
+  const instruction = isMatchIt
+    ? 'Choose a match for all four, then check your answers. One option on the right belongs to no one. Match each one on the left to what happened on the right.'
+    : isVisualMatch
+      ? 'Look at the picture, then choose the word that names it.'
+      : isFixMistake
+        ? `One word in this sentence is wrong. Choose the word that belongs in the story. ${activity.question}`
+        : config.instruction
+          || typeInstructions[activity.activity_type]
+          || 'Use the story to answer.';
+  document.getElementById('activity-instruction').textContent = instruction;
   const questionText = document.getElementById('question-text');
   delete questionText.dataset.speechText;
   questionText.textContent = activity.question;
   questionText.classList.toggle('hidden', isGradeOnePhonics);
   setMascot('ready', 'Take your time and use the story.');
   updateProgress();
-  renderActivityMedia(activity, questionText);
+  renderActivityMedia(activity, questionText, instruction);
 
   if (activity.options && activity.options.writing_template) {
     renderGuidedDiary(activity);
@@ -1065,23 +1181,24 @@ function markMatchingAnswers(data) {
     badge.textContent = isCorrect ? 'Correct' : 'Incorrect';
     target.appendChild(badge);
   });
-  responseArea.querySelectorAll('.matching-row').forEach((row) => {
-    const select = row.querySelector('select');
-    const correctValue = String(expectedAnswers[select.dataset.prompt] || '');
-    const isCorrect = select.value === correctValue;
-    row.classList.add(isCorrect ? 'match-correct' : 'match-wrong');
+  responseArea.querySelectorAll('.matching-prompt-card').forEach((card) => {
+    const promptKey = card.dataset.prompt;
+    const choiceKey = currentMatches[promptKey] || '';
+    const correctValue = String(expectedAnswers[promptKey] || '');
+    const isCorrect = choiceKey === correctValue;
+    card.classList.add(isCorrect ? 'match-correct' : 'match-wrong');
 
     const badge = document.createElement('span');
     badge.className = 'matching-result-badge';
     badge.textContent = isCorrect ? 'Correct' : 'Incorrect';
-    row.querySelector('strong').appendChild(badge);
+    card.appendChild(badge);
 
     if (!isCorrect) {
-      const correctOption = [...select.options].find((option) => option.value === correctValue);
+      const correctCard = responseArea.querySelector(`.matching-choice-card[data-choice="${correctValue}"]`);
       const correction = document.createElement('span');
       correction.className = 'matching-correction';
-      correction.textContent = `Correct match: ${correctOption ? correctOption.textContent : correctValue}`;
-      row.appendChild(correction);
+      correction.textContent = `Correct match: ${correctCard ? correctCard.textContent : correctValue}`;
+      card.appendChild(correction);
     }
   });
 }
@@ -1230,6 +1347,14 @@ nextButton.addEventListener('click', () => {
   current++;
   renderActivity();
 });
+
+window.onerror = function(msg, url, line, col, error) {
+  console.error('Global error:', msg, error);
+  if (messageArea) {
+    messageArea.className = 'message-area wrong';
+    messageArea.textContent = 'Error: ' + msg;
+  }
+};
 
 loadActivities();
 </script>

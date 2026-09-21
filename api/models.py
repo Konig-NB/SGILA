@@ -460,6 +460,7 @@ class SpellingActivity(models.Model):
     # For fill-vowel: "B_nana"  |  drag-letters: "R,A,N,O,G,E"  |  copy-writing: full sentence
     display_text = models.CharField(max_length=300, blank=True)
     answer = models.CharField(max_length=300)
+    image_url = models.CharField(max_length=300, blank=True)
 
     def __str__(self):
         return f"{self.lesson.title} — {self.activity_type}"

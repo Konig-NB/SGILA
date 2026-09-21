@@ -7898,8 +7898,9 @@ body:not(.diagram-body) .activity-stage {
 body:not(.diagram-body) .activity-instruction {
   margin: 0 0 10px;
   color: var(--auto-5d6678-t);
-  font-size: .96rem;
-  font-weight: 700;
+  font-size: 1.35rem;
+  font-weight: 900 !important;
+  line-height: 1.4;
 }
 
 body:not(.diagram-body) .comprehension-panel .question-text {
@@ -7911,6 +7912,7 @@ body:not(.diagram-body) .comprehension-panel .question-text {
   letter-spacing: 0;
 }
 
+body:not(.diagram-body) .activity-instruction .activity-speech-word,
 body:not(.diagram-body) .question-text .activity-speech-word {
   display: inline-block;
   padding: 1px 3px;
@@ -7918,10 +7920,12 @@ body:not(.diagram-body) .question-text .activity-speech-word {
   transition: background .16s ease, transform .16s ease;
 }
 
+body:not(.diagram-body) .activity-instruction .activity-speech-word.spoken-word,
 body:not(.diagram-body) .question-text .activity-speech-word.spoken-word {
   background: rgba(91, 218, 212, .38);
 }
 
+body:not(.diagram-body) .activity-instruction .activity-speech-word.current-word,
 body:not(.diagram-body) .question-text .activity-speech-word.current-word {
   background: #ffd22e;
   transform: translateY(-2px);
@@ -8167,6 +8171,103 @@ body:not(.diagram-body) .matching-row.match-wrong .matching-result-badge {
   border-color: #d64552;
   background: #d64552;
   color: var(--white);
+}
+
+/* --- Match It! click-to-match UI --- */
+body:not(.diagram-body) .matching-board {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  padding: 12px 0;
+}
+body:not(.diagram-body) .matching-prompt-cards,
+body:not(.diagram-body) .matching-choice-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  flex: 1;
+  min-width: 0;
+}
+body:not(.diagram-body) .matching-prompt-card {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 48px;
+  padding: 10px 14px;
+  border: 2px solid var(--auto-d8dee8-bd);
+  border-radius: 10px;
+  background: var(--surface);
+  color: var(--auto-23304a-t);
+  font-size: 1rem;
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: box-shadow 0.15s ease, transform 0.1s ease;
+}
+body:not(.diagram-body) .matching-choice-card {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 48px;
+  padding: 10px 14px;
+  border: 2px solid #c8cdd5;
+  border-radius: 10px;
+  background: var(--surface);
+  color: var(--auto-23304a-t);
+  font-size: 1rem;
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: box-shadow 0.15s ease, transform 0.1s ease;
+}
+body:not(.diagram-body) .matching-pairs {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+body:not(.diagram-body) .matching-pair {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 8px 0;
+}
+body:not(.diagram-body) .matching-prompt-card:hover,
+body:not(.diagram-body) .matching-choice-card:hover {
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  transform: translateY(-1px);
+}
+body:not(.diagram-body) .matching-prompt-card.is-active {
+  border-width: 3px;
+  box-shadow: 0 0 0 3px rgba(77, 110, 169, 0.2);
+  transform: scale(1.02);
+}
+body:not(.diagram-body) .matching-prompt-card.is-matched,
+body:not(.diagram-body) .matching-choice-card.is-matched {
+  background: var(--auto-e8edf5-bg);
+}
+body:not(.diagram-body) .matching-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+body:not(.diagram-body) .matching-prompt-card .badge,
+body:not(.diagram-body) .matching-choice-card .badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  background: var(--auto-e8edf5-bg);
+  color: var(--auto-5e6884-t);
+  font-size: .78rem;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+body:not(.diagram-body) .matching-correction {
+  display: block;
+  margin-top: 6px;
 }
 
 body:not(.diagram-body) .matching-result-badge {
@@ -8478,6 +8579,8 @@ body:not(.diagram-body) .comprehension-finish {
   }
 
   body:not(.diagram-body) .crossword-layout,
+  body:not(.diagram-body) .matching-board,
+  body:not(.diagram-body) .matching-pair,
   body:not(.diagram-body) .matching-row,
   body:not(.diagram-body) .scramble-row,
   body:not(.diagram-body) .scramble-rows,
@@ -8489,6 +8592,11 @@ body:not(.diagram-body) .comprehension-finish {
 
   body:not(.diagram-body) .guided-diary {
     padding: 16px;
+  }
+
+  body:not(.diagram-body) .matching-pair {
+    flex-direction: column;
+    align-items: stretch;
   }
 
   body:not(.diagram-body) .crossword-grid {
