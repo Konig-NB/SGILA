@@ -101,6 +101,7 @@ class Child(models.Model):
     # tell "already reminded, don't spam" apart from "already confirmed, don't remind".
     grade_reminder_sent_year = models.IntegerField(null=True, blank=True)
     school_name = models.CharField(max_length=160, blank=True)
+    deactivated_reason = models.CharField(max_length=120, blank=True, default='')
     parent_email = models.EmailField()
     photo = models.FileField(upload_to='child_photos/', blank=True)
     password = models.CharField(max_length=300)   # hashed by Django
@@ -165,6 +166,7 @@ class Child(models.Model):
         self.last_name = title_case(self.last_name)
         self.name = title_case(self.name)
         self.school_name = title_case(self.school_name)
+        self.deactivated_reason = (self.deactivated_reason or '').strip()
         if self.date_of_birth:
             self.age = self.calculate_age()
         super().save(*args, **kwargs)
