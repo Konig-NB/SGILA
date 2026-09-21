@@ -28,6 +28,7 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
 from django.utils.dateparse import parse_date
 from django.views.decorators.http import require_http_methods
+from django.views.decorators.cache import never_cache
 from django.views.decorators.csrf import ensure_csrf_cookie
 
 from api.models import (
@@ -1862,6 +1863,7 @@ def story_page(request, lesson_id):
     })
 
 
+@never_cache
 def questions_page(request, lesson_id):
     child, response = learner_required(request)
     if response:
