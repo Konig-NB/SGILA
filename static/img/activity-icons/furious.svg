@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 160" role="img" aria-labelledby="title desc">
+  <title id="title">Furious face</title>
+  <desc id="desc">An expressive red face with angry eyebrows and an open mouth</desc>
+  <defs>
+    <radialGradient id="face" cx="35%" cy="25%" r="75%">
+      <stop offset="0" stop-color="#ff9a78"/>
+      <stop offset="1" stop-color="#d94848"/>
+    </radialGradient>
+  </defs>
+  <circle cx="80" cy="80" r="64" fill="url(#face)" stroke="#9d3030" stroke-width="5"/>
+  <path d="M43 55 68 45M92 45l25 10" fill="none" stroke="#54252b" stroke-linecap="round" stroke-width="9"/>
+  <circle cx="58" cy="70" r="8" fill="#2d2630"/>
+  <circle cx="102" cy="70" r="8" fill="#2d2630"/>
+  <path d="M48 112c19-17 45-17 64 0" fill="none" stroke="#54252b" stroke-linecap="round" stroke-width="8"/>
+  <path d="M63 112c4 19 30 19 34 0" fill="#54252b"/>
+  <path d="M25 37 12 24M135 37l13-13" stroke="#e26a4d" stroke-linecap="round" stroke-width="7"/>
+</svg>
