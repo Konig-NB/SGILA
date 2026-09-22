@@ -64,21 +64,21 @@ def _picture_match(sentence, pictures, correct_picture):
     }
 
 
-def _concept(context, choices, answer, image, alt):
+def _sentence_completion(question, choices, answer, image, alt):
     return {
         'activity_type': 'multiple_choice',
         'skill': 'vocabulary_in_context',
-        'question': f'{context} Which word matches it?',
+        'question': question,
         'options': {
             'choices': choices,
-            'audio_text': context,
+            'audio_text': question,
             'prompt_image': image,
             'prompt_alt': alt,
-            'instruction': 'Look at the story situation, then choose the matching word.',
+            'instruction': 'Listen to the sentence, then choose the missing word.',
         },
         'correct_answer': answer,
         'group_number': 3,
-        'group_title': 'Opposites & Contrasting Concepts',
+        'group_title': 'Story Sentence Completion',
     }
 
 
@@ -108,9 +108,9 @@ LERATOS_FRUIT_BASKET_ACTIVITIES = [
         _picture(LERATO_MARKET, 'Mother buying fruit at the market.'),
         _picture(LERATO_BASKET, 'Lerato with her fruit basket.'),
     ], 1),
-    _concept('The apple has the colour of a stop sign.', ['yellow', 'red'], 'red', LERATO_APPLE, 'A red apple'),
-    _concept('The banana has the colour of the sun.', ['yellow', 'blue'], 'yellow', LERATO_BANANA, 'A yellow banana'),
-    _concept('Fruit helps Lerato grow and gives her energy.', ['weak', 'strong'], 'strong', LERATO_EATING, 'Lerato eating healthy fruit'),
+    _sentence_completion('The apple is ..........', ['Red', 'Green'], 'Red', LERATO_APPLE, 'A red apple'),
+    _sentence_completion('The banana is ..........', ['Yellow', 'Blue'], 'Yellow', LERATO_BANANA, 'A yellow banana'),
+    _sentence_completion('Lerato wants to be ..........', ['Strong', 'Weak'], 'Strong', LERATO_EATING, 'Lerato eating healthy fruit'),
 ]
 
 
@@ -138,9 +138,9 @@ A_VERY_HOT_DAY_ACTIVITIES = [
         _picture(HOT_FISH, 'A fish rests on Karabo\'s head.'),
         _picture(HOT_POND, 'Karabo remembers the pond.'),
     ], 1),
-    _concept('The sun shone brightly, and the friends felt warm.', ['cold', 'hot'], 'hot', HOT_SOCCER, 'A sunny day'),
-    _concept('The pond water refreshed Karabo after playing in the sun.', ['cool', 'hot'], 'cool', HOT_WATER, 'Karabo in the pond'),
-    _concept('Karabo smiled and laughed with Cathy.', ['sad', 'happy'], 'happy', HOT_FISH, 'Karabo and Cathy laughing'),
+    _sentence_completion('The day is ..........', ['Hot', 'Cold'], 'Hot', HOT_SOCCER, 'A very hot day'),
+    _sentence_completion('Karabo jumps into the ..........', ['Pond', 'School'], 'Pond', HOT_WATER, 'Karabo jumping into the pond'),
+    _sentence_completion('Karabo is .......... with Cathy.', ['Happy', 'Sad'], 'Happy', HOT_FISH, 'Karabo and Cathy laughing'),
 ]
 
 
@@ -171,9 +171,9 @@ BEN_GOES_TO_SCHOOL_ACTIVITIES = [
         _picture(BEN_CLASSROOM, 'The class sings together.'),
         _picture(BEN_WALK, 'Jabu walks to school.'),
     ], 1),
-    _concept('Jabu smiled when Ben joined the game.', ['sad', 'happy'], 'happy', BEN_ENDING, 'Jabu and Ben playing happily'),
-    _concept('Ben waited beyond the classroom while the lesson continued.', ['inside', 'outside'], 'outside', BEN_CHASES, 'Ben away from the classroom'),
-    _concept('Jabu walked away from home toward school.', ['near', 'far'], 'far', BEN_WALK, 'Jabu walking to school'),
+    _sentence_completion('Ben goes to ..........', ['School', 'Home'], 'School', BEN_WALK, 'Ben going to school'),
+    _sentence_completion('The children are .......... together.', ['Singing', 'Sleeping'], 'Singing', BEN_CLASSROOM, 'The children singing together'),
+    _sentence_completion('Jabu is .......... to see Ben.', ['Happy', 'Sad'], 'Happy', BEN_ENDING, 'Jabu happy to see Ben'),
 ]
 
 
@@ -201,9 +201,9 @@ OLWETHUS_FIRST_DAY_ACTIVITIES = [
         _picture(OLWETHU_GETS_READY, 'Olwethu gets ready.'),
         _picture(OLWETHU_WANTS_HOME, 'Olwethu wants to stay home.'),
     ], 1),
-    _concept("At the school gate, Olwethu's tummy felt shaky.", ['brave', 'scared'], 'scared', OLWETHU_GOING_TO_SCHOOL, 'Olwethu at the school gate'),
-    _concept('She wanted to stay in the house.', ['inside', 'outside'], 'inside', OLWETHU_WANTS_HOME, 'Olwethu wanting to stay home'),
-    _concept('At the end, Olwethu smiled because she enjoyed school.', ['sad', 'happy'], 'happy', OLWETHU_MAKES_FRIEND, 'Olwethu smiling with her friend'),
+    _sentence_completion('Olwethu goes to ..........', ['School', 'The beach'], 'School', OLWETHU_GOING_TO_SCHOOL, 'Olwethu going to school'),
+    _sentence_completion('Olwethu has new ..........', ['Shoes', 'Toys'], 'Shoes', OLWETHU_GETS_READY, 'Olwethu wearing new shoes'),
+    _sentence_completion('Olwethu feels .......... at first.', ['Scared', 'Happy'], 'Scared', OLWETHU_WANTS_HOME, 'Olwethu feeling scared at first'),
 ]
 
 
@@ -232,9 +232,9 @@ BONGI_WAITS_ACTIVITIES = [
         _picture(BONGI_HELPS_DAD, 'Bongi helps Dad in the yard.'),
         _picture(BONGI_WAITS_OUTSIDE, 'Bongi waits outside.'),
     ], 1),
-    _concept('Bongi smiled and could not wait for the visit.', ['sad', 'happy'], 'happy', BONGI_FAMILY, 'Bongi smiling before the visit'),
-    _concept('The family left the house to wait in the yard.', ['outside', 'inside'], 'outside', BONGI_WAITS_OUTSIDE, 'The family waiting in the yard'),
-    _concept('Bongi wrapped her arms around her grandparents.', ['far', 'near'], 'near', BONGI_HUGS_GRANDPARENTS, 'Bongi hugging her grandparents'),
+    _sentence_completion('Bongi waits ..........', ['Outside', 'Inside'], 'Outside', BONGI_WAITS_OUTSIDE, 'Bongi waiting outside'),
+    _sentence_completion('Bongi hugs ..........', ['Granny and Grandpa', 'The teacher'], 'Granny and Grandpa', BONGI_HUGS_GRANDPARENTS, 'Bongi hugging Granny and Grandpa'),
+    _sentence_completion('Bongi is ..........', ['Happy', 'Sad'], 'Happy', BONGI_FAMILY, 'Bongi feeling happy'),
 ]
 
 

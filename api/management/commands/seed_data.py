@@ -156,7 +156,7 @@ class Command(BaseCommand):
             grade=4,
             class_code='MKGRD4',
         )
-        TeacherClass.objects.create(
+        grade_three = TeacherClass.objects.create(
             teacher=teacher2,
             name='Grade 3',
             grade=3,
@@ -174,6 +174,21 @@ class Command(BaseCommand):
             grade=4,
             school_name='MK-Khambani Primary',
             parent_email='learner2@sgila.test',
+            photo='child_photos/demo_child_photo.jpeg',
+            password=make_password('password123'),
+        )
+        Child.objects.create(
+            parent=parent2,
+            teacher=teacher2,
+            teacher_class=grade_three,
+            username='lerato_m',
+            first_name='Lerato',
+            last_name='Mabunda',
+            name='Lerato Mabunda',
+            age=9,
+            grade=3,
+            school_name='MK-Khambani Primary',
+            parent_email='learner3@sgila.test',
             photo='child_photos/demo_child_photo.jpeg',
             password=make_password('password123'),
         )
@@ -273,6 +288,16 @@ class Command(BaseCommand):
                     ReadingActivity.TRUE_FALSE,
                 }
             ]
+            selected_activities = []
+            selected_skills = set()
+            for activity in enriched_activities:
+                skill = activity.get('skill')
+                if skill not in selected_skills:
+                    selected_activities.append(activity)
+                    selected_skills.add(skill)
+                if len(selected_activities) == 5:
+                    break
+            enriched_activities = selected_activities
             group_numbers = {}
             for activity in enriched_activities:
                 original_group = activity.get('group_number') or 0

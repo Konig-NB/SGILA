@@ -18,6 +18,7 @@ python -m venv .venv
 .venv\Scripts\python.exe -m pip install -r requirements.txt
 .venv\Scripts\python.exe manage.py migrate
 .venv\Scripts\python.exe manage.py load_curriculum_content
+.venv\Scripts\python.exe manage.py sync_grade2_activities
 .venv\Scripts\python.exe manage.py check
 .venv\Scripts\python.exe manage.py test
 .venv\Scripts\python.exe manage.py runserver
@@ -33,10 +34,16 @@ installs dependencies, prepares the database, and starts the local server.
 All demo accounts use the password `password123`.
 
 - Learner: `learner@sgila.test`
+- Grade 3 learner username: `lerato_m`
 - Parent: `parent@sgila.test`
 - Teacher: `teacher@sgila.test`
 
-Demo class codes: `SGILA1`, `RAINB1`, `RAINB2`, `RAINB3`, and `RAINB4`.
+All demo learner accounts use the password `password123`.
+Demo class codes: `SGILA1`, `RAINB1`, `RAINB2`, `RAINB3`, `RAINB4`, `MKGRD3`, and `MKGRD4`.
+
+**Order matters:** `load_curriculum_content` rewrites each lesson's activities, so
+it clears the Grade 2 ones. Always run `sync_grade2_activities` *after* it, never
+before. `run_sgila.bat` already does them in that order.
 
 `load_curriculum_content` is safe to run again: it updates the Grade 1-4 lessons
 without deleting registered users or their progress. Use `seed_data` only when you
