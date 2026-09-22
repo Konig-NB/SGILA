@@ -353,7 +353,7 @@ EXTRA_ACTIVITIES = {
         ['ambulance', 'ice-cream van', 'school bus'], 'ambulance',
     ),
     'The Terrible Twins': _choice(
-        'matching', 'vocabulary_in_context',
+        'multiple_choice', 'literal_comprehension',
         'Which item helped Todd and Ted discover the correct date?',
         ['Calendar', 'Mirror', 'Mask', 'Hat'], 'Calendar',
     ),
