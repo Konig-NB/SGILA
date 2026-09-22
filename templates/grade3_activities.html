@@ -258,16 +258,26 @@ data.act1_visual_mc.forEach((item, index) => {
   const card = document.createElement('article'); card.className = 'grade3-question-card';
   const question = document.createElement('div'); question.className = 'question-with-audio';
   question.innerHTML = `<span class="question-number">Question ${index + 1}</span><strong>${item.question}</strong>`; question.append(audio(item.question, question.querySelector('strong'))); card.append(question);
-  const options = document.createElement('div'); options.className = 'visual-options';
+  const options = document.createElement('div'); options.className = 'options-grid';
   item.options.forEach((option, index) => {
-    const button = document.createElement('button'); button.type = 'button'; button.className = 'text-option'; button.textContent = `${String.fromCharCode(65 + index)}) ${option.text}`;
-    button.addEventListener('click', () => { if (completedActivities.has(visual)) return; options.querySelectorAll('button').forEach((b) => b.classList.remove('selected')); button.classList.add('selected'); visualSelections.set(item, option); });
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'btn btn-option';
+    button.setAttribute('aria-pressed', 'false');
+    const marker = document.createElement('span');
+    marker.className = 'option-marker';
+    marker.textContent = String.fromCharCode(65 + index);
+    const copy = document.createElement('span');
+    copy.className = 'option-copy';
+    copy.textContent = option.text;
+    button.append(marker, copy);
+    button.addEventListener('click', () => { if (completedActivities.has(visual)) return; options.querySelectorAll('button').forEach((b) => { b.classList.remove('is-selected'); b.setAttribute('aria-pressed', 'false'); }); button.classList.add('is-selected'); button.setAttribute('aria-pressed', 'true'); visualSelections.set(item, option); });
     options.append(button);
   }); card.append(options);
   visual.append(card);
 });
 const visualCheck = document.createElement('button'); visualCheck.type = 'button'; visualCheck.className = 'btn btn-primary'; visualCheck.textContent = 'Check answers';
-visualCheck.addEventListener('click', () => { let score = 0; visual.querySelectorAll('.grade3-question-card').forEach((card, index) => { const item = data.act1_visual_mc[index]; const choice = visualSelections.get(item); if (!choice) return; const correct = Boolean(choice.isCorrect); if (correct) score += 1; card.querySelectorAll('.text-option').forEach((button) => button.disabled = true); const selected = card.querySelector('.selected'); if (selected) { selected.classList.add(correct ? 'is-correct' : 'is-wrong'); addAnswerMark(selected, correct); } const result = document.createElement('p'); result.className = `answer-review ${correct ? 'correct' : 'wrong'}`; result.textContent = correct ? 'Correct!' : `Correct answer: ${item.options.find((option) => option.isCorrect).text}`; card.append(result); }); visualCheck.disabled = true; finishActivity(visual, score, data.act1_visual_mc.length, score === data.act1_visual_mc.length ? 'Great work! You got every answer right.' : 'Good try! Keep going. You can learn from each answer.'); });
+visualCheck.addEventListener('click', () => { let score = 0; visual.querySelectorAll('.grade3-question-card').forEach((card, index) => { const item = data.act1_visual_mc[index]; const choice = visualSelections.get(item); if (!choice) return; const correct = Boolean(choice.isCorrect); if (correct) score += 1; card.querySelectorAll('.btn-option').forEach((button) => button.disabled = true); const selected = card.querySelector('.is-selected'); if (selected) { selected.classList.add(correct ? 'choice-correct' : 'choice-wrong'); addAnswerMark(selected, correct); } const result = document.createElement('p'); result.className = `answer-review ${correct ? 'correct' : 'wrong'}`; result.textContent = correct ? 'Correct!' : `Correct answer: ${item.options.find((option) => option.isCorrect).text}`; card.append(result); }); visualCheck.disabled = true; finishActivity(visual, score, data.act1_visual_mc.length, score === data.act1_visual_mc.length ? 'Great work! You got every answer right.' : 'Good try! Keep going. You can learn from each answer.'); });
   visual.append(visualCheck);
 
 const sequencer = section(2, 'Story sequencer', 'Drag the events to show what happened first, next, and last.');
