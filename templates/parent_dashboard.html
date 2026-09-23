@@ -25,28 +25,71 @@
   {% if grade_confirmation_cards %}
     <section class="gc-banner" aria-label="Grade confirmation needed">
       <div class="gc-banner-head">
-        <strong>New school year — please confirm each child's grade</strong>
+        <strong>New school year: please confirm each child's grade</strong>
         <p>SGILA never moves a learner up a grade by itself. Tell us what grade they're really in at school now — the same grade again is fine if they're repeating it.</p>
       </div>
       <div class="gc-banner-list">
         {% for card in grade_confirmation_cards %}
-          <form action="/confirm-grade/{{ card.child.id }}" method="post" class="gc-confirm-row">
-            {% csrf_token %}
-            <span class="gc-confirm-name">{{ card.child.name }}</span>
-            <span class="gc-confirm-current">Was Grade {{ card.child.grade }}</span>
-            <label class="gc-confirm-label" for="gc-grade-{{ card.child.id }}">Now in</label>
-            <select id="gc-grade-{{ card.child.id }}" name="grade" class="gc-confirm-select">
-              <option value="1" {% if card.suggested_grade == 1 %}selected{% endif %}>Grade 1</option>
-              <option value="2" {% if card.suggested_grade == 2 %}selected{% endif %}>Grade 2</option>
-              <option value="3" {% if card.suggested_grade == 3 %}selected{% endif %}>Grade 3</option>
-              <option value="4" {% if card.suggested_grade == 4 %}selected{% endif %}>Grade 4</option>
-            </select>
-            <button type="submit" class="lr-btn gc-confirm-btn">Confirm</button>
-          </form>
+          <div class="gc-confirm-card">
+            <div class="gc-confirm-card-head">
+              <span class="gc-confirm-name">{{ card.child.name }}</span>
+              <span class="gc-confirm-current">Was Grade {{ card.child.grade }} last year</span>
+            </div>
+            <div class="gc-confirm-actions">
+              {% if card.suggested_grade > card.child.grade %}
+                    <form action="/confirm-grade/{{ card.child.id }}" method="post" class="gc-confirm-inline-form"
+                      data-confirm-message="Move {{ card.child.name|escapejs }} up to Grade {{ card.suggested_grade }}?">
+                  {% csrf_token %}
+                  <input type="hidden" name="grade" value="{{ card.suggested_grade }}">
+                  <button type="submit" class="lr-btn gc-btn-primary">Move up to Grade {{ card.suggested_grade }}</button>
+                </form>
+                    <form action="/confirm-grade/{{ card.child.id }}" method="post" class="gc-confirm-inline-form"
+                      data-confirm-message="Keep {{ card.child.name|escapejs }} in Grade {{ card.child.grade }} this year (repeating)?">
+                  {% csrf_token %}
+                  <input type="hidden" name="grade" value="{{ card.child.grade }}">
+                  <button type="submit" class="lr-btn gc-btn-secondary">Stay in Grade {{ card.child.grade }} (repeating)</button>
+                </form>
+              {% else %}
+                    <form action="/confirm-grade/{{ card.child.id }}" method="post" class="gc-confirm-inline-form"
+                      data-confirm-message="Confirm {{ card.child.name|escapejs }} is still in Grade {{ card.child.grade }} this year?">
+                  {% csrf_token %}
+                  <input type="hidden" name="grade" value="{{ card.child.grade }}">
+                  <button type="submit" class="lr-btn gc-btn-primary">Confirm still in Grade {{ card.child.grade }}</button>
+                </form>
+              {% endif %}
+            </div>
+            <details class="gc-confirm-fallback">
+              <summary>Not one of these? Choose a different grade</summary>
+                <form action="/confirm-grade/{{ card.child.id }}" method="post" class="gc-confirm-row"
+                    data-confirm-message="Set {{ card.child.name|escapejs }} to the selected grade">
+                {% csrf_token %}
+                <label for="grade-select-{{ card.child.id }}" class="gc-confirm-select-label">Choose grade</label>
+                <select id="grade-select-{{ card.child.id }}" name="grade" class="gc-confirm-select" aria-label="Choose a grade from 1 to 4">
+                  <option value="1" {% if card.child.grade == 1 %}selected{% endif %}>Grade 1</option>
+                  <option value="2" {% if card.child.grade == 2 %}selected{% endif %}>Grade 2</option>
+                  <option value="3" {% if card.child.grade == 3 %}selected{% endif %}>Grade 3</option>
+                  <option value="4" {% if card.child.grade == 4 %}selected{% endif %}>Grade 4</option>
+                </select>
+                <button type="submit" class="lr-btn gc-confirm-btn">Confirm this grade</button>
+              </form>
+            </details>
+          </div>
         {% endfor %}
       </div>
     </section>
   {% endif %}
+
+  <dialog class="gc-confirm-dialog" id="grade-confirm-dialog" aria-labelledby="grade-confirm-dialog-title">
+    <div class="gc-confirm-dialog-card">
+      <p class="eyebrow">Please confirm</p>
+      <h2 id="grade-confirm-dialog-title">Confirm grade change</h2>
+      <p id="grade-confirm-dialog-message"></p>
+      <div class="gc-confirm-dialog-actions">
+        <button type="button" class="lr-btn gc-dialog-cancel" id="grade-confirm-cancel">Cancel</button>
+        <button type="button" class="lr-btn gc-dialog-confirm" id="grade-confirm-continue">Continue</button>
+      </div>
+    </div>
+  </dialog>
 
   {% if not children_access_allowed %}
     <section class="account-status-banner" role="status">
@@ -146,6 +189,48 @@
   </dialog>
 </section>
 <script>
+(function () {
+  const dialog = document.getElementById('grade-confirm-dialog');
+  const message = document.getElementById('grade-confirm-dialog-message');
+  const cancelButton = document.getElementById('grade-confirm-cancel');
+  const continueButton = document.getElementById('grade-confirm-continue');
+  let pendingForm = null;
+  if (!dialog || !message || !cancelButton || !continueButton) return;
+
+  document.querySelectorAll('.gc-confirm-inline-form, .gc-confirm-row').forEach(function (form) {
+    form.addEventListener('submit', function (event) {
+      event.preventDefault();
+      pendingForm = form;
+      let confirmationMessage = form.dataset.confirmMessage || 'Are you sure you want to continue?';
+      const gradeSelect = form.querySelector('.gc-confirm-select');
+      if (gradeSelect) {
+        const selectedGrade = gradeSelect.options[gradeSelect.selectedIndex].textContent;
+        confirmationMessage += ': ' + selectedGrade + '?';
+      }
+      message.textContent = confirmationMessage;
+      if (typeof dialog.showModal === 'function') dialog.showModal();
+      else dialog.setAttribute('open', '');
+      continueButton.focus();
+    });
+  });
+
+  function closeDialog() {
+    pendingForm = null;
+    if (typeof dialog.close === 'function') dialog.close();
+    else dialog.removeAttribute('open');
+  }
+
+  cancelButton.addEventListener('click', closeDialog);
+  continueButton.addEventListener('click', function () {
+    const form = pendingForm;
+    closeDialog();
+    if (form) form.submit();
+  });
+
+  dialog.addEventListener('click', function (event) {
+    if (event.target === dialog) closeDialog();
+  });
+})();
 (function () {
   const dialog = document.getElementById('deactivate-dialog');
   const openButton = document.getElementById('open-deactivate-dialog');

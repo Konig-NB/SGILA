@@ -3234,6 +3234,13 @@ def confirm_child_grade(request, child_id):
     else:
         messages.success(request, f'{child.name} has been moved back to Grade {grade}.')
 
+    if abs(grade - previous_grade) > 1:
+        messages.warning(
+            request,
+            f"Heads up: that's a jump of {abs(grade - previous_grade)} grades for {child.name} in one go "
+            f"(Grade {previous_grade} \u2192 Grade {grade}). If that wasn't intended, just confirm the correct grade again."
+        )
+
     return redirect(redirect_to)
 
 
