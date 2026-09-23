@@ -12860,7 +12860,7 @@ body:not(.diagram-body) .truth-card > img {
 .score-breakdown span.correct { color: var(--success); }
 .improvement-note { margin-bottom: 0; font-weight: 800; }
 .answer-review { margin: 10px 0 0; padding: 9px 12px; border-radius: 10px; font-size: .95rem; font-weight: 800; }
-.grade3-activity-section { margin-top: 24px; padding: 24px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--white); box-shadow: var(--shadow-soft); }
+.grade3-activity-section { margin-top: 24px; padding: 24px; border: 1px solid var(--lavender); border-radius: var(--radius); background: linear-gradient(135deg, var(--lavender-soft), rgba(var(--surface-rgb), .92)); box-shadow: var(--shadow-soft); }
 .grade3-activity-section:not(.activity-current) { display: none; }
 .activity-navigation { display: flex; justify-content: space-between; gap: 12px; margin-top: 24px; }
 .grade3-section-heading, .question-with-audio { display: flex; align-items: center; gap: 14px; }
