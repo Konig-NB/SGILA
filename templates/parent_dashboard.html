@@ -103,7 +103,7 @@
     <div class="pd-section-hdr">Your children</div>
     <div class="lr-rows">
       {% for card in cards %}
-        <article class="lr-row {% cycle 'c0' 'c1' 'c2' 'c3' 'c4' %}">
+        <article class="lr-row {% cycle 'c0' 'c1' 'c2' 'c3' 'c4' %} {% if not card.child.is_active %}is-paused{% endif %}">
           <div class="lr-avatar {% if card.child.photo %}has-photo{% endif %}">
             {% if card.child.photo %}
               <img src="{{ card.child.photo.url }}" alt="{{ card.child.name }} photo">
@@ -116,7 +116,9 @@
             <div class="lr-name">{{ card.child.name }}</div>
             <div class="lr-username">@{{ card.child.username|title|default:card.child.parent_email }}</div>
             <div class="lr-sub">Grade {{ card.child.grade }} - {{ card.lessons_done }}/{{ card.total_lessons }} lessons done</div>
-            {% if card.teacher_class %}
+            {% if not card.child.is_active %}
+              <div class="lr-paused-badge">Paused</div>
+            {% elif card.teacher_class %}
               <div class="lr-class-tag">{{ card.teacher_class.name }} - {{ card.teacher.full_name }}</div>
             {% elif card.teacher %}
               <div class="lr-class-tag">{{ card.teacher.full_name }}'s class</div>

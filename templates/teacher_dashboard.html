@@ -170,7 +170,60 @@
       </div>
     </section>
   {% endfor %}
+
+  <section class="account-danger-zone" aria-labelledby="deactivate-account-heading">
+    <div>
+      <p class="eyebrow">Account settings</p>
+      <h2 id="deactivate-account-heading">Deactivate account</h2>
+      <p>Pause your teacher account. Your classes will be flagged as needing a new teacher until you reactivate.</p>
+    </div>
+    <button type="button" class="btn account-deactivate-trigger" id="open-deactivate-dialog">Deactivate account</button>
+  </section>
+
+  <dialog class="account-dialog" id="deactivate-dialog" aria-labelledby="deactivate-dialog-title">
+    <form method="post" action="/teacher/deactivate" class="account-dialog-form">
+      {% csrf_token %}
+      <div class="account-dialog-heading">
+        <span class="account-dialog-icon" aria-hidden="true">!</span>
+        <div>
+          <p class="eyebrow">Please confirm</p>
+          <h2 id="deactivate-dialog-title">Pause this SGILA account?</h2>
+        </div>
+      </div>
+      <p>You will be signed out and unable to access your classes until this account is reactivated.</p>
+      <p>Your teacher profile and class records will remain stored for reactivation and legitimate retention purposes. You may contact SGILA to request deletion where applicable.</p>
+      <label class="account-password-field">
+        Confirm your password
+        <input type="password" name="password" autocomplete="current-password" required>
+      </label>
+      <label class="account-checkbox">
+        <input type="checkbox" name="cancel_subscription">
+        <span>Also cancel my current SGILA subscription. Leaving this unchecked will not change billing or the plan status.</span>
+      </label>
+      <div class="account-dialog-actions">
+        <button type="button" class="btn btn-light" id="close-deactivate-dialog">Keep account active</button>
+        <button type="submit" class="btn account-danger-button">Deactivate account</button>
+      </div>
+    </form>
+  </dialog>
 </section>
+<script>
+(function () {
+  const dialog = document.getElementById('deactivate-dialog');
+  const openButton = document.getElementById('open-deactivate-dialog');
+  const closeButton = document.getElementById('close-deactivate-dialog');
+  if (dialog && openButton && closeButton) {
+    openButton.addEventListener('click', function () {
+      if (typeof dialog.showModal === 'function') dialog.showModal();
+      else dialog.setAttribute('open', '');
+    });
+    closeButton.addEventListener('click', function () {
+      if (typeof dialog.close === 'function') dialog.close();
+      else dialog.removeAttribute('open');
+    });
+  }
+})();
+</script>
 
 <script>
   document.addEventListener('DOMContentLoaded', function () {
