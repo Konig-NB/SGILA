@@ -79,7 +79,7 @@ function audio(label, highlightTarget = null) {
   const button = document.createElement('button');
   button.type = 'button';
   button.className = 'btn btn-light audio-assist';
-  button.innerHTML = '&#128266; Listen';
+  button.textContent = 'Listen';
   button.addEventListener('click', async () => {
     console.log(`Playing therapeutic voiceover: ${label}`);
     if (!('speechSynthesis' in window)) return;
