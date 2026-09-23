@@ -187,6 +187,14 @@ function section(number, label, instruction) {
   element.dataset.activityNumber = number;
   element.dataset.activityLabel = label;
   element.append(heading(number, label, instruction));
+  const footer = document.createElement('div');
+  footer.className = 'activity-footer';
+  const storyReviewLink = document.createElement('a');
+  storyReviewLink.className = 'story-review-link';
+  storyReviewLink.href = `/lessons/${document.querySelector('.grade3-activities').dataset.lessonId}/story`;
+  storyReviewLink.textContent = 'Read the story again';
+  footer.append(storyReviewLink);
+  element.storyReviewFooter = footer;
   app.append(element);
   return element;
 }
@@ -479,6 +487,7 @@ function showBalloonQuestion(index) {
   const activeIndex = Math.max(0, Math.min(index, balloonCards.length - 1));
   balloons.dataset.questionIndex = activeIndex;
   balloonCards.forEach((card, cardIndex) => { card.hidden = cardIndex !== activeIndex; });
+  balloonCards[activeIndex].scrollIntoView({ behavior: 'smooth', block: 'center' });
   balloonCount.textContent = `Question ${activeIndex + 1} of ${balloonCards.length}`;
   completionCopy.textContent = `Question ${activeIndex + 1} of ${balloonCards.length}`;
   previousBalloon.disabled = activeIndex === 0;
@@ -521,6 +530,7 @@ balloons.append(balloonCheck);
 showBalloonQuestion(0);
 
 const activitySections = [...app.querySelectorAll('.grade3-activity-section')];
+activitySections.forEach((activity) => activity.append(activity.storyReviewFooter));
 function setupQuestionPages(activity, selector) {
   const questions = [...activity.querySelectorAll(selector)];
   if (questions.length < 2) return;
@@ -547,6 +557,7 @@ function setupQuestionPages(activity, selector) {
     questions.forEach((question, questionIndex) => {
       question.hidden = questionIndex !== currentQuestion;
     });
+    questions[currentQuestion].scrollIntoView({ behavior: 'smooth', block: 'center' });
     questionCount.textContent = `Question ${currentQuestion + 1} of ${questions.length}`;
     previousQuestion.disabled = currentQuestion === 0;
     nextQuestion.hidden = currentQuestion === questions.length - 1;
