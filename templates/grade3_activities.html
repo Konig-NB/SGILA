@@ -183,7 +183,7 @@ function image(name, alt) {
 }
 function section(number, label, instruction) {
   const element = document.createElement('section');
-  element.className = 'grade3-activity-section';
+  element.className = 'activity-card grade3-activity-section';
   element.dataset.activityNumber = number;
   element.dataset.activityLabel = label;
   element.append(heading(number, label, instruction));
