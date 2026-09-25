@@ -35,6 +35,7 @@ from .models import (
     WrittenResponsePrompt,
     OTPToken, PasswordResetToken,
     Message,
+    Subscription,
     title_case,
 )
 from .account_access import child_access_status, linked_parent_for_child
@@ -418,6 +419,9 @@ def verify_otp(request):
             password=make_password(pending.get('password', '')),
             accepted_popia=bool(pending.get('accepted_popia')),
         )
+        # Same as the web registration flow — the free trial runs on the
+        # Family plan, created eagerly so plan_type is never ambiguous.
+        Subscription.objects.create(parent=account, plan_type='family', status='trial')
         redirect_to = '/parent/dashboard'
     else:
         account = Teacher.objects.create(

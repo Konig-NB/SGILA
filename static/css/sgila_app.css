@@ -9069,6 +9069,11 @@ body:not(.diagram-body) .story-progress-summary {
   background: linear-gradient(90deg, var(--sun-soft), var(--auto-e8f8ff-bg) 48%, var(--auto-e3f9ef-bg));
 }
 
+[data-theme="dark"] body:not(.diagram-body) .story-progress-summary {
+  border-color: rgba(148, 168, 191, .28);
+  background: linear-gradient(90deg, rgba(58, 46, 18, .86), rgba(17, 31, 42, .96) 46%, rgba(16, 45, 38, .84));
+}
+
 body:not(.diagram-body) .story-progress-avatar {
   display: grid;
   place-items: center;
@@ -9104,8 +9109,17 @@ body:not(.diagram-body) .story-progress-stars span {
   text-transform: uppercase;
 }
 
+[data-theme="dark"] body:not(.diagram-body) .story-progress-summary-copy > span,
+[data-theme="dark"] body:not(.diagram-body) .story-progress-stars span {
+  color: var(--muted);
+}
+
 body:not(.diagram-body) .story-progress-summary-copy > strong {
   font-size: 1.25rem;
+}
+
+[data-theme="dark"] body:not(.diagram-body) .story-progress-summary-copy > strong {
+  color: var(--ink);
 }
 
 body:not(.diagram-body) .story-progress-track,
@@ -10562,6 +10576,17 @@ body:not(.diagram-body) .story-diary-signature {
     font-weight: 800;
     line-height: 1.4;
   }
+  .subscription-add-seat-hint {
+    max-width: 700px;
+    margin: 10px auto 0;
+    color: var(--muted);
+    font-size: .95rem;
+  }
+  .subscription-add-seat-hint a {
+    color: var(--ink);
+    font-weight: 800;
+    text-decoration: underline;
+  }
   .epic-cards {
     display: flex;
     flex-wrap: wrap;
@@ -10743,6 +10768,45 @@ body:not(.diagram-body) .story-diary-signature {
   .payment-tabs { margin-bottom: 1.2rem; }
   .payment-submit { margin-top: 1.2rem; }
 
+  .add-seat-price-preview {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin: 14px 0 20px;
+    padding: 12px 16px;
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    background: rgba(var(--surface-rgb), var(--scrim-72));
+    color: var(--muted);
+    font-size: .9rem;
+  }
+
+  .add-seat-price-preview strong {
+    color: var(--ink);
+    font-size: 1.05rem;
+  }
+
+  .add-seat-on-file {
+    margin-bottom: 18px;
+    padding: 16px;
+    border: 1px solid var(--line);
+    border-radius: 12px;
+  }
+
+  .add-seat-on-file h2 {
+    font-size: 1rem;
+    margin-bottom: 4px;
+  }
+
+  .add-seat-on-file p {
+    color: var(--muted);
+    margin-bottom: 14px;
+  }
+
+  .add-seat-on-file .btn-light {
+    margin-top: 8px;
+  }
+
   @media (max-width: 720px) {
     .epic-cards { flex-direction: column; align-items: center; }
     .epic-card { width: 100%; max-width: 340px; }
@@ -10801,6 +10865,78 @@ body:not(.diagram-body) .story-diary-signature {
   justify-content: center;
   margin-top: 1.4rem;
   flex-wrap: wrap;
+}
+
+/* ─── Kid-friendly trial-expired visual (learner view) ──────────────── */
+.welcome-overlay {
+  min-height: 60vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem 1rem;
+}
+
+.welcome-modal {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: 0 12px 32px rgba(36, 48, 68, .12);
+  max-width: 560px;
+  width: 100%;
+  padding: 2.4rem 2rem;
+  text-align: center;
+}
+
+.welcome-koaly {
+  width: 108px;
+  height: auto;
+  margin: 0 auto 1rem;
+}
+
+.welcome-modal h1 {
+  font-size: 1.6rem;
+  margin-bottom: .4rem;
+  color: var(--ink);
+}
+
+.welcome-intro {
+  color: var(--muted);
+  margin-bottom: 1.6rem;
+}
+
+.welcome-facts {
+  list-style: none;
+  margin: 0 0 1.8rem;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  text-align: left;
+}
+
+.welcome-facts li {
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: rgba(var(--surface-rgb), var(--scrim-72));
+}
+
+.welcome-facts strong {
+  display: block;
+  color: var(--ink);
+  font-size: .96rem;
+  margin-bottom: 3px;
+}
+
+.welcome-facts span {
+  color: var(--muted);
+  font-size: .88rem;
+  line-height: 1.5;
+}
+
+.welcome-actions {
+  display: flex;
+  justify-content: center;
 }
 
 /* ─── Kid-friendly trial-expired visual (learner view) ──────────────── */
@@ -12107,6 +12243,13 @@ body:not(.diagram-body) .account-status-banner {
   background: #fff4d8;
 }
 
+[data-theme="dark"] body:not(.diagram-body) .account-status-banner {
+  border-color: rgba(248, 200, 75, .38);
+  background: linear-gradient(135deg, rgba(48, 39, 20, .9), rgba(18, 40, 51, .96));
+  color: #f7d98e;
+  box-shadow: 0 18px 36px rgba(0, 0, 0, .18);
+}
+
 body:not(.diagram-body) .account-status-banner strong,
 body:not(.diagram-body) .account-status-banner span {
   grid-column: 1;
@@ -12117,6 +12260,16 @@ body:not(.diagram-body) .account-status-banner a {
   grid-row: 1 / span 2;
   color: #6a3d08;
   font-weight: 900;
+}
+
+[data-theme="dark"] body:not(.diagram-body) .account-status-banner strong,
+[data-theme="dark"] body:not(.diagram-body) .account-status-banner span,
+[data-theme="dark"] body:not(.diagram-body) .account-status-banner a {
+  color: var(--ink);
+}
+
+[data-theme="dark"] body:not(.diagram-body) .account-status-banner a {
+  color: var(--sun);
 }
 
 body:not(.diagram-body) .learner-activation-row {
@@ -12138,6 +12291,25 @@ body:not(.diagram-body) .learner-activation-row--paused {
   border-color: #f0c36b;
   background: #fff4d8;
   color: #6a3d08;
+}
+
+[data-theme="dark"] body:not(.diagram-body) .learner-activation-row,
+[data-theme="dark"] body:not(.diagram-body) .learner-activation-row--paused {
+  border-color: rgba(149, 170, 194, .28);
+  background: linear-gradient(135deg, rgba(25, 40, 54, .96), rgba(14, 28, 37, .94));
+  color: var(--ink);
+}
+
+[data-theme="dark"] body:not(.diagram-body) .learner-activation-row .lr-paused-badge,
+[data-theme="dark"] body:not(.diagram-body) .lr-paused-badge {
+  border-color: rgba(248, 200, 75, .45);
+  background: rgba(101, 77, 19, .7);
+  color: #f7d673;
+}
+
+[data-theme="dark"] body:not(.diagram-body) .learner-activation-row .lr-paused-badge::before,
+[data-theme="dark"] body:not(.diagram-body) .lr-paused-badge::before {
+  background: #f8c84b;
 }
 
 body:not(.diagram-body) .learner-activation-row .lr-paused-badge {
