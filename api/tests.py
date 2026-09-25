@@ -178,7 +178,8 @@ class SgilaFlowTests(TestCase):
             "otp_session": str(parent_otp.id),
             "code": parent_otp.code,
         })
-        self.assertRedirects(parent_response, "/parent/dashboard")
+        self.assertRedirects(parent_response, "/welcome")
+        self.assertEqual(self.client.get("/welcome").status_code, 200)
         self.assertEqual(self.client.get("/parent/dashboard").status_code, 200)
 
         self.client.get("/logout")
@@ -1651,6 +1652,31 @@ class GradeConfirmationTests(TestCase):
         self.child.refresh_from_db()
         self.assertEqual(self.child.grade, 2)
         self.assertTrue(self.child.needs_grade_confirmation())
+
+    def test_unusual_grade_jump_gets_a_warning_but_still_applies(self):
+        """A jump of more than one grade isn't blocked (rare but legitimate
+        cases exist), but the parent/teacher gets a heads-up in case it was a
+        mis-click rather than an intended multi-grade jump."""
+        self.child.grade_confirmed_year = current_school_year() - 1
+        self.child.save(update_fields=['grade_confirmed_year'])
+        self.login_parent()
+
+        response = self.client.post(f'/confirm-grade/{self.child.id}', {'grade': '4'}, follow=True)
+
+        self.child.refresh_from_db()
+        self.assertEqual(self.child.grade, 4)  # still applied
+        warnings = [m for m in response.context['messages']]
+        self.assertTrue(any('jump' in str(m).lower() for m in warnings))
+
+    def test_normal_one_grade_promotion_gets_no_jump_warning(self):
+        self.child.grade_confirmed_year = current_school_year() - 1
+        self.child.save(update_fields=['grade_confirmed_year'])
+        self.login_parent()
+
+        response = self.client.post(f'/confirm-grade/{self.child.id}', {'grade': '3'}, follow=True)
+
+        messages_text = [str(m).lower() for m in response.context['messages']]
+        self.assertFalse(any('jump' in m for m in messages_text))
 
 
 class GradeReminderEmailTests(TestCase):

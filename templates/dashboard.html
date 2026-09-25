@@ -30,14 +30,31 @@
       </section>
     {% else %}
       <section class="learner-activation-row learner-activation-row--paused" role="status">
-        <span class="lr-paused-badge">Paused</span>
-        <span>{{ child.name }}'s profile is paused and they cannot sign in.</span>
+        {% if child.deactivated_reason == 'plan_capacity' %}
+          <span class="lr-paused-badge">Plan full</span>
+          <span>
+            {{ child.name }}'s profile is over your plan's {{ plan_cap }}-learner limit and cannot sign in.
+            {% if not capacity_has_room %}Deactivate another learner, or add a seat to your plan, to activate {{ child.name }}.{% endif %}
+          </span>
           <form method="post" action="/dashboard/{{ child.id }}/reactivate" class="learner-activation-form"
-            data-confirm-title="Reactivate learner?"
-            data-confirm-message="Reactivate {{ child.name|escapejs }}'s profile?">
-          {% csrf_token %}
-          <button type="submit" class="btn learner-activation-btn learner-activation-btn--reactivate">Reactivate learner</button>
-        </form>
+            data-confirm-title="Activate learner?"
+            data-confirm-message="Activate {{ child.name|escapejs }}'s profile?">
+            {% csrf_token %}
+            <button type="submit" class="btn learner-activation-btn learner-activation-btn--reactivate" {% if not capacity_has_room %}disabled{% endif %}>Activate learner</button>
+          </form>
+          {% if not capacity_has_room %}
+            <a href="/subscription/add-seat" class="btn btn-light learner-activation-btn">Add a seat</a>
+          {% endif %}
+        {% else %}
+          <span class="lr-paused-badge">Paused</span>
+          <span>{{ child.name }}'s profile is paused and they cannot sign in.</span>
+            <form method="post" action="/dashboard/{{ child.id }}/reactivate" class="learner-activation-form"
+              data-confirm-title="Reactivate learner?"
+              data-confirm-message="Reactivate {{ child.name|escapejs }}'s profile?">
+            {% csrf_token %}
+            <button type="submit" class="btn learner-activation-btn learner-activation-btn--reactivate">Reactivate learner</button>
+          </form>
+        {% endif %}
       </section>
     {% endif %}
   {% endif %}

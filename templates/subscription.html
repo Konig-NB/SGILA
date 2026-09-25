@@ -10,6 +10,12 @@
   <h2 class="subscription-parent-summary">
     All parent plans include a <strong>30-day trial</strong> so you can start learning before committing.
   </h2>
+  {% if subscription.plan_type == 'individual' or subscription.plan_type == 'family' %}
+    <p class="subscription-add-seat-hint">
+      Already on a plan and need more active learners?
+      <a href="/subscription/add-seat">Add a seat</a>
+    </p>
+  {% endif %}
 
   <div class="epic-cards">
 

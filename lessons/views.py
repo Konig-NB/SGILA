@@ -67,7 +67,14 @@ from api.models import (
     current_school_year,
     title_case,
 )
-from api.account_access import child_access_status, subscription_allows_children
+from api.account_access import (
+    active_child_count,
+    can_activate_child,
+    child_access_status,
+    linked_parent_for_child,
+    plan_active_child_cap,
+    subscription_allows_children,
+)
 from api.reporting import aggregate_rows, rows_for_record, rows_from_scores
 
 
@@ -456,6 +463,23 @@ def register_learner(request):
         teacher_class=teacher_class,
     )
     mark_grade_confirmed_at_registration(child)
+
+    # This flow only links a child by email (no Parent FK), but it draws on
+    # the same plan capacity as a child added from the parent dashboard — so
+    # it needs the same check, or a parent's active-learner cap could be
+    # bypassed entirely just by registering the child this way instead.
+    parent = linked_parent_for_child(child)
+    if parent and not can_activate_child(parent, child=child):
+        cap = plan_active_child_cap(parent)
+        child.deactivate(Child.DEACTIVATED_PLAN_CAPACITY)
+        messages.warning(
+            request,
+            f"Profile created, but your parent's plan already has {cap} active learners. "
+            "Ask your parent to deactivate another learner, or add a seat to the plan, "
+            "before signing in.",
+        )
+        return redirect('/login?role=learner')
+
     set_account_session(request, 'learner', child, child)
     return redirect(f'/grade/{child.grade}')
 
@@ -922,9 +946,15 @@ def verify_otp_page(request):
                 password=make_password(pending.get('password', '')),
                 accepted_popia=bool(pending.get('accepted_popia')),
             )
+            # The free trial runs on the Family plan (up to 4 active
+            # learners) — create this eagerly rather than lazily on first
+            # visit to /subscription, so plan_type is never ambiguous and
+            # the active-learner cap has something real to check against
+            # from the very first child a parent adds.
+            Subscription.objects.create(parent=account, plan_type='family', status='trial')
             set_account_session(request, 'parent', account)
             messages.success(request, 'Email verified. Welcome to SGILA!')
-            return redirect('/parent/dashboard')
+            return redirect('/welcome')
         else:
             account = Teacher.objects.create(
                 full_name=pending.get('full_name', '').strip(),
@@ -954,6 +984,28 @@ def verify_otp_page(request):
     except OTPToken.DoesNotExist:
         messages.error(request, 'Verification session not found. Please register again.')
         return redirect('/register')
+
+
+@require_http_methods(['GET'])
+def parent_welcome_page(request):
+    """One-time landing page shown right after a parent finishes registering.
+    Not gated by a 'has seen this' flag — it's reachable any time a parent
+    is logged in, but nothing else in the app links to it, so in practice
+    it's only ever seen once, straight out of verify_otp_page.
+    """
+    if request.session.get('account_role') != 'parent':
+        return redirect('/login?role=parent')
+
+    parent = get_object_or_404(Parent, id=request.session.get('account_id'))
+    subscription = getattr(parent, 'subscription', None)
+    trial_end = subscription.trial_ends_at if subscription else None
+
+    return render(request, 'parent_welcome.html', {
+        'parent': parent,
+        'trial_days': Subscription.TRIAL_DAYS,
+        'active_learner_cap': plan_active_child_cap(parent),
+        'trial_end': trial_end,
+    })
 
 
 @require_http_methods(["GET", "POST"])
@@ -1250,7 +1302,21 @@ def parent_add_child(request):
                 teacher_class=teacher_class,
             )
             mark_grade_confirmed_at_registration(child)
-            messages.success(request, 'Child profile added.')
+            # Registering a child always succeeds — only activation is capped
+            # by the plan. If the parent's active-learner slots are already
+            # full, the new child is saved but starts paused rather than
+            # blocking registration outright.
+            if can_activate_child(parent, child=child):
+                messages.success(request, 'Child profile added.')
+            else:
+                cap = plan_active_child_cap(parent)
+                child.deactivate(Child.DEACTIVATED_PLAN_CAPACITY)
+                messages.warning(
+                    request,
+                    f"Child profile added, but your plan already has {cap} active learners. "
+                    f"{child.name} is saved but not active — deactivate another learner or add "
+                    "a seat to your plan to give them access.",
+                )
             return redirect('/parent/dashboard')
 
     return render(request, 'add_child.html', {'parent': parent})
@@ -2594,8 +2660,11 @@ def subscription_page(request):
     account_id = request.session['account_id']
     if role == 'parent':
         account = get_object_or_404(Parent, id=account_id)
+        # The free trial runs on the Family plan — this get_or_create is now
+        # mostly a safety net for accounts that predate eager creation at
+        # registration; it should very rarely actually create a row.
         subscription, _ = Subscription.objects.get_or_create(
-            parent=account, defaults={'plan_type': 'individual'}
+            parent=account, defaults={'plan_type': 'family'}
         )
     else:
         account = get_object_or_404(Teacher, id=account_id)
@@ -2768,6 +2837,119 @@ def subscription_payment_page(request):
     return render(request, 'subscription_payment.html', {'subscription': subscription})
 
 
+@require_http_methods(['GET', 'POST'])
+def add_seat_page(request):
+    """Step 1 of buying extra active-learner seats on top of an existing
+    Individual or Family subscription: pick a quantity. Mirrors the plan
+    picker on /subscription — same two-step shape, different product.
+    """
+    if request.session.get('account_role') != 'parent':
+        messages.error(request, 'Please sign in as a parent first.')
+        return redirect('/login?role=parent')
+
+    parent = get_object_or_404(Parent, id=request.session['account_id'])
+    subscription = get_object_or_404(Subscription, parent=parent)
+
+    if subscription.plan_type not in ('individual', 'family'):
+        messages.error(request, 'Extra seats are not available on this plan.')
+        return redirect('/subscription')
+
+    if request.method == 'POST':
+        try:
+            quantity = int(request.POST.get('quantity', 1))
+        except (TypeError, ValueError):
+            quantity = 0
+
+        if quantity < 1 or quantity > 10:
+            messages.error(request, 'Please choose between 1 and 10 seats.')
+        else:
+            subscription.pending_seat_quantity = quantity
+            subscription.save(update_fields=['pending_seat_quantity'])
+            return redirect('/subscription/add-seat/payment')
+
+    return render(request, 'add_seat.html', {
+        'subscription': subscription,
+        'seat_price': Subscription.SEAT_PRICE,
+        'active_learner_cap': plan_active_child_cap(parent),
+    })
+
+
+@require_http_methods(['GET', 'POST'])
+def add_seat_payment_page(request):
+    """Step 2: pay for the seats chosen on add_seat_page. Reuses a card or
+    bank account already on file when there is one, same as any real
+    checkout would, otherwise captures one the same way
+    subscription_payment_page does.
+    """
+    if request.session.get('account_role') != 'parent':
+        messages.error(request, 'Please sign in as a parent first.')
+        return redirect('/login?role=parent')
+
+    parent = get_object_or_404(Parent, id=request.session['account_id'])
+    subscription = get_object_or_404(Subscription, parent=parent)
+
+    quantity = subscription.pending_seat_quantity
+    if quantity < 1:
+        return redirect('/subscription/add-seat')
+
+    total_price = quantity * Subscription.SEAT_PRICE
+    has_payment_on_file = bool(subscription.card_last4 or subscription.account_last4)
+    context = {
+        'subscription': subscription,
+        'quantity': quantity,
+        'seat_price': Subscription.SEAT_PRICE,
+        'total_price': total_price,
+        'has_payment_on_file': has_payment_on_file,
+    }
+
+    if request.method == 'POST':
+        action = request.POST.get('action', 'new_method')
+
+        if action != 'use_on_file':
+            method = request.POST.get('payment_method', 'card')
+            subscription.payment_method = method
+
+            if method == 'card':
+                name_on_card = request.POST.get('name_on_card', '').strip()
+                card_number = re.sub(r'\D', '', request.POST.get('card_number', ''))
+                expiry = request.POST.get('expiry', '').strip()
+                if not name_on_card or len(card_number) < 12 or not expiry:
+                    messages.error(request, 'Please fill in all card details correctly.')
+                    return render(request, 'add_seat_payment.html', context)
+                subscription.payer_name = name_on_card
+                subscription.card_last4 = card_number[-4:]
+                subscription.card_expiry = expiry
+                # CVV and the full card number are never written to the database.
+            else:
+                account_holder = request.POST.get('account_holder', '').strip()
+                bank_name = request.POST.get('bank_name', '').strip()
+                account_number = re.sub(r'\D', '', request.POST.get('account_number', ''))
+                branch_code = request.POST.get('branch_code', '').strip()
+                if not account_holder or not bank_name or len(account_number) < 6:
+                    messages.error(request, 'Please fill in all bank details correctly.')
+                    return render(request, 'add_seat_payment.html', context)
+                subscription.payer_name = account_holder
+                subscription.bank_name = bank_name
+                subscription.account_last4 = account_number[-4:]
+                subscription.branch_code = branch_code
+        elif not has_payment_on_file:
+            messages.error(request, 'No payment method on file yet — please enter one below.')
+            return render(request, 'add_seat_payment.html', context)
+
+        subscription.extra_active_seats += quantity
+        subscription.pending_seat_quantity = 0
+        subscription.save()
+
+        messages.success(
+            request,
+            f"{quantity} extra seat{'s' if quantity != 1 else ''} added. "
+            f"Your plan now supports {plan_active_child_cap(parent)} active learners.",
+        )
+        return redirect('/parent/dashboard')
+
+    return render(request, 'add_seat_payment.html', context)
+
+
 def subscription_cancel_page(request):
     """
     Page where a signed-in parent or teacher can cancel their current
@@ -2916,6 +3098,15 @@ def dashboard_page(request, child_id):
         'parent': 'Parent dashboard',
     }.get(role, 'Progress dashboard')
 
+    can_manage_activation = role == 'parent'
+    capacity_has_room = True
+    plan_cap = None
+    if can_manage_activation and child.deactivated_reason == Child.DEACTIVATED_PLAN_CAPACITY:
+        parent = linked_parent_for_child(child)
+        if parent:
+            plan_cap = plan_active_child_cap(parent)
+            capacity_has_room = can_activate_child(parent, child=child)
+
     return render(request, 'dashboard.html', {
         'child': child,
         'story_rows': story_rows,
@@ -2929,7 +3120,9 @@ def dashboard_page(request, child_id):
         'visible_story_count': len(story_rows),
         # Only the child's own parent can pause/resume the learner profile —
         # a teacher viewing the same report should not see the control.
-        'can_manage_activation': role == 'parent',
+        'can_manage_activation': can_manage_activation,
+        'plan_cap': plan_cap,
+        'capacity_has_room': capacity_has_room,
     })
 
 
@@ -2960,6 +3153,15 @@ def reactivate_child(request, child_id):
         return redirect_after_forbidden(request)
 
     if not child.is_active:
+        parent = linked_parent_for_child(child)
+        if parent and not can_activate_child(parent, child=child):
+            cap = plan_active_child_cap(parent)
+            messages.error(
+                request,
+                f"Your plan already has {cap} active learners. Deactivate another "
+                f"learner first, or add a seat to your plan to activate {child.name} too.",
+            )
+            return redirect(f'/dashboard/{child.id}')
         child.reactivate()
     messages.success(request, f'{child.name}\u2019s profile is active again.')
     return redirect(f'/dashboard/{child.id}')
@@ -3123,6 +3325,9 @@ def parent_dashboard(request):
     total_stars = sum(card['stars'] for card in cards)
     needs_help_count = sum(1 for card in cards if card['needs_help'])
     grade_confirmation_cards = [card for card in cards if card['needs_grade_confirmation']]
+    subscription = getattr(parent, 'subscription', None)
+    active_learner_cap = plan_active_child_cap(parent)
+    active_learner_count = active_child_count(parent)
 
     return render(request, 'parent_dashboard.html', {
         'parent': parent,
@@ -3133,6 +3338,9 @@ def parent_dashboard(request):
         'needs_help_count': needs_help_count,
         'grade_confirmation_cards': grade_confirmation_cards,
         'children_access_allowed': subscription_allows_children(parent),
+        'subscription': subscription,
+        'active_learner_cap': active_learner_cap,
+        'active_learner_count': active_learner_count,
     })
 
 
@@ -3233,6 +3441,13 @@ def confirm_child_grade(request, child_id):
         messages.success(request, f'{child.name} stays in Grade {grade} this year.')
     else:
         messages.success(request, f'{child.name} has been moved back to Grade {grade}.')
+
+    if abs(grade - previous_grade) > 1:
+        messages.warning(
+            request,
+            f"Heads up: that's a jump of {abs(grade - previous_grade)} grades for {child.name} in one go "
+            f"(Grade {previous_grade} \u2192 Grade {grade}). If that wasn't intended, just confirm the correct grade again."
+        )
 
     return redirect(redirect_to)
 
