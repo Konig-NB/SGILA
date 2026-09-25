@@ -67,7 +67,7 @@ const typeInstructions = {
   open_ended: 'Write two or more clear sentences and use your punctuation.',
   sequencing: 'Use the arrows to put the events in story order.',
   matching: 'Match each item with the best answer.',
-  match_it: 'Choose a match for all four, then check your answers. One option on the right belongs to no one. Match each one on the left to what happened on the right.',
+  match_it: 'Match each one on the left to what happened on the right.',
   cloze: 'Choose the words that complete the sentence.',
   oral_response: 'Say your answer out loud. You do not need to type.',
   prediction: 'Write what you think will happen and give a story clue.',
@@ -772,7 +772,7 @@ function renderMatching(activity) {
     card.dataset.color = color;
     card.setAttribute('aria-label', `Prompt ${promptIndex + 1}: ${prompt.text}`);
     card.style.borderColor = color;
-    card.innerHTML = `<span class="matching-dot" style="background:${color}" aria-hidden="true"></span><span class="badge" aria-hidden="true">${promptIndex + 1}</span> ${prompt.text}`;
+    card.innerHTML = `<span class="matching-dot" style="background:${color}" aria-hidden="true"></span> ${prompt.text}`;
     card.addEventListener('click', () => {
       if (activePromptKey === prompt.key) {
         activePromptKey = null;
@@ -793,7 +793,7 @@ function renderMatching(activity) {
     card.className = 'matching-choice-card';
     card.dataset.choice = choice.key;
     card.setAttribute('aria-label', `Choice ${choice.key}: ${choice.text}`);
-    card.innerHTML = `<span class="matching-dot" aria-hidden="true"></span><span class="badge" aria-hidden="true">${choice.key}</span> ${choice.text}`;
+    card.innerHTML = `<span class="matching-dot" aria-hidden="true"></span> ${choice.text}`;
     card.addEventListener('click', () => {
       if (!activePromptKey) return;
       const choiceKey = card.dataset.choice;
@@ -1116,7 +1116,7 @@ function renderActivity() {
   const isFixMistake = activity.group_title === 'Fix the Mistake';
   const isVisualMatch = activity.group_title === 'Visual Matching';
   const instruction = isMatchIt
-    ? 'Choose a match for all four, then check your answers. One option on the right belongs to no one. Match each one on the left to what happened on the right.'
+    ? 'Match each one on the left to what happened on the right.'
     : isVisualMatch
       ? 'Look at the picture, then choose the word that names it.'
       : isFixMistake

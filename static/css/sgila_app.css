@@ -8463,9 +8463,10 @@ body:not(.diagram-body) .matching-row.match-wrong .matching-result-badge {
 
 /* --- Match It! click-to-match UI --- */
 body:not(.diagram-body) .matching-board {
-  display: flex;
-  flex-direction: column;
-  gap: 24px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 20px;
+  align-items: start;
   padding: 12px 0;
 }
 body:not(.diagram-body) .matching-prompt-cards,
@@ -8473,7 +8474,6 @@ body:not(.diagram-body) .matching-choice-cards {
   display: flex;
   flex-direction: column;
   gap: 10px;
-  flex: 1;
   min-width: 0;
 }
 body:not(.diagram-body) .matching-prompt-card {
