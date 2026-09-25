@@ -97,6 +97,18 @@
       <span>Your account is active, but your plan is not. Update the plan to restore access for your children.</span>
       <a href="/subscription">View plan</a>
     </section>
+  {% elif subscription.status == 'trial' %}
+    <section class="account-status-banner" role="status">
+      <strong>Free trial - Family plan</strong>
+      <span>
+        {% if active_learner_cap %}
+          You have {{ active_learner_count }} of {{ active_learner_cap }} active learners on your free trial.
+        {% else %}
+          You're on a free trial with unlimited active learners.
+        {% endif %}
+      </span>
+      <a href="/subscription">View plan</a>
+    </section>
   {% endif %}
 
   {% if cards %}
@@ -117,7 +129,11 @@
             <div class="lr-username">@{{ card.child.username|title|default:card.child.parent_email }}</div>
             <div class="lr-sub">Grade {{ card.child.grade }} - {{ card.lessons_done }}/{{ card.total_lessons }} lessons done</div>
             {% if not card.child.is_active %}
-              <div class="lr-paused-badge">Paused</div>
+              {% if card.child.deactivated_reason == 'plan_capacity' %}
+                <div class="lr-paused-badge">Plan full</div>
+              {% else %}
+                <div class="lr-paused-badge">Paused</div>
+              {% endif %}
             {% elif card.teacher_class %}
               <div class="lr-class-tag">{{ card.teacher_class.name }} - {{ card.teacher.full_name }}</div>
             {% elif card.teacher %}

@@ -171,7 +171,8 @@ class SgilaFlowTests(TestCase):
             "otp_session": str(parent_otp.id),
             "code": parent_otp.code,
         })
-        self.assertRedirects(parent_response, "/parent/dashboard")
+        self.assertRedirects(parent_response, "/welcome")
+        self.assertEqual(self.client.get("/welcome").status_code, 200)
         self.assertEqual(self.client.get("/parent/dashboard").status_code, 200)
 
         self.client.get("/logout")
