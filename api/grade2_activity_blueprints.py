@@ -106,10 +106,7 @@ def match_it(left_items, right_items, pairs):
             'prompts': prompts,
             'choices': choices,
             'audio_text': 'Match each one on the left to what happened on the right.',
-            'instruction': (
-                'Choose a match for all four, then check your answers. '
-                'One option on the right belongs to no one. Match each one on the left to what happened on the right.'
-            ),
+            'instruction': 'Match each one on the left to what happened on the right.',
         },
         'correct_answer': json.dumps(answer_key),
         'group_number': 2,
