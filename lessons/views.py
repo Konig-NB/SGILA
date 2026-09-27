@@ -187,10 +187,14 @@ def activity_choices_for(lesson):
     base = f'/lessons/{lesson.id}'
     choices = [{'label': 'Read the story', 'url': f'{base}/story'}]
     if lesson.grade == 3:
-        choices.append({
-            'label': 'Grade 3 activities',
-            'url': f'{base}/activities',
-        })
+        choices.extend([
+            {'label': 'Activity 1: Comprehension Questions', 'url': f'{base}/activities?activity_index=0'},
+            {'label': 'Activity 2: Sequencing', 'url': f'{base}/activities?activity_index=1'},
+            {'label': 'Activity 3: True or False', 'url': f'{base}/activities?activity_index=2'},
+            {'label': 'Activity 4: Word Detective', 'url': f'{base}/activities?activity_index=3'},
+            {'label': 'Activity 5: Spelling Questions', 'url': f'{base}/activities?activity_index=4'},
+            {'label': 'Activity 6: Word Balloon Pop', 'url': f'{base}/activities?activity_index=5'},
+        ])
     elif lesson.grade == 4:
         choices.extend([
             {'label': 'Comprehension', 'url': f'{base}/questions'},

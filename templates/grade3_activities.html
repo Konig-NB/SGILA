@@ -55,6 +55,7 @@ const storyImages = imageSets[title] || imageSets["Mandu's Secret Diary"];
 const app = document.getElementById('activity-app');
 document.getElementById('activity-title').textContent = title;
 let voicesPromise = null;
+let activeSpeechTarget = null;
 
 function loadActivityVoices() {
   if (!('speechSynthesis' in window)) return Promise.resolve([]);
@@ -84,6 +85,10 @@ function audio(label, highlightTarget = null) {
     console.log(`Playing therapeutic voiceover: ${label}`);
     if (!('speechSynthesis' in window)) return;
     button.disabled = true;
+    if (activeSpeechTarget) {
+      activeSpeechTarget.querySelectorAll('.speech-word').forEach((word) => word.classList.remove('is-speaking'));
+    }
+    activeSpeechTarget = highlightTarget;
     const voices = await loadActivityVoices();
     const utterance = new SpeechSynthesisUtterance(label);
     utterance.voice = getTherapeuticVoice(voices);
@@ -95,20 +100,27 @@ function audio(label, highlightTarget = null) {
     utterance.onerror = () => { button.disabled = false; };
     const words = highlightTarget ? label.split(/(\s+)/) : [];
     if (highlightTarget) {
-      highlightTarget.innerHTML = words.map((word, index) => word.trim()
-        ? `<span class="speech-word" data-speech-index="${index}">${word}</span>`
-        : word).join('');
+      let characterOffset = 0;
+      highlightTarget.innerHTML = words.map((word, index) => {
+        const start = characterOffset;
+        characterOffset += word.length;
+        return word.trim()
+          ? `<span class="speech-word" data-speech-index="${index}" data-speech-start="${start}" data-speech-end="${characterOffset}">${word}</span>`
+          : word;
+      }).join('');
       utterance.onboundary = (event) => {
         if (event.name !== 'word') return;
         const current = event.charIndex;
-        let offset = 0;
         highlightTarget.querySelectorAll('.speech-word').forEach((word) => {
-          const startsAt = offset;
-          offset += word.textContent.length;
-          word.classList.toggle('is-speaking', current >= startsAt && current < offset);
+          const startsAt = Number(word.dataset.speechStart);
+          const endsAt = Number(word.dataset.speechEnd);
+          word.classList.toggle('is-speaking', current >= startsAt && current < endsAt);
         });
       };
-      const clearHighlight = () => highlightTarget.querySelectorAll('.speech-word').forEach((word) => word.classList.remove('is-speaking'));
+      const clearHighlight = () => {
+        highlightTarget.querySelectorAll('.speech-word').forEach((word) => word.classList.remove('is-speaking'));
+        if (activeSpeechTarget === highlightTarget) activeSpeechTarget = null;
+      };
       utterance.onstart = () => {};
       utterance.onend = () => { clearHighlight(); button.disabled = false; };
       utterance.onerror = () => { clearHighlight(); button.disabled = false; };
@@ -195,6 +207,7 @@ let totalScore = 0;
 let totalPossible = 0;
 const completedActivities = new Set();
 const activityScores = new Map();
+const questionProgress = new Map();
 let completionPayload = null;
 let completionRequest = null;
 const progressCopy = document.getElementById('grade3-progress-copy');
@@ -231,7 +244,7 @@ function updateProgress() {
   });
 }
 
-function finishActivity(activity, score, possible, message) {
+function finishActivity(activity, score, possible, message, speakSummary = true) {
   if (completedActivities.has(activity)) return;
   completedActivities.add(activity);
   totalScore += score;
@@ -252,7 +265,7 @@ function finishActivity(activity, score, possible, message) {
     : word).join('')}`;
   activity.append(feedback);
   feedback.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-  speakFeedback(feedbackCopy.speechText, feedback);
+  if (speakSummary) speakFeedback(feedbackCopy.speechText, feedback);
   if (completedActivities.size === 6) {
     document.getElementById('final-score-button').hidden = false;
     completionPayload = {
@@ -272,6 +285,45 @@ function finishActivity(activity, score, possible, message) {
   updateProgress();
 }
 
+function showAnswerPrompt(question) {
+  let prompt = question.querySelector(':scope > .answer-prompt');
+  if (!prompt) {
+    prompt = document.createElement('p');
+    prompt.className = 'answer-review answer-prompt';
+    prompt.setAttribute('role', 'status');
+    question.append(prompt);
+  }
+  prompt.textContent = 'Choose an answer first, then check it.';
+}
+
+function recordQuestionAnswer(activity, question, isCorrect, correctAnswer, total, completionMessage) {
+  if (question.dataset.answered === 'true') return;
+  question.dataset.answered = 'true';
+  question.querySelector(':scope > .answer-prompt')?.remove();
+  const pagerNext = question.closest('.grade3-activity-section')?.querySelector('.question-page-navigation button:last-child');
+  if (pagerNext && !pagerNext.hidden) pagerNext.disabled = false;
+
+  const result = questionProgress.get(activity) || { answered: 0, score: 0 };
+  result.answered += 1;
+  result.score += Number(isCorrect);
+  questionProgress.set(activity, result);
+
+  const feedback = document.createElement('p');
+  feedback.className = `answer-review ${isCorrect ? 'correct' : 'wrong'}`;
+  feedback.setAttribute('role', 'status');
+  feedback.textContent = isCorrect
+    ? 'Correct! Well done.'
+    : `Not quite. The correct answer is ${String(correctAnswer).replace(/[.!?]+$/, '')}.`;
+  question.append(feedback);
+
+  if (result.answered === total) {
+    finishActivity(activity, result.score, total, completionMessage, false);
+  } else {
+    updateProgress();
+  }
+  speakFeedback(feedback.textContent, feedback);
+}
+
 const visual = section(1, 'Comprehension check', 'Listen, then choose the best answer.');
 const visualSelections = new Map();
 data.act1_visual_mc.forEach((item, index) => {
@@ -281,14 +333,35 @@ data.act1_visual_mc.forEach((item, index) => {
   const options = document.createElement('div'); options.className = 'visual-options';
   item.options.forEach((option, index) => {
     const button = document.createElement('button'); button.type = 'button'; button.className = 'text-option'; button.textContent = `${String.fromCharCode(65 + index)}) ${option.text}`;
-    button.addEventListener('click', () => { if (completedActivities.has(visual)) return; options.querySelectorAll('button').forEach((b) => b.classList.remove('selected')); button.classList.add('selected'); visualSelections.set(item, option); });
+    button.addEventListener('click', () => { if (card.dataset.answered === 'true') return; options.querySelectorAll('button').forEach((choice) => choice.classList.remove('selected')); button.classList.add('selected'); visualSelections.set(item, option); card.querySelector(':scope > .answer-prompt')?.remove(); });
     options.append(button);
   }); card.append(options);
+  const check = document.createElement('button');
+  check.type = 'button';
+  check.className = 'btn btn-primary question-check';
+  check.textContent = 'Check answer';
+  check.addEventListener('click', () => {
+    const choice = visualSelections.get(item);
+    if (!choice) { showAnswerPrompt(card); return; }
+    const correctOption = item.options.find((option) => option.isCorrect);
+    const correct = Boolean(choice.isCorrect);
+    options.querySelectorAll('button').forEach((button) => { button.disabled = true; });
+    const selected = card.querySelector('.selected');
+    if (selected) {
+      selected.classList.add(correct ? 'is-correct' : 'is-wrong');
+      addAnswerMark(selected, correct);
+    }
+    if (!correct) {
+      const correctButton = [...options.querySelectorAll('button')].find((button) => button.textContent.endsWith(correctOption.text));
+      correctButton?.classList.add('is-correct');
+      if (correctButton) addAnswerMark(correctButton, true);
+    }
+    check.disabled = true;
+    recordQuestionAnswer(visual, card, correct, correctOption.text, data.act1_visual_mc.length, 'Great work. You finished the comprehension questions.');
+  });
+  card.append(check);
   visual.append(card);
 });
-const visualCheck = document.createElement('button'); visualCheck.type = 'button'; visualCheck.className = 'btn btn-primary'; visualCheck.textContent = 'Check answers';
-visualCheck.addEventListener('click', () => { let score = 0; visual.querySelectorAll('.grade3-question-card').forEach((card, index) => { const item = data.act1_visual_mc[index]; const choice = visualSelections.get(item); if (!choice) return; const correct = Boolean(choice.isCorrect); if (correct) score += 1; card.querySelectorAll('.text-option').forEach((button) => button.disabled = true); const selected = card.querySelector('.selected'); if (selected) { selected.classList.add(correct ? 'is-correct' : 'is-wrong'); addAnswerMark(selected, correct); } const result = document.createElement('p'); result.className = `answer-review ${correct ? 'correct' : 'wrong'}`; result.textContent = correct ? 'Correct!' : `Correct answer: ${item.options.find((option) => option.isCorrect).text}`; card.append(result); }); visualCheck.disabled = true; finishActivity(visual, score, data.act1_visual_mc.length, score === data.act1_visual_mc.length ? 'Great work! You got every answer right.' : 'Good try! Keep going. You can learn from each answer.'); });
-  visual.append(visualCheck);
 
 const sequencer = section(2, 'Story sequencer', 'Drag the events to show what happened first, next, and last.');
 const slots = document.createElement('div'); slots.className = 'sequence-slots';
@@ -335,28 +408,86 @@ data.act3_true_false.forEach((item, index) => {
     choices.append(button);
   });
   card.append(choices);
+  const check = document.createElement('button');
+  check.type = 'button';
+  check.className = 'btn btn-primary question-check';
+  check.textContent = 'Check answer';
+  check.addEventListener('click', () => {
+    if (!truthSelections.has(item)) { showAnswerPrompt(card); return; }
+    const correct = truthSelections.get(item) === item.isTrue;
+    card.querySelectorAll('.true-button, .false-button').forEach((button) => { button.disabled = true; });
+    const selected = card.querySelector('.selected');
+    if (selected) {
+      selected.classList.add(correct ? 'is-correct' : 'is-wrong');
+      addAnswerMark(selected, correct);
+    }
+    if (!correct) {
+      const correctButton = card.querySelector(item.isTrue ? '.true-button' : '.false-button');
+      correctButton?.classList.add('is-correct');
+      if (correctButton) addAnswerMark(correctButton, true);
+    }
+    check.disabled = true;
+    recordQuestionAnswer(truth, card, correct, item.isTrue ? 'True' : 'False', data.act3_true_false.length, 'Well done. You finished the True or False questions.');
+  });
+  card.append(check);
   truth.append(card);
 });
-const truthCheck = document.createElement('button'); truthCheck.type = 'button'; truthCheck.className = 'btn btn-primary'; truthCheck.textContent = 'Check answers'; truthCheck.addEventListener('click', () => { let score = 0; truth.querySelectorAll('.truth-card').forEach((card, index) => { const item = data.act3_true_false[index]; const selectedValue = truthSelections.get(item); const correct = selectedValue === item.isTrue; if (correct) score += 1; card.querySelectorAll('button').forEach((button) => button.disabled = true); const selected = card.querySelector('.selected'); if (selected) { selected.classList.add(correct ? 'is-correct' : 'is-wrong'); addAnswerMark(selected, correct); } if (!correct) { const correctButton = [...card.querySelectorAll('.true-button, .false-button')].find((button) => button.textContent === (item.isTrue ? 'True' : 'False')); correctButton?.classList.add('is-correct'); if (correctButton) addAnswerMark(correctButton, true); } const result = document.createElement('p'); result.className = `answer-review ${correct ? 'correct' : 'wrong'}`; result.textContent = correct ? 'Correct!' : `Correct answer: ${item.isTrue ? 'True' : 'False'}`; card.append(result); }); truthCheck.disabled = true; finishActivity(truth, score, data.act3_true_false.length, score === data.act3_true_false.length ? 'Well done! Every fact is correct.' : 'Keep going! You are building strong story skills.'); }); truth.append(truthCheck);
 
 const detective = section(4, 'Word detective', 'Listen, then place the right word in each blank.');
 const sentence = document.createElement('div'); sentence.className = 'detective-sentence';
 const blanks = {};
+const detectiveResults = new Map();
 data.act4_word_detective.text_segments.forEach((text, index) => {
   sentence.append(document.createTextNode(text));
   const blankData = data.act4_word_detective.blanks[index];
   if (!blankData) return;
+  const question = document.createElement('span');
+  question.className = 'detective-question';
   const blank = document.createElement('span');
   blank.className = `word-blank ${blankData.color}`;
   blank.textContent = '?';
   blank.dataset.id = blankData.id;
   blank.addEventListener('dragover', (event) => event.preventDefault());
   blank.addEventListener('drop', () => {
+    if (question.dataset.answered === 'true') return;
     const item = document.querySelector('.word-pill.is-dragging');
-    if (item) { blank.textContent = item.dataset.word; blank.classList.add('filled'); }
+    if (item) {
+      blank.textContent = item.dataset.word;
+      blank.classList.add('filled');
+      question.querySelector('.answer-prompt')?.remove();
+    }
   });
   blanks[blankData.id] = blank;
-  sentence.append(blank);
+  question.append(blank);
+  const check = document.createElement('button');
+  check.type = 'button';
+  check.className = 'btn btn-primary inline-question-check';
+  check.textContent = 'Check word';
+  check.addEventListener('click', () => {
+    if (question.dataset.answered === 'true') return;
+    if (blank.textContent.trim() === '?') { showAnswerPrompt(question); return; }
+    const answer = data.act4_word_detective.word_bank.find((item) => item.target_blank === blankData.id);
+    const correct = Boolean(answer && blank.textContent.trim().toLowerCase() === answer.word.toLowerCase());
+    question.dataset.answered = 'true';
+    blank.classList.toggle('is-correct', correct);
+    blank.classList.toggle('is-wrong', !correct);
+    addAnswerMark(blank, correct);
+    check.disabled = true;
+    const feedback = document.createElement('span');
+    feedback.className = `answer-review ${correct ? 'correct' : 'wrong'}`;
+    feedback.setAttribute('role', 'status');
+    feedback.textContent = correct ? 'Correct!' : `Correct word: ${answer?.word || 'not available'}.`;
+    question.append(feedback);
+    speakFeedback(feedback.textContent, feedback);
+    detectiveResults.set(blankData.id, correct);
+    if (detectiveResults.size === Object.keys(blanks).length) {
+      const score = [...detectiveResults.values()].filter(Boolean).length;
+      bank.querySelectorAll('.word-pill').forEach((button) => { button.disabled = true; button.draggable = false; });
+      finishActivity(detective, score, Object.keys(blanks).length, 'You checked every missing word. Nice work!');
+    }
+  });
+  question.append(check);
+  sentence.append(question);
 });
 detective.append(sentence);
 const bank = document.createElement('div'); bank.className = 'word-bank';
@@ -366,13 +497,49 @@ data.act4_word_detective.word_bank.forEach((item) => {
   pill.textContent = item.word;
   pill.addEventListener('dragstart', () => pill.classList.add('is-dragging'));
   pill.addEventListener('dragend', () => pill.classList.remove('is-dragging'));
-  wrapper.append(pill, audio(item.word)); bank.append(wrapper);
+  wrapper.append(pill, audio(item.word, pill)); bank.append(wrapper);
 });
-const detectiveCheck = document.createElement('button'); detectiveCheck.type = 'button'; detectiveCheck.className = 'btn btn-primary'; detectiveCheck.textContent = 'Check words';
-detectiveCheck.addEventListener('click', () => { let score = 0; Object.entries(blanks).forEach(([blankId, blank]) => { const correct = data.act4_word_detective.word_bank.find((item) => item.target_blank === blankId); const selectedWord = blank.textContent.trim(); const isCorrect = Boolean(correct && selectedWord.toLowerCase() === correct.word.toLowerCase()); if (isCorrect) score += 1; blank.classList.toggle('is-correct', isCorrect); blank.classList.toggle('is-wrong', !isCorrect); addAnswerMark(blank, isCorrect); if (!isCorrect) { const review = document.createElement('small'); review.className = 'answer-review wrong'; review.textContent = `Correct answer: ${correct ? correct.word : 'No answer.'}`; blank.parentElement.append(review); } }); detectiveCheck.disabled = true; bank.querySelectorAll('button').forEach((button) => { button.disabled = true; button.draggable = false; }); finishActivity(detective, score, Object.keys(blanks).length, score === Object.keys(blanks).length ? 'Amazing! You solved every word.' : 'Good effort! Keep learning one word at a time.'); });
-detective.append(bank, detectiveCheck);
+detective.append(bank);
 
 const spelling = section(5, 'Listen and spell', 'Listen to each word, then write it down.'); const spellingList = document.createElement('div'); spellingList.className = 'listen-spell-list'; data.act5_listen_spell.forEach((item) => { const row = document.createElement('div'); row.className = 'listen-spell-row'; row.innerHTML = `<span class="spelling-number">${item.id}</span>`; const play = audio(item.word); play.setAttribute('aria-label', `Play spelling word ${item.id}`); row.append(play); const input = document.createElement('input'); input.className = 'spelling-input'; input.type = 'text'; input.placeholder = 'Write the word'; input.autocomplete = 'off'; row.append(input); const result = document.createElement('span'); result.className = 'spelling-result'; result.dataset.answer = item.word; row.append(result); spellingList.append(row); }); const check = document.createElement('button'); check.type = 'button'; check.className = 'btn btn-primary btn-large btn-full'; check.textContent = 'Check answers'; check.addEventListener('click', () => { let score = 0; spellingList.querySelectorAll('.listen-spell-row').forEach((row) => { const answer = row.querySelector('.spelling-result'); const input = row.querySelector('input'); const typed = input.value.trim(); const correct = typed.toLowerCase() === answer.dataset.answer.trim().toLowerCase(); if (correct) score += 1; row.classList.toggle('is-correct', correct); row.classList.toggle('is-wrong', !correct); answer.textContent = correct ? '✓' : '✕'; if (!correct) { const review = document.createElement('small'); review.className = 'answer-review wrong'; review.textContent = `Your answer: ${typed || 'No answer.'} Correct: ${answer.dataset.answer}`; row.append(review); } input.disabled = true; }); spellingList.querySelectorAll('.audio-assist').forEach((button) => { button.disabled = true; }); check.disabled = true; finishActivity(spelling, score, data.act5_listen_spell.length, score === data.act5_listen_spell.length ? 'Fantastic spelling! You got them all right.' : 'Nice try! Keep practising and do not give up.'); }); spelling.append(spellingList, check);
+const spellingResults = new Map();
+spellingList.querySelectorAll('.listen-spell-row').forEach((row) => {
+  const input = row.querySelector('.spelling-input');
+  const result = row.querySelector('.spelling-result');
+  const checkAnswer = document.createElement('button');
+  checkAnswer.type = 'button';
+  checkAnswer.className = 'btn btn-primary question-check';
+  checkAnswer.textContent = 'Check answer';
+  checkAnswer.addEventListener('click', () => {
+    if (row.dataset.answered === 'true') return;
+    const typed = input.value.trim();
+    if (!typed) { showAnswerPrompt(row); input.focus(); return; }
+    const correct = typed.toLowerCase() === result.dataset.answer.trim().toLowerCase();
+    row.dataset.answered = 'true';
+    row.classList.toggle('is-correct', correct);
+    row.classList.toggle('is-wrong', !correct);
+    result.textContent = correct ? '✓' : '✕';
+    input.disabled = true;
+    row.querySelectorAll('.audio-assist').forEach((button) => { button.disabled = true; });
+    checkAnswer.disabled = true;
+    const pagerNext = spelling.querySelector('.question-page-navigation button:last-child');
+    if (pagerNext && !pagerNext.hidden) pagerNext.disabled = false;
+    spellingResults.set(row, correct);
+    const feedback = document.createElement('small');
+    feedback.className = `answer-review ${correct ? 'correct' : 'wrong'}`;
+    feedback.setAttribute('role', 'status');
+    feedback.textContent = correct ? 'Correct spelling!' : `Correct spelling: ${result.dataset.answer}.`;
+    row.append(feedback);
+    if (spellingResults.size === data.act5_listen_spell.length) {
+      const score = [...spellingResults.values()].filter(Boolean).length;
+      finishActivity(spelling, score, data.act5_listen_spell.length, 'You checked every spelling word. Keep up the great work!', false);
+    } else updateProgress();
+    speakFeedback(feedback.textContent, feedback);
+  });
+  input.addEventListener('input', () => row.querySelector(':scope > .answer-prompt')?.remove());
+  row.append(checkAnswer);
+});
+check.remove();
 check.addEventListener('click', () => {
   window.setTimeout(() => {
     if (spelling.querySelector('.activity-feedback')) return;
@@ -444,16 +611,13 @@ balloonQuestions.forEach((item, questionIndex) => {
     balloon.append(label);
     balloon.addEventListener('click', () => {
       if (completedActivities.has(balloons)) return;
+      if (card.dataset.answered === 'true') return;
       choices.querySelectorAll('button').forEach((button) => button.classList.remove('is-selected'));
       balloon.classList.add('is-selected');
       balloonSelections.set(questionIndex, { option, balloon });
-      const wordFeedback = document.createElement('span');
-      wordFeedback.className = 'sr-only';
-      wordFeedback.textContent = option.word;
-      document.body.append(wordFeedback);
-      speakFeedback(option.word, wordFeedback).finally(() => wordFeedback.remove());
-      balloonCheck.disabled = balloonSelections.size < balloonQuestions.length;
-      if (questionIndex < balloonQuestions.length - 1) nextBalloon.hidden = false;
+      card.querySelector(':scope > .answer-prompt')?.remove();
+      const check = card.querySelector('.question-check');
+      if (check) check.disabled = false;
     });
     choices.append(balloon);
   });
@@ -473,6 +637,7 @@ const nextBalloon = document.createElement('button');
 nextBalloon.type = 'button';
 nextBalloon.className = 'btn btn-primary';
 nextBalloon.textContent = 'Next question';
+nextBalloon.disabled = true;
 function showBalloonQuestion(index) {
   const activeIndex = Math.max(0, Math.min(index, balloonCards.length - 1));
   balloons.dataset.questionIndex = activeIndex;
@@ -481,9 +646,11 @@ function showBalloonQuestion(index) {
   completionCopy.textContent = `Question ${activeIndex + 1} of ${balloonCards.length}`;
   previousBalloon.disabled = activeIndex === 0;
   nextBalloon.hidden = activeIndex === balloonCards.length - 1;
-  balloonCheck.hidden = activeIndex !== balloonCards.length - 1;
-  balloonCheck.disabled = balloonSelections.size < balloonQuestions.length;
-  nextBalloon.onclick = () => showBalloonQuestion(activeIndex + 1);
+  nextBalloon.disabled = balloonCards[activeIndex].dataset.answered !== 'true';
+  balloonCheck.hidden = true;
+  nextBalloon.onclick = () => {
+    if (balloonCards[activeIndex].dataset.answered === 'true') showBalloonQuestion(activeIndex + 1);
+  };
   previousBalloon.onclick = () => showBalloonQuestion(activeIndex - 1);
 }
 balloonNavigation.append(previousBalloon, balloonCount, nextBalloon);
@@ -516,6 +683,33 @@ balloonCheck.addEventListener('click', () => {
   finishActivity(balloons, score, balloonQuestions.length, '');
 });
 balloons.append(balloonCheck);
+balloonCheck.remove();
+balloonCards.forEach((card, questionIndex) => {
+  const item = balloonQuestions[questionIndex];
+  const check = document.createElement('button');
+  check.type = 'button';
+  check.className = 'btn btn-primary question-check';
+  check.textContent = 'Check answer';
+  check.disabled = true;
+  check.addEventListener('click', () => {
+    if (card.dataset.answered === 'true') return;
+    const selection = balloonSelections.get(questionIndex);
+    if (!selection) { showAnswerPrompt(card); return; }
+    const correct = Boolean(selection.option.isCorrect);
+    selection.balloon.classList.add('is-popped', correct ? 'is-correct' : 'is-wrong');
+    addAnswerMark(selection.balloon, correct);
+    if (!correct) {
+      const correctBalloon = card.querySelector('[data-correct="true"]');
+      correctBalloon?.classList.add('is-correct', 'is-popped');
+      if (correctBalloon) addAnswerMark(correctBalloon, true);
+    }
+    card.querySelectorAll('.word-balloon').forEach((button) => { button.disabled = true; });
+    check.disabled = true;
+    recordQuestionAnswer(balloons, card, correct, item.options.find((option) => option.isCorrect)?.word || '', balloonQuestions.length, 'You checked every word clue. Great work!');
+    if (questionIndex < balloonCards.length - 1) nextBalloon.disabled = false;
+  });
+  card.append(check);
+});
 showBalloonQuestion(0);
 
 const activitySections = [...app.querySelectorAll('.grade3-activity-section')];
@@ -524,7 +718,6 @@ function setupQuestionPages(activity, selector) {
   if (questions.length < 2) return;
 
   let currentQuestion = 0;
-  const actionButton = activity.querySelector(':scope > button');
   const pager = document.createElement('div');
   pager.className = 'question-page-navigation';
   const previousQuestion = document.createElement('button');
@@ -548,13 +741,14 @@ function setupQuestionPages(activity, selector) {
     questionCount.textContent = `Question ${currentQuestion + 1} of ${questions.length}`;
     previousQuestion.disabled = currentQuestion === 0;
     nextQuestion.hidden = currentQuestion === questions.length - 1;
-    if (actionButton) actionButton.hidden = currentQuestion !== questions.length - 1;
+    nextQuestion.disabled = questions[currentQuestion].dataset.answered !== 'true';
   }
 
   previousQuestion.addEventListener('click', () => showQuestion(currentQuestion - 1));
-  nextQuestion.addEventListener('click', () => showQuestion(currentQuestion + 1));
-  if (actionButton) activity.insertBefore(pager, actionButton);
-  else activity.append(pager);
+  nextQuestion.addEventListener('click', () => {
+    if (questions[currentQuestion].dataset.answered === 'true') showQuestion(currentQuestion + 1);
+  });
+  activity.append(pager);
   showQuestion(0);
 }
 
@@ -596,6 +790,10 @@ function showActivity(index) {
 previous.addEventListener('click', () => showActivity(activeActivity - 1));
 next.addEventListener('click', () => showActivity(activeActivity + 1));
 showActivity(0);
+const requestedActivity = Number(new URLSearchParams(window.location.search).get('activity_index'));
+if (Number.isInteger(requestedActivity) && requestedActivity >= 0 && requestedActivity < activitySections.length) {
+  showActivity(requestedActivity);
+}
 }
 
 initActivities().catch((error) => {

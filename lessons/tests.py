@@ -46,6 +46,16 @@ class GradeThreeActivityResultsTests(TestCase):
 		grade_home = self.client.get('/grade/3')
 
 		self.assertContains(grade_home, 'Completed')
+		for activity_label in (
+			'Activity 1: Comprehension Questions',
+			'Activity 2: Sequencing',
+			'Activity 3: True or False',
+			'Activity 4: Word Detective',
+			'Activity 5: Spelling Questions',
+			'Activity 6: Word Balloon Pop',
+		):
+			with self.subTest(activity=activity_label):
+				self.assertContains(grade_home, activity_label)
 
 		results = self.client.get(f'/lessons/{self.lesson.id}/results')
 
