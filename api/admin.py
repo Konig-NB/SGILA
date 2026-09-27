@@ -28,8 +28,9 @@ class PackageCodeAdmin(admin.ModelAdmin):
 
 @admin.register(Subscription)
 class SubscriptionAdmin(admin.ModelAdmin):
-    list_display = ('__str__', 'plan_type', 'status', 'billing_cycle', 'payment_summary', 'school_name', 'package_code', 'created_at')
+    list_display = ('__str__', 'plan_type', 'status', 'billing_cycle', 'extra_active_seats', 'payment_summary', 'school_name', 'package_code', 'created_at')
     list_filter = ('plan_type', 'status', 'billing_cycle', 'payment_method')
+    list_editable = ('extra_active_seats',)
     search_fields = ('parent__full_name', 'parent__email', 'teacher__full_name', 'school_name', 'district_or_province')
 
     def payment_summary(self, obj):

@@ -1,0 +1,55 @@
+{% extends 'base.html' %}
+{% load static %}
+{% block title %}Add a seat - SGILA{% endblock %}
+{% block content %}
+<section class="auth-layout auth-compact">
+
+  <aside class="auth-intro">
+    <img class="auth-koaly-peek" src="{% static 'img/koaly_cutout.png' %}" alt="" aria-hidden="true">
+    <p class="eyebrow">{{ subscription.get_plan_type_display }} plan</p>
+    <h1>Add extra active learners</h1>
+    <p>
+      Your plan currently supports <strong>{{ active_learner_cap }} active learners</strong>.
+      Each extra seat lets one more child be active at the same time, on top of that.
+    </p>
+  </aside>
+
+  <div class="form-card">
+    <form method="POST" id="add-seat-form">
+      {% csrf_token %}
+      <label for="seat-quantity">Number of extra seats</label>
+      <input type="number" id="seat-quantity" name="quantity" min="1" max="10" value="1" inputmode="numeric">
+
+      <div class="add-seat-price-preview">
+        <span id="seat-price-line">1 seat &times; R{{ seat_price }}/month</span>
+        <strong id="seat-price-total">R{{ seat_price }}/month</strong>
+      </div>
+
+      <button class="btn btn-primary btn-full" type="submit">Continue to payment</button>
+      <p class="form-note subscription-back-link">
+        <a href="/subscription">&larr; Back to plan</a>
+      </p>
+    </form>
+  </div>
+</section>
+
+<script>
+(function () {
+  var seatPrice = {{ seat_price }};
+  var input = document.getElementById('seat-quantity');
+  var priceLine = document.getElementById('seat-price-line');
+  var priceTotal = document.getElementById('seat-price-total');
+
+  function update() {
+    var qty = parseInt(input.value, 10);
+    if (!qty || qty < 1) { qty = 1; }
+    if (qty > 10) { qty = 10; }
+    priceLine.textContent = qty + (qty === 1 ? ' seat' : ' seats') + ' \u00d7 R' + seatPrice + '/month';
+    priceTotal.textContent = 'R' + (qty * seatPrice) + '/month';
+  }
+
+  input.addEventListener('input', update);
+  update();
+})();
+</script>
+{% endblock %}

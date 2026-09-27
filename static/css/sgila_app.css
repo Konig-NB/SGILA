@@ -12825,8 +12825,9 @@ body:not(.diagram-body) .sequence-slot .sequence-card {
 body:not(.diagram-body) .sequence-illustration {
   position: relative;
   display: block;
-  width: 100%;
-  height: 110px;
+  width: 150px;
+  height: 150px;
+  aspect-ratio: 1;
   overflow: hidden;
   border-radius: 8px;
   background: var(--sun-soft);
@@ -12837,9 +12838,9 @@ body:not(.diagram-body) .sequence-illustration img {
   top: 0;
   left: 0;
   width: 300%;
-  height: 200%;
+  height: auto;
   max-width: none;
-  object-fit: fill;
+  object-fit: cover;
 }
 
 body:not(.diagram-body) .sequence-illustration.storyboard-panel-2 img { left: -100%; }
@@ -12856,12 +12857,12 @@ body:not(.diagram-body) .sequence-illustration.custom-event-image img {
 
 body:not(.diagram-body) .sequence-slot .sequence-card img {
   width: 100%;
-  height: 80px;
+  height: auto;
 }
 
 body:not(.diagram-body) .sequence-slot .sequence-card .sequence-illustration img {
   width: 300%;
-  height: 200%;
+  height: auto;
   max-width: none;
 }
 
@@ -12874,11 +12875,19 @@ body:not(.diagram-body) .truth-card > img {
 
 @media (max-width: 640px) {
   body:not(.diagram-body) .sequence-slots {
-    grid-template-columns: 1fr;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    gap: 4px;
   }
 
   body:not(.diagram-body) .sequence-slot {
-    min-height: 100px;
+    min-width: 0;
+    min-height: 78px;
+    padding: 4px;
+  }
+
+  body:not(.diagram-body) .sequence-slot .sequence-card {
+    min-width: 0;
+    padding: 3px;
   }
 }
 
@@ -12991,6 +13000,8 @@ body:not(.diagram-body) .truth-card > img {
 .grade3-question-card, .truth-card { padding: 18px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--white); }
 .grade3-question-card + .grade3-question-card, .truth-card + .truth-card { margin-top: 14px; }
 .audio-assist { white-space: nowrap; }
+.speech-word { border-radius: 4px; transition: background-color .12s ease, box-shadow .12s ease; }
+.speech-word.is-speaking { background: var(--sun-soft); box-shadow: 0 0 0 3px var(--sun-soft); }
 .question-page-navigation { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: center; gap: 16px; margin: 40px 0 0; padding: 16px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--paper); }
 .question-page-navigation .btn { width: 100%; min-height: 34px; padding: 7px 12px; font-size: .86rem; }
 .question-page-navigation .btn:last-child { grid-column: 3; }
@@ -13049,8 +13060,8 @@ body:not(.diagram-body) .truth-card > img {
 .sequence-slot > span { display: grid; width: 28px; height: 28px; place-items: center; border-radius: 50%; background: var(--sun-soft); font-weight: 900; }
 .sequence-slot > .answer-mark { display: inline-grid; width: 24px; height: 24px; margin: 6px 0 0; }
 .sequence-slot .sequence-card { margin-top: 6px; width: 100%; min-height: 78px; padding: 10px; text-align: left; }
-.sequence-illustration { position: relative; display: block; width: 100%; aspect-ratio: 3 / 2; overflow: hidden; border-radius: 8px; background: var(--sun-soft); }
-.sequence-illustration img { position: absolute; top: 0; left: 0; width: 300%; height: 200%; max-width: none; object-fit: fill; }
+.sequence-illustration { position: relative; display: block; width: 150px; height: 150px; aspect-ratio: 1; overflow: hidden; border-radius: 8px; background: var(--sun-soft); }
+.sequence-illustration img { position: absolute; top: 0; left: 0; width: 300%; height: auto; max-width: none; object-fit: cover; }
 .sequence-illustration.storyboard-panel-2 img { left: -100%; }
 .sequence-illustration.storyboard-panel-3 img { left: -200%; }
 .sequence-illustration.storyboard-panel-4 img { top: -100%; }
@@ -13062,8 +13073,8 @@ body:not(.diagram-body) .truth-card > img {
 .sequence-reviews { display: grid; gap: 8px; margin-top: 14px; }
 .sequence-reviews .answer-review { margin: 0; max-width: 100%; padding: 7px 10px; overflow-wrap: anywhere; line-height: 1.25; font-size: .78rem; font-weight: 700; }
 .sequence-slot .sequence-card img { width: 100%; height: auto; }
-.sequence-slot .sequence-card .sequence-illustration { aspect-ratio: 3 / 2; height: auto; }
-.sequence-slot .sequence-card .sequence-illustration img { width: 300%; height: 200%; max-width: none; }
+.sequence-slot .sequence-card .sequence-illustration { width: 100%; max-width: 150px; height: auto; aspect-ratio: 1; }
+.sequence-slot .sequence-card .sequence-illustration img { width: 300%; height: auto; max-width: none; }
 .truth-card > img { width: 100%; height: 180px; object-fit: cover; margin-bottom: 14px; }
 .truth-illustration { position: relative; width: min(220px, 100%); height: 104px; overflow: hidden; margin: 0 auto 16px; border-radius: 12px; background: var(--sun-soft); }
 .truth-illustration img { position: absolute; top: 0; left: 0; display: block; width: 300%; height: 200%; max-width: none; object-fit: fill; }

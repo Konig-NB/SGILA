@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>{% block title %}SGILA{% endblock %}</title>
   {% load static %}
-  <link rel="stylesheet" href="{% static 'css/sgila_app.css' %}?v=clean-styles-20260916-3">
+  <link rel="stylesheet" href="{% static 'css/sgila_app.css' %}?v=dark-theme-dashboard-20260927-8">
   <script>
     // Applied before paint so the page never flashes the wrong theme on load.
     (function () {
@@ -110,7 +110,7 @@
   </div>
   <script>
   (function () {
-    var activityPath = /^\/lessons\/(\d+)\/(questions|visual-activity|pronunciation|spelling|vocabulary|sequencing|inference|prediction|feelings|cause-effect|theme|written-response)$/;
+    var activityPath = /^\/lessons\/(\d+)\/(activities|questions|visual-activity|pronunciation|spelling|vocabulary|sequencing|inference|prediction|feelings|cause-effect|theme|written-response)$/;
     var current = window.location.pathname.match(activityPath);
     if (!current) return;
 
@@ -158,7 +158,7 @@
           body: JSON.stringify({resume_url: resumeUrl})
         });
         if (!response.ok) throw new Error('Could not save your place.');
-        window.location.href = '/grade/{{ request.session.child_grade }}';
+        window.location.href = '/grade/{{ request.session.child_grade }}?activity_menu=' + current[1];
       } catch (error) {
         pauseButton.disabled = false;
         pauseButton.textContent = 'Take a break';

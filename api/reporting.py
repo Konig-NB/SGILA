@@ -2,6 +2,12 @@
 
 
 ASSESSMENT_META = {
+    'grade3_comprehension_check': ('Comprehension check', 'C', 'Look back at the story for details that answer each question.'),
+    'grade3_visual_match': ('Picture match', 'P', 'Study the story pictures and match them to what happened.'),
+    'grade3_true_false': ('True or False', 'T', 'Listen closely and decide whether each statement matches the story.'),
+    'grade3_word_detective': ('Word detective', 'W', 'Use the story clues to choose the word that completes each sentence.'),
+    'grade3_listen_spell': ('Listen and spell', 'S', 'Listen carefully and practise spelling each story word.'),
+    'grade3_word_balloon': ('Word Balloon Pop', 'B', 'Listen to each clue and find the matching story word.'),
     'literal_comprehension': ('Comprehension', 'C', 'Re-read the story and look for details that answer each question.'),
     'inference': ('Inference', 'I', 'Use story clues to explain ideas that are not stated directly.'),
     'character_motivation': ('Character understanding', 'H', 'Notice how a character feels, changes, and makes decisions.'),
@@ -80,6 +86,8 @@ def scores_for_record(record):
         if record.lesson.grade == 3:
             scores.pop('sequencing', None)
             scores.pop('visual_literacy', None)
+        elif not record.lesson.sequencing_activities.exists():
+            scores.pop('sequencing', None)
         return scores
 
     lesson = record.lesson
