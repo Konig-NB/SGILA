@@ -79,7 +79,7 @@ function audio(label, highlightTarget = null) {
   const button = document.createElement('button');
   button.type = 'button';
   button.className = 'btn btn-light audio-assist';
-  button.innerHTML = '&#128266; Listen';
+  button.textContent = 'Listen';
   button.addEventListener('click', async () => {
     console.log(`Playing therapeutic voiceover: ${label}`);
     if (!('speechSynthesis' in window)) return;
@@ -195,10 +195,20 @@ let totalScore = 0;
 let totalPossible = 0;
 const completedActivities = new Set();
 const activityScores = new Map();
+let completionPayload = null;
+let completionRequest = null;
 const progressCopy = document.getElementById('grade3-progress-copy');
 const completionCopy = document.getElementById('grade3-completion-copy');
 const progressFill = document.getElementById('grade3-progress-fill');
 const activityMap = document.getElementById('grade3-activity-map');
+
+function saveActivityResults() {
+  const lessonId = document.querySelector('.grade3-activities').dataset.lessonId;
+  return fetch(`/lessons/${lessonId}/activities/complete`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRFToken': '{{ csrf_token }}' },
+    body: JSON.stringify(completionPayload),
+  });
+}
 
 function updateProgress() {
   const total = activitySections.length;
@@ -241,13 +251,23 @@ function finishActivity(activity, score, possible, message) {
     ? `<span class="speech-word" data-speech-index="${index}">${word}</span>`
     : word).join('')}`;
   activity.append(feedback);
+  feedback.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
   speakFeedback(feedbackCopy.speechText, feedback);
   if (completedActivities.size === 6) {
     document.getElementById('final-score-button').hidden = false;
-    fetch(`/lessons/${document.querySelector('.grade3-activities').dataset.lessonId}/activities/complete`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRFToken': '{{ csrf_token }}' },
-      body: JSON.stringify({ total_score: totalScore, total_possible: totalPossible, comprehension_score: activityScores.get('1').score + activityScores.get('3').score, visual_score: activityScores.get('2').score + activityScores.get('4').score, spelling_score: activityScores.get('5').score }),
-    });
+    completionPayload = {
+      total_score: totalScore,
+      total_possible: totalPossible,
+      comprehension_score: activityScores.get('1').score + activityScores.get('3').score,
+      visual_score: activityScores.get('2').score + activityScores.get('4').score,
+      spelling_score: activityScores.get('5').score,
+      activity_scores: [...activityScores.entries()].map(([number, item]) => ({
+        number,
+        score: item.score,
+        total: item.possible,
+      })),
+    };
+    completionRequest = saveActivityResults();
   }
   updateProgress();
 }
@@ -352,19 +372,7 @@ const detectiveCheck = document.createElement('button'); detectiveCheck.type = '
 detectiveCheck.addEventListener('click', () => { let score = 0; Object.entries(blanks).forEach(([blankId, blank]) => { const correct = data.act4_word_detective.word_bank.find((item) => item.target_blank === blankId); const selectedWord = blank.textContent.trim(); const isCorrect = Boolean(correct && selectedWord.toLowerCase() === correct.word.toLowerCase()); if (isCorrect) score += 1; blank.classList.toggle('is-correct', isCorrect); blank.classList.toggle('is-wrong', !isCorrect); addAnswerMark(blank, isCorrect); if (!isCorrect) { const review = document.createElement('small'); review.className = 'answer-review wrong'; review.textContent = `Correct answer: ${correct ? correct.word : 'No answer.'}`; blank.parentElement.append(review); } }); detectiveCheck.disabled = true; bank.querySelectorAll('button').forEach((button) => { button.disabled = true; button.draggable = false; }); finishActivity(detective, score, Object.keys(blanks).length, score === Object.keys(blanks).length ? 'Amazing! You solved every word.' : 'Good effort! Keep learning one word at a time.'); });
 detective.append(bank, detectiveCheck);
 
-function keepSpellingReviewCorrectOnly(spelling) {
-  const observer = new MutationObserver(() => {
-    spelling.querySelectorAll('.answer-review.wrong').forEach((review) => {
-      const row = review.closest('.listen-spell-row');
-      const answer = row?.querySelector('.spelling-result')?.dataset.answer;
-      if (answer) review.textContent = `Correct answer: ${answer}`;
-    });
-  });
-  observer.observe(spelling, { childList: true, subtree: true });
-}
-
 const spelling = section(5, 'Listen and spell', 'Listen to each word, then write it down.'); const spellingList = document.createElement('div'); spellingList.className = 'listen-spell-list'; data.act5_listen_spell.forEach((item) => { const row = document.createElement('div'); row.className = 'listen-spell-row'; row.innerHTML = `<span class="spelling-number">${item.id}</span>`; const play = audio(item.word); play.setAttribute('aria-label', `Play spelling word ${item.id}`); row.append(play); const input = document.createElement('input'); input.className = 'spelling-input'; input.type = 'text'; input.placeholder = 'Write the word'; input.autocomplete = 'off'; row.append(input); const result = document.createElement('span'); result.className = 'spelling-result'; result.dataset.answer = item.word; row.append(result); spellingList.append(row); }); const check = document.createElement('button'); check.type = 'button'; check.className = 'btn btn-primary btn-large btn-full'; check.textContent = 'Check answers'; check.addEventListener('click', () => { let score = 0; spellingList.querySelectorAll('.listen-spell-row').forEach((row) => { const answer = row.querySelector('.spelling-result'); const input = row.querySelector('input'); const typed = input.value.trim(); const correct = typed.toLowerCase() === answer.dataset.answer.trim().toLowerCase(); if (correct) score += 1; row.classList.toggle('is-correct', correct); row.classList.toggle('is-wrong', !correct); answer.textContent = correct ? '✓' : '✕'; if (!correct) { const review = document.createElement('small'); review.className = 'answer-review wrong'; review.textContent = `Your answer: ${typed || 'No answer.'} Correct: ${answer.dataset.answer}`; row.append(review); } input.disabled = true; }); spellingList.querySelectorAll('.audio-assist').forEach((button) => { button.disabled = true; }); check.disabled = true; finishActivity(spelling, score, data.act5_listen_spell.length, score === data.act5_listen_spell.length ? 'Fantastic spelling! You got them all right.' : 'Nice try! Keep practising and do not give up.'); }); spelling.append(spellingList, check);
-keepSpellingReviewCorrectOnly(spelling);
 check.addEventListener('click', () => {
   window.setTimeout(() => {
     if (spelling.querySelector('.activity-feedback')) return;
@@ -553,22 +561,33 @@ function setupQuestionPages(activity, selector) {
 setupQuestionPages(activitySections[0], '.grade3-question-card');
 setupQuestionPages(activitySections[2], '.truth-card');
 setupQuestionPages(activitySections[4], '.listen-spell-row');
-const finalScorePanel = document.createElement('div'); finalScorePanel.id = 'final-score-panel'; finalScorePanel.className = 'final-score-panel'; finalScorePanel.hidden = true;
 const finalScoreButton = document.createElement('button'); finalScoreButton.id = 'final-score-button'; finalScoreButton.type = 'button'; finalScoreButton.className = 'btn btn-primary btn-large btn-full'; finalScoreButton.textContent = 'View final score'; finalScoreButton.hidden = true;
-finalScoreButton.addEventListener('click', () => { const improvements = [...activityScores.values()].filter((item) => item.score < item.possible); const stars = totalScore / totalPossible >= .9 ? 3 : totalScore / totalPossible >= .7 ? 2 : 1; finalScorePanel.hidden = false; finalScorePanel.innerHTML = `<h2>Final score</h2><strong class="final-score-number">${totalScore} / ${totalPossible}</strong><p class="final-stars" aria-label="${stars} stars earned">${'★'.repeat(stars)}${'☆'.repeat(3 - stars)}</p><div class="score-breakdown">${[...activityScores.values()].map((item) => `<p><b>${item.label}:</b> ${item.score} / ${item.possible}${item.score < item.possible ? ` <span>Review this activity.</span>` : ' <span class="correct">Complete</span>'}</p>`).join('')}</div><p class="improvement-note">${improvements.length ? `Focus next on: ${improvements.map((item) => item.label).join(', ')}.` : 'You completed every activity correctly.'}</p>`; finalScorePanel.scrollIntoView({ behavior: 'smooth', block: 'start' }); });
+finalScoreButton.addEventListener('click', async () => {
+  finalScoreButton.disabled = true;
+  finalScoreButton.textContent = 'Saving final score...';
+  try {
+    const response = await (completionRequest || saveActivityResults());
+    if (!response.ok) throw new Error('Could not save final score.');
+    const lessonId = document.querySelector('.grade3-activities').dataset.lessonId;
+    window.location.assign(`/lessons/${lessonId}/results`);
+  } catch {
+    completionRequest = null;
+    finalScoreButton.disabled = false;
+    finalScoreButton.textContent = 'Retry final score';
+  }
+});
 const navigation = document.createElement('div'); navigation.className = 'activity-navigation';
 const previous = document.createElement('button'); previous.type = 'button'; previous.className = 'btn btn-light'; previous.textContent = 'Previous activity';
 const next = document.createElement('button'); next.type = 'button'; next.className = 'btn btn-primary'; next.textContent = 'Next activity';
 navigation.append(previous, next);
-app.append(navigation);
 app.append(finalScoreButton);
-app.append(finalScorePanel);
 let activeActivity = 0;
 function showActivity(index) {
   activeActivity = Math.max(0, Math.min(index, activitySections.length - 1));
   activitySections.forEach((activity, activityIndex) => activity.classList.toggle('activity-current', activityIndex === activeActivity));
   previous.disabled = activeActivity === 0;
   next.disabled = activeActivity === activitySections.length - 1;
+  activitySections[activeActivity].append(navigation);
   updateProgress();
   activitySections[activeActivity].scrollIntoView({ behavior: 'smooth', block: 'start' });
 }

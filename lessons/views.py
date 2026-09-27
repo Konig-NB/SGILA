@@ -1300,11 +1300,20 @@ def grade_home(request, grade):
     lesson_data = []
     for lesson in lessons:
         record = progress_by_lesson.get(lesson.id)
+        assessment_scores = record.assessment_scores if record and isinstance(record.assessment_scores, dict) else {}
         grade3_completed = bool(
-            record
-            and lesson.grade == 3
-            and isinstance(record.assessment_scores, dict)
-            and record.assessment_scores.get('grade3_activities', {}).get('total') == 24
+            lesson.grade == 3
+            and (
+                assessment_scores.get('grade3_activities', {}).get('total') == 24
+                or all(key in assessment_scores for key in (
+                    'grade3_comprehension_check',
+                    'grade3_visual_match',
+                    'grade3_true_false',
+                    'grade3_word_detective',
+                    'grade3_listen_spell',
+                    'grade3_word_balloon',
+                ))
+            )
         )
         lesson_data.append({
             'id': lesson.id,
@@ -1415,10 +1424,40 @@ def complete_grade3_activities(request, lesson_id):
     if response:
         return response
     lesson = get_object_or_404(Lesson, id=lesson_id, grade=3)
+    activity_keys = {
+        '1': 'grade3_comprehension_check',
+        '2': 'grade3_visual_match',
+        '3': 'grade3_true_false',
+        '4': 'grade3_word_detective',
+        '5': 'grade3_listen_spell',
+        '6': 'grade3_word_balloon',
+    }
     try:
         scores = json.loads(request.body or '{}')
-        total_score = int(scores.get('total_score', 0))
-        total_possible = int(scores.get('total_possible', 24))
+        if not isinstance(scores, dict):
+            raise ValueError
+        activity_scores = scores.get('activity_scores')
+        if activity_scores is None:
+            total_score = int(scores.get('total_score', 0))
+            total_possible = int(scores.get('total_possible', 24))
+            assessment_scores = {
+                'grade3_activities': {'score': total_score, 'total': total_possible},
+            }
+        else:
+            if not isinstance(activity_scores, list) or len(activity_scores) != len(activity_keys):
+                raise ValueError
+            assessment_scores = {}
+            for activity in activity_scores:
+                activity_key = activity_keys.get(str(activity.get('number')))
+                score = int(activity.get('score'))
+                possible = int(activity.get('total'))
+                if not activity_key or activity_key in assessment_scores or possible <= 0 or not 0 <= score <= possible:
+                    raise ValueError
+                assessment_scores[activity_key] = {'score': score, 'total': possible}
+            if len(assessment_scores) != len(activity_keys):
+                raise ValueError
+            total_score = sum(item['score'] for item in assessment_scores.values())
+            total_possible = sum(item['total'] for item in assessment_scores.values())
     except (TypeError, ValueError, json.JSONDecodeError):
         return JsonResponse({'error': 'Invalid activity score.'}, status=400)
     Progress.objects.update_or_create(
@@ -1431,7 +1470,7 @@ def complete_grade3_activities(request, lesson_id):
             'total_score': total_score,
             'total_possible': total_possible,
             'stars_earned': 3 if total_score / max(total_possible, 1) >= .9 else 2 if total_score / max(total_possible, 1) >= .7 else 1,
-            'assessment_scores': {'grade3_activities': {'score': total_score, 'total': total_possible}},
+            'assessment_scores': assessment_scores,
         },
     )
     return JsonResponse({'completed': True})
