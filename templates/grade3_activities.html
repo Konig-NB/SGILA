@@ -127,6 +127,7 @@ function section(number, label, instruction) {
 
 let totalScore = 0;
 let totalPossible = 0;
+window.SgilaActivityScore = () => ({ score: totalScore, total: totalPossible });
 const completedActivities = new Set();
 const activityScores = new Map();
 function finishActivity(activity, score, possible, message) {
