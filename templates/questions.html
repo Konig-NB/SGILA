@@ -58,7 +58,6 @@
 <script>
 const childId = {{ child_id }};
 const childName = "{{ child.name|escapejs }}";
-const lessonGrade = {{ lesson.grade }};
 const lessonId = {{ lesson_id }};
 const totalQuestions = {{ total_questions }};
 const storageKey = `sgila_lesson_${lessonId}`;
@@ -270,7 +269,7 @@ function speakActivityText(text, button, highlightElements = null) {
   window.speechSynthesis.speak(utterance);
 }
 
-function renderActivityMedia(activity, questionText) {
+function renderActivityMedia(activity, questionText, instructionText) {
   const config = activityConfig(activity);
   if (!config.prompt_image && !config.audio_text && !config.focus_word) return;
 
@@ -327,13 +326,39 @@ function renderActivityMedia(activity, questionText) {
     listen.className = 'btn btn-light activity-listen';
     listen.textContent = 'Listen';
     const isPhonicsWord = config.presentation === 'grade1_phonics';
-    const spokenText = isPhonicsWord ? config.audio_text : activity.question;
-    const highlightElements = isPhonicsWord ? null : [questionText];
-    listen.addEventListener('click', () => speakActivityText(
-      spokenText,
-      listen,
-      highlightElements,
-    ));
+    if (isPhonicsWord) {
+      const spokenText = config.audio_text;
+      listen.addEventListener('click', () => speakActivityText(
+        spokenText,
+        listen,
+        null,
+      ));
+    } else {
+      const instruction = instructionText || typeInstructions[activity.activity_type] || '';
+      listen.addEventListener('click', () => {
+        if (!instruction.trim()) {
+          speakActivityText(activity.question, listen, [questionText]);
+          return;
+        }
+        listen.disabled = true;
+        listen.textContent = 'Listening...';
+        const instructionUtterance = new SpeechSynthesisUtterance(instruction);
+        const voices = window.speechSynthesis.getVoices();
+        instructionUtterance.voice = voices.find((voice) => voice.lang.toLowerCase() === 'en-za')
+          || voices.find((voice) => voice.lang.toLowerCase().startsWith('en'))
+          || null;
+        instructionUtterance.lang = instructionUtterance.voice ? instructionUtterance.voice.lang : 'en-ZA';
+        instructionUtterance.rate = 0.86;
+        instructionUtterance.pitch = 1;
+        instructionUtterance.onend = () => {
+          speakActivityText(activity.question, listen, [questionText]);
+        };
+        instructionUtterance.onerror = () => {
+          speakActivityText(activity.question, listen, [questionText]);
+        };
+        window.speechSynthesis.speak(instructionUtterance);
+      });
+    }
     actions.appendChild(listen);
   }
   media.appendChild(actions);
@@ -1118,11 +1143,9 @@ function renderActivity() {
   delete questionText.dataset.speechText;
   questionText.textContent = activity.question;
   questionText.classList.toggle('hidden', isGradeOnePhonics);
-  const instructionEl = document.getElementById('activity-instruction');
-  instructionEl.classList.toggle('hidden', lessonGrade === 1 || lessonGrade === 2);
   setMascot('ready', 'Take your time and use the story.');
   updateProgress();
-  renderActivityMedia(activity, questionText);
+  renderActivityMedia(activity, questionText, instruction);
 
   if (activity.options && activity.options.writing_template) {
     renderGuidedDiary(activity);
