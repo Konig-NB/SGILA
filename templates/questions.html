@@ -58,6 +58,7 @@
 <script>
 const childId = {{ child_id }};
 const childName = "{{ child.name|escapejs }}";
+const lessonGrade = {{ lesson.grade }};
 const lessonId = {{ lesson_id }};
 const totalQuestions = {{ total_questions }};
 const storageKey = `sgila_lesson_${lessonId}`;
@@ -269,7 +270,7 @@ function speakActivityText(text, button, highlightElements = null) {
   window.speechSynthesis.speak(utterance);
 }
 
-function renderActivityMedia(activity, questionText, instructionText) {
+function renderActivityMedia(activity, questionText) {
   const config = activityConfig(activity);
   if (!config.prompt_image && !config.audio_text && !config.focus_word) return;
 
@@ -326,25 +327,13 @@ function renderActivityMedia(activity, questionText, instructionText) {
     listen.className = 'btn btn-light activity-listen';
     listen.textContent = 'Listen';
     const isPhonicsWord = config.presentation === 'grade1_phonics';
-    if (isPhonicsWord) {
-      const spokenText = config.audio_text;
-      listen.addEventListener('click', () => speakActivityText(
-        spokenText,
-        listen,
-        null,
-      ));
-    } else {
-      const instructionEl = document.getElementById('activity-instruction');
-      const instruction = instructionText || typeInstructions[activity.activity_type] || '';
-      const question = activity.question;
-      const spokenText = instruction;
-      const highlightElements = instructionEl ? [instructionEl, questionText] : [questionText];
-      listen.addEventListener('click', () => speakActivityText(
-        spokenText,
-        listen,
-        highlightElements,
-      ));
-    }
+    const spokenText = isPhonicsWord ? config.audio_text : activity.question;
+    const highlightElements = isPhonicsWord ? null : [questionText];
+    listen.addEventListener('click', () => speakActivityText(
+      spokenText,
+      listen,
+      highlightElements,
+    ));
     actions.appendChild(listen);
   }
   media.appendChild(actions);
@@ -1129,9 +1118,11 @@ function renderActivity() {
   delete questionText.dataset.speechText;
   questionText.textContent = activity.question;
   questionText.classList.toggle('hidden', isGradeOnePhonics);
+  const instructionEl = document.getElementById('activity-instruction');
+  instructionEl.classList.toggle('hidden', lessonGrade === 1 || lessonGrade === 2);
   setMascot('ready', 'Take your time and use the story.');
   updateProgress();
-  renderActivityMedia(activity, questionText, instruction);
+  renderActivityMedia(activity, questionText);
 
   if (activity.options && activity.options.writing_template) {
     renderGuidedDiary(activity);
