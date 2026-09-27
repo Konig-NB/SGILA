@@ -175,39 +175,126 @@ def learner_required(request):
     return child, None
 
 
+def learner_activity_label(activity):
+    """Return a clear learner-facing name for a reading activity group."""
+    group_labels = {
+        'Comprehension Questions': 'Story Questions: Remember Details',
+        'Crossword Puzzle': 'Crossword: Find Story Words',
+        'Word Detective': 'Word Detective: Discover Meanings',
+        'Spelling Activity': 'Spelling: Build Story Words',
+    }
+    type_labels = {
+        'sequencing': 'Sequencing: Order Story Events',
+        'multiple_choice': 'Story Choices: Pick the Best Answer',
+        'true_false': 'Fact Check: True or False',
+        'matching': 'Matching: Connect Story Words',
+        'reasoning': 'Reasoning: Explain Your Thinking',
+        'prediction': 'Prediction: What Happens Next?',
+        'oral_response': 'Speaking: Tell Your Answer',
+        'open_ended': 'Writing: Share Your Ideas',
+        'cloze': 'Story Words: Fill in the Blank',
+    }
+    return group_labels.get(
+        activity.group_title,
+        type_labels.get(activity.activity_type, activity.get_activity_type_display()),
+    )
+
+
 def activity_choices_for(lesson):
     """Return the learner-facing activity menu for a lesson."""
     base = f'/lessons/{lesson.id}'
-    choices = [{'label': 'Read the story', 'url': f'{base}/story'}]
-    if lesson.grade == 3:
-        choices.append({
-            'label': 'Grade 3 activities',
-            'url': f'{base}/activities',
-        })
-    elif lesson.grade == 4:
-        choices.extend([
-            {'label': 'Comprehension', 'url': f'{base}/questions'},
-            {'label': 'Vocabulary', 'url': f'{base}/vocabulary'},
-            {'label': 'Sequencing', 'url': f'{base}/sequencing'},
-            {'label': 'Inference', 'url': f'{base}/inference'},
-            {'label': 'Prediction', 'url': f'{base}/prediction'},
-            {'label': 'Feelings', 'url': f'{base}/feelings'},
-            {'label': 'Cause and effect', 'url': f'{base}/cause-effect'},
-            {'label': 'Main lesson', 'url': f'{base}/theme'},
-            {'label': 'Written response', 'url': f'{base}/written-response'},
-        ])
+    choices = [{'label': 'Read the Story', 'url': f'{base}/story'}]
+    if lesson.grade == 3 and lesson.reading_activities.exists():
+        grade3_headings = [
+            'Story Questions: Find Details',
+            'Story Sequencer: Order Events',
+            'Fact Check: True or False',
+            'Word Detective: Discover Meanings',
+            'Listen and Spell: Build Words',
+        ]
+        choices.extend(
+            {'label': heading, 'url': f'{base}/activities'}
+            for heading in grade3_headings
+        )
+    elif lesson.grade == 4 and lesson.reading_activities.exists():
+        groups = {}
+        for activity in lesson.reading_activities.order_by('order', 'id'):
+            group_number = activity.group_number or activity.order
+            group_title = learner_activity_label(activity)
+            groups.setdefault(group_number, {
+                'label': group_title,
+                'url': f'{base}/questions?activity_index={max(activity.order - 1, 0)}',
+            })
+        choices.extend(groups.values())
     else:
-        choices.extend([
-            {'label': 'Comprehension', 'url': f'{base}/questions'},
-            {'label': 'Visual matching', 'url': f'{base}/visual-activity'},
-            {'label': 'Pronunciation', 'url': f'{base}/pronunciation'},
-            {'label': 'Spelling', 'url': f'{base}/spelling'},
-        ])
+        if lesson.reading_activities.exists() or lesson.questions.exists():
+            choices.append({'label': 'Story Questions: Remember Details', 'url': f'{base}/questions'})
+        if lesson.visual_items.exists():
+            choices.append({'label': 'Picture Match: Connect Words and Images', 'url': f'{base}/visual-activity'})
+        if lesson.pronunciation_words.exists():
+            choices.append({'label': 'Pronunciation: Listen and Say Words', 'url': f'{base}/pronunciation'})
+        if lesson.spelling_activities.exists():
+            choices.append({'label': 'Spelling: Build Words', 'url': f'{base}/spelling'})
+        if lesson.vocabulary_questions.exists():
+            choices.append({'label': 'Vocabulary: Explore New Words', 'url': f'{base}/vocabulary'})
+        if lesson.sequencing_activities.exists():
+            choices.append({'label': 'Sequencing: Order Events', 'url': f'{base}/sequencing'})
+        if lesson.inference_questions.exists():
+            choices.append({'label': 'Inference: Read Between the Lines', 'url': f'{base}/inference'})
+        if lesson.prediction_questions.exists():
+            choices.append({'label': 'Prediction: Think Ahead', 'url': f'{base}/prediction'})
+        if lesson.feelings_questions.exists():
+            choices.append({'label': 'Feelings: Understand Characters', 'url': f'{base}/feelings'})
+        if lesson.cause_effect_pairs.exists():
+            choices.append({'label': 'Cause and Effect: Follow the Story', 'url': f'{base}/cause-effect'})
+        if lesson.theme_questions.exists():
+            choices.append({'label': 'Main Lesson: Find the Big Idea', 'url': f'{base}/theme'})
+        if lesson.written_prompts.exists():
+            choices.append({'label': 'Written Response: Share Your Thinking', 'url': f'{base}/written-response'})
+    label_counts = {}
+    for choice in choices:
+        label = choice['label']
+        label_counts[label] = label_counts.get(label, 0) + 1
+        if label_counts[label] > 1:
+            choice['label'] = f'{label} - Part {label_counts[label]}'
     return choices
+
+
+def activity_next_url(lesson, current):
+    """Return the next available activity route for this story."""
+    routes = [
+        ('questions', lesson.reading_activities.exists() or lesson.questions.exists()),
+        ('visual-activity', lesson.visual_items.exists()),
+        ('pronunciation', lesson.pronunciation_words.exists()),
+        ('spelling', lesson.spelling_activities.exists()),
+    ]
+    if lesson.grade == 4:
+        routes = [
+            ('questions', lesson.reading_activities.exists() or lesson.questions.exists()),
+            ('vocabulary', lesson.vocabulary_questions.exists()),
+            ('sequencing', lesson.sequencing_activities.exists()),
+            ('inference', lesson.inference_questions.exists()),
+            ('prediction', lesson.prediction_questions.exists()),
+            ('feelings', lesson.feelings_questions.exists()),
+            ('cause-effect', lesson.cause_effect_pairs.exists()),
+            ('theme', lesson.theme_questions.exists()),
+            ('written-response', lesson.written_prompts.exists()),
+        ]
+    available = [route for route, exists in routes if exists]
+    try:
+        next_route = available[available.index(current) + 1]
+    except (ValueError, IndexError):
+        return f'/lessons/{lesson.id}/results'
+    return f'/lessons/{lesson.id}/{next_route}'
 
 
 def activity_resume_url(request, child, lesson):
     """Return the best saved destination when a learner reopens a story."""
+    paused_entry = (child.paused_activities or {}).get(str(lesson.id))
+    paused_url = paused_entry.get('url') if isinstance(paused_entry, dict) else paused_entry
+    if paused_url:
+        return paused_url
+
     answers = request.session.get(f'lesson_{lesson.id}_reading_activity_answers', {})
     answered_ids = {
         str(key).removeprefix('activity-')
@@ -219,10 +306,13 @@ def activity_resume_url(request, child, lesson):
         if str(activity.id) not in answered_ids:
             return f'/lessons/{lesson.id}/questions?activity_index={index}'
 
-    paused_url = (child.paused_activities or {}).get(str(lesson.id))
-    if paused_url:
-        return paused_url
     return None
+
+
+def paused_activity_url(child, lesson):
+    """Return only an explicitly saved pause URL, never an inferred restart point."""
+    paused_entry = (child.paused_activities or {}).get(str(lesson.id))
+    return paused_entry.get('url') if isinstance(paused_entry, dict) else paused_entry
 
 
 def activity_score_summary(request, lesson):
@@ -1765,7 +1855,7 @@ def grade_home(request, grade):
             'stars': range(record.stars_earned) if record else range(0),
             'is_current_ai_story': lesson.is_ai_generated and lesson.id == getattr(latest_ai_lesson, 'id', None),
             'activities': activity_choices_for(lesson),
-            'resume_url': (child.paused_activities or {}).get(str(lesson.id)),
+            'resume_url': paused_activity_url(child, lesson),
             'activity_count': len(group_sizes),
             'questions_per_activity': questions_per_activity,
         })
@@ -1799,11 +1889,15 @@ def grade_home(request, grade):
 @ensure_csrf_cookie
 @require_http_methods(["GET", "POST"])
 def activity_pause(request, lesson_id):
-    """Provide the running score and save a safe resume destination for a learner."""
+    """Save a learner's resume point and durable running score."""
     child, response = learner_required(request)
     if response:
         return response
     lesson = get_object_or_404(Lesson, id=lesson_id, grade=child.grade)
+
+    paused_entry = (child.paused_activities or {}).get(str(lesson.id))
+    saved_score = paused_entry.get('score') if isinstance(paused_entry, dict) else None
+    saved_total = paused_entry.get('total') if isinstance(paused_entry, dict) else None
 
     if request.method == 'POST':
         try:
@@ -1812,8 +1906,12 @@ def activity_pause(request, lesson_id):
             data = {}
         resume_url = data.get('resume_url', '')
         parsed_resume_url = urllib.parse.urlsplit(resume_url)
-        allowed_urls = {item['url'] for item in activity_choices_for(lesson)}
-        if parsed_resume_url.path not in allowed_urls or parsed_resume_url.fragment:
+        allowed_paths = {
+            urllib.parse.urlsplit(item['url']).path
+            for item in activity_choices_for(lesson)
+            if item['url'].rstrip('/') != f'/lessons/{lesson.id}/story'
+        }
+        if parsed_resume_url.path not in allowed_paths or parsed_resume_url.fragment:
             return JsonResponse({'error': 'Invalid activity to resume.'}, status=400)
         if parsed_resume_url.path.endswith('/questions'):
             query = urllib.parse.parse_qs(parsed_resume_url.query)
@@ -1825,14 +1923,42 @@ def activity_pause(request, lesson_id):
             resume_url = f'{parsed_resume_url.path}?activity_index={activity_index}'
         elif parsed_resume_url.query:
             return JsonResponse({'error': 'Invalid activity to resume.'}, status=400)
+
+        score, possible = activity_score_summary(request, lesson)
+        client_score = data.get('score') if isinstance(data.get('score'), dict) else {}
+        if lesson.grade == 3 and client_score:
+            try:
+                score = max(int(client_score.get('score', 0)), 0)
+                possible = max(int(client_score.get('total', 0)), 0)
+            except (TypeError, ValueError):
+                return JsonResponse({'error': 'Invalid activity score.'}, status=400)
         paused_activities = dict(child.paused_activities or {})
-        paused_activities[str(lesson.id)] = resume_url
+        paused_activities[str(lesson.id)] = {
+            'url': resume_url,
+            'score': score,
+            'total': possible,
+            'updated_at': timezone.now().isoformat(),
+        }
         child.paused_activities = paused_activities
         child.save(update_fields=['paused_activities'])
         request.session[f'lesson_{lesson.id}_resume_url'] = resume_url
         request.session.modified = True
+        saved_score, saved_total = score, possible
 
     score, possible = activity_score_summary(request, lesson)
+    if not any(key in request.session for key in (
+        f'lesson_{lesson.id}_reading_skill_scores',
+        f'lesson_{lesson.id}_comprehension_score',
+        f'lesson_{lesson.id}_visual_score',
+        f'lesson_{lesson.id}_spelling_score',
+        f'lesson_{lesson.id}_seq_score',
+        f'lesson_{lesson.id}_inference_score',
+        f'lesson_{lesson.id}_feelings_score',
+        f'lesson_{lesson.id}_ce_score',
+        f'lesson_{lesson.id}_theme_score',
+        f'lesson_{lesson.id}_prediction_score',
+    )) and saved_score is not None:
+        score, possible = saved_score, saved_total or 0
     return JsonResponse({'score': score, 'total': possible})
 
 
@@ -1872,16 +1998,7 @@ def questions_page(request, lesson_id):
     if lesson.grade == 3:
         return redirect(f'/lessons/{lesson_id}/activities')
     total_questions = lesson.reading_activities.count() or ComprehensionQuestion.objects.filter(lesson=lesson).count()
-    if lesson.reading_activities.filter(skill='spelling').exists():
-        next_activity_url = f'/lessons/{lesson_id}/results'
-    elif lesson.visual_items.exists():
-        next_activity_url = f'/lessons/{lesson_id}/visual-activity'
-    elif lesson.pronunciation_words.exists():
-        next_activity_url = f'/lessons/{lesson_id}/pronunciation'
-    elif lesson.spelling_activities.exists():
-        next_activity_url = f'/lessons/{lesson_id}/spelling'
-    else:
-        next_activity_url = f'/lessons/{lesson_id}/results'
+    next_activity_url = activity_next_url(lesson, 'questions')
     return render(request, 'questions.html', {
         'lesson': lesson,
         'lesson_id': lesson_id,
@@ -1907,6 +2024,7 @@ def visual_activity_page(request, lesson_id):
         'lesson': lesson,
         'child': child,
         'items': lesson.visual_items.all(),
+        'next_activity_url': activity_next_url(lesson, 'visual-activity'),
     })
 
 
@@ -1918,6 +2036,7 @@ def pronunciation_page(request, lesson_id):
     return render(request, 'pronunciation.html', {
         'lesson': lesson,
         'words': lesson.pronunciation_words.all(),
+        'next_activity_url': activity_next_url(lesson, 'pronunciation'),
     })
 
 
@@ -1978,7 +2097,12 @@ def spelling_page(request, lesson_id):
         request.session[f'lesson_{lesson_id}_spelling_total'] = len(activities)
         return redirect(f'/lessons/{lesson_id}/results')
 
-    return render(request, 'spelling.html', {'lesson': lesson, 'activities': activities, 'child': child})
+    return render(request, 'spelling.html', {
+        'lesson': lesson,
+        'activities': activities,
+        'child': child,
+        'next_activity_url': activity_next_url(lesson, 'spelling'),
+    })
 
 
 def add_assessment_score(scores, key, score, total):

@@ -2,6 +2,7 @@ from django.test import Client, TestCase
 
 from api.models import Child, Lesson, Parent, Progress, ReadingActivity
 from api.reporting import rows_for_record
+from lessons.views import activity_choices_for
 
 
 class GradeAccessTests(TestCase):
@@ -30,6 +31,29 @@ class GradeAccessTests(TestCase):
 		response = client.get('/grade/2')
 
 		self.assertRedirects(response, '/grade/1')
+
+
+class ActivityMenuLabelTests(TestCase):
+	def test_grade_four_activity_labels_are_descriptive_and_unique(self):
+		lesson = Lesson.objects.create(title='Popup Labels', grade=4)
+		for order, activity_type in enumerate([
+			ReadingActivity.MULTIPLE_CHOICE,
+			ReadingActivity.MATCHING,
+			ReadingActivity.MATCHING,
+		], start=1):
+			ReadingActivity.objects.create(
+				lesson=lesson,
+				activity_type=activity_type,
+				skill='vocabulary_in_context',
+				question='Activity question',
+				order=order,
+			)
+
+		labels = [choice['label'] for choice in activity_choices_for(lesson)]
+
+		self.assertEqual(len(labels), len(set(labels)))
+		self.assertIn('Story Choices: Pick the Best Answer', labels)
+		self.assertIn('Matching: Connect Story Words - Part 2', labels)
 
 
 class ActivityScoreReportingTests(TestCase):

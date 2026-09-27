@@ -102,6 +102,7 @@
       <span class="learner-modal-banner">Pause activity</span>
       <h2 id="activity-pause-title">Would you like to take a break?</h2>
       <p>Your place will be saved so you can continue this activity later.</p>
+      <p id="activity-pause-score" class="activity-pause-score" aria-live="polite">Loading your score...</p>
       <div class="learner-modal-options">
         <button type="button" class="btn btn-primary" id="activity-pause">Take a break</button>
         <button type="button" class="btn btn-light" id="activity-continue">Continue learning</button>
@@ -110,13 +111,14 @@
   </div>
   <script>
   (function () {
-    var activityPath = /^\/lessons\/(\d+)\/(questions|visual-activity|pronunciation|spelling|vocabulary|sequencing|inference|prediction|feelings|cause-effect|theme|written-response)$/;
+    var activityPath = /^\/lessons\/(\d+)\/(questions|activities|visual-activity|pronunciation|spelling|vocabulary|sequencing|inference|prediction|feelings|cause-effect|theme|written-response)$/;
     var current = window.location.pathname.match(activityPath);
     if (!current) return;
 
     var modal = document.getElementById('activity-pause-modal');
     var pauseButton = document.getElementById('activity-pause');
     var continueButton = document.getElementById('activity-continue');
+    var scoreLabel = document.getElementById('activity-pause-score');
     var closeButton = modal.querySelector('[data-close-modal]');
     var csrfToken = (document.cookie.match(/(?:^|; )csrftoken=([^;]*)/) || [])[1] || '';
     var pauseTrigger = document.createElement('button');
@@ -130,10 +132,25 @@
       modal.style.display = 'none';
     }
 
+    async function refreshScore() {
+      scoreLabel.textContent = 'Loading your score...';
+      try {
+        var response = await fetch('/lessons/' + current[1] + '/activity-pause', {
+          credentials: 'same-origin'
+        });
+        var data = await response.json();
+        if (!response.ok) throw new Error(data.error || 'Score unavailable.');
+        scoreLabel.textContent = 'Current score: ' + data.score + ' / ' + data.total;
+      } catch (error) {
+        scoreLabel.textContent = 'Current score is unavailable.';
+      }
+    }
+
     function openModal() {
       modal.classList.remove('hidden');
       modal.style.display = 'grid';
       continueButton.focus();
+      refreshScore();
     }
 
     pauseTrigger.addEventListener('click', openModal);
@@ -147,6 +164,9 @@
       if (current[2] === 'questions' && typeof window.SgilaCurrentActivityIndex === 'function') {
         resumeUrl += '?activity_index=' + window.SgilaCurrentActivityIndex();
       }
+      var score = typeof window.SgilaActivityScore === 'function'
+        ? window.SgilaActivityScore()
+        : null;
       try {
         var response = await fetch('/lessons/' + current[1] + '/activity-pause', {
           method: 'POST',
@@ -155,7 +175,7 @@
             'Content-Type': 'application/json',
             'X-CSRFToken': decodeURIComponent(csrfToken)
           },
-          body: JSON.stringify({resume_url: resumeUrl})
+          body: JSON.stringify({resume_url: resumeUrl, score: score})
         });
         if (!response.ok) throw new Error('Could not save your place.');
         window.location.href = '/grade/{{ request.session.child_grade }}';
