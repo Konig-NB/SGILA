@@ -64,9 +64,10 @@ const storageKey = `sgila_lesson_${lessonId}`;
 const typeInstructions = {
   multiple_choice: 'Choose the best answer, then check it.',
   true_false: 'Decide whether the sentence is true or false.',
-  open_ended: 'Write one clear sentence in your own words.',
+  open_ended: 'Write two or more clear sentences and use your punctuation.',
   sequencing: 'Use the arrows to put the events in story order.',
   matching: 'Match each item with the best answer.',
+  match_it: 'Match each one on the left to what happened on the right.',
   cloze: 'Choose the words that complete the sentence.',
   oral_response: 'Say your answer out loud. You do not need to type.',
   prediction: 'Write what you think will happen and give a story clue.',
@@ -85,6 +86,7 @@ const skillLabels = {
   text_to_self: 'Make a connection',
   fact_vs_opinion: 'Think carefully',
   spelling: 'Build the story words',
+  visual_literacy: 'Look closely at pictures',
 };
 const KOALY_IMAGES = {
   ready: "{% static 'img/koaly_cutout.png' %}",
@@ -94,13 +96,18 @@ const KOALY_IMAGES = {
 
 let activities = [];
 let activityGroups = [];
-let current = 0;
+let current = Number(new URLSearchParams(window.location.search).get('activity_index') || 0);
+if (!Number.isInteger(current) || current < 0) current = 0;
 let score = 0;
 let completedCount = 0;
 const nextButton = document.getElementById('next-question-btn');
 const mascot = document.getElementById('mascot-reaction');
 const messageArea = document.getElementById('message-area');
 const responseArea = document.getElementById('response-area');
+let currentMatches = {};
+let activePromptKey = null;
+
+window.SgilaCurrentActivityIndex = () => current;
 
 function setMascot(reaction, label) {
   mascot.className = `activity-coach koaly-${reaction}`;
@@ -157,25 +164,229 @@ function makeSubmitButton(label) {
   return button;
 }
 
+function activityConfig(activity) {
+  return activity.options && !Array.isArray(activity.options) ? activity.options : {};
+}
+
+function choiceItems(activity) {
+  const config = activityConfig(activity);
+  return Array.isArray(activity.options) ? activity.options : (config.choices || []);
+}
+
+function visualPanelClass(imageUrl) {
+  const match = String(imageUrl || '').match(/#panel-([1-6])/);
+  return match ? ` storyboard-panel-${match[1]}` : '';
+}
+
+function createActivityVisual(imageUrl, alt, modifier = '') {
+  const frame = document.createElement('div');
+  const isSheet = imageUrl.includes('/storyboards/') || imageUrl.includes('/vocab_sheets/');
+  frame.className = `activity-visual${isSheet ? ` storyboard-crop${visualPanelClass(imageUrl)}` : ''}${modifier ? ` ${modifier}` : ''}`;
+  const image = document.createElement('img');
+  image.src = imageUrl;
+  image.alt = alt || 'Story picture';
+  frame.appendChild(image);
+  return frame;
+}
+
+function prepareActivitySpeechWords(elements) {
+  if (!elements) return [];
+  if (!Array.isArray(elements)) elements = [elements];
+  const allWords = [];
+  let globalCharIndex = 0;
+
+  elements.forEach((element) => {
+    if (!element) return;
+    const rawText = element.dataset.speechText || element.textContent.trim();
+    element.dataset.speechText = rawText;
+    element.innerHTML = '';
+    rawText.split(/(\s+)/).forEach((token) => {
+      if (!token) return;
+      if (/^\s+$/.test(token)) {
+        element.appendChild(document.createTextNode(token));
+      } else {
+        const word = document.createElement('span');
+        word.className = 'activity-speech-word';
+        word.dataset.start = globalCharIndex;
+        word.dataset.end = globalCharIndex + token.length;
+        word.textContent = token;
+        element.appendChild(word);
+        allWords.push(word);
+      }
+      globalCharIndex += token.length;
+    });
+  });
+
+  return allWords;
+}
+
+function clearActivitySpeechWords(words) {
+  words.forEach((word) => word.classList.remove('spoken-word', 'current-word'));
+}
+
+function highlightActivityWord(words, characterIndex) {
+  const currentWord = words.find((word) => (
+    Number(word.dataset.start) <= characterIndex
+    && characterIndex < Number(word.dataset.end)
+  ));
+  if (!currentWord) return;
+  words.forEach((word) => word.classList.remove('current-word'));
+  currentWord.classList.add('spoken-word', 'current-word');
+}
+
+function speakActivityText(text, button, highlightElements = null) {
+  if (!text || !('speechSynthesis' in window)) return;
+  window.speechSynthesis.cancel();
+  const elements = highlightElements || [];
+  const words = prepareActivitySpeechWords(elements);
+  clearActivitySpeechWords(words);
+  const utterance = new SpeechSynthesisUtterance(text);
+  const voices = window.speechSynthesis.getVoices();
+  utterance.voice = voices.find((voice) => voice.lang.toLowerCase() === 'en-za')
+    || voices.find((voice) => voice.lang.toLowerCase().startsWith('en'))
+    || null;
+  utterance.lang = utterance.voice ? utterance.voice.lang : 'en-ZA';
+  utterance.rate = 0.86;
+  utterance.pitch = 1;
+  utterance.onboundary = (event) => {
+    if (!event.name || event.name === 'word') {
+      highlightActivityWord(words, event.charIndex);
+    }
+  };
+  if (button) {
+    button.disabled = true;
+    button.textContent = 'Listening...';
+    utterance.onend = () => {
+      words.forEach((word) => word.classList.remove('current-word'));
+      button.disabled = false;
+      button.textContent = 'Listen again';
+    };
+    utterance.onerror = () => {
+      clearActivitySpeechWords(words);
+      utterance.onend();
+    };
+  }
+  window.speechSynthesis.speak(utterance);
+}
+
+function renderActivityMedia(activity, questionText, instructionText) {
+  const config = activityConfig(activity);
+  if (!config.prompt_image && !config.audio_text && !config.focus_word) return;
+
+  const media = document.createElement('div');
+  media.className = 'activity-media';
+  if (config.presentation === 'grade1_phonics') media.classList.add('grade1-phonics-media');
+  if (!config.prompt_image) media.classList.add('audio-only');
+  if (config.prompt_image) {
+    media.appendChild(createActivityVisual(
+      config.prompt_image,
+      config.prompt_alt || config.focus_word || 'Story clue',
+      config.prompt_image_mode === 'silhouette' ? 'is-silhouette' : '',
+    ));
+  }
+
+  const actions = document.createElement('div');
+  actions.className = 'activity-media-copy';
+  if (config.display_word) {
+    const displayWord = document.createElement('strong');
+    displayWord.className = 'grade1-phonics-word';
+    const wordTemplate = String(config.display_word);
+    const blankIndex = wordTemplate.indexOf('_');
+    if (blankIndex === -1) {
+      displayWord.textContent = wordTemplate;
+    } else {
+      const blank = document.createElement('span');
+      blank.className = 'grade1-phonics-blank';
+      blank.setAttribute('aria-label', 'missing letter');
+      blank.setAttribute('aria-live', 'polite');
+      displayWord.append(
+        document.createTextNode(wordTemplate.slice(0, blankIndex)),
+        blank,
+        document.createTextNode(wordTemplate.slice(blankIndex + 1)),
+      );
+      displayWord.setAttribute('aria-label', `Incomplete word: ${wordTemplate.replace('_', 'blank')}`);
+    }
+    actions.appendChild(displayWord);
+  }
+  if (config.focus_word) {
+    const word = document.createElement('strong');
+    word.className = 'pronunciation-focus-word';
+    word.textContent = config.focus_word;
+    actions.appendChild(word);
+    if (config.translation) {
+      const translation = document.createElement('span');
+      translation.className = 'pronunciation-translation';
+      translation.textContent = config.translation;
+      actions.appendChild(translation);
+    }
+  }
+  if (config.audio_text) {
+    const listen = document.createElement('button');
+    listen.type = 'button';
+    listen.className = 'btn btn-light activity-listen';
+    listen.textContent = 'Listen';
+    const isPhonicsWord = config.presentation === 'grade1_phonics';
+    if (isPhonicsWord) {
+      const spokenText = config.audio_text;
+      listen.addEventListener('click', () => speakActivityText(
+        spokenText,
+        listen,
+        null,
+      ));
+    } else {
+      const instructionEl = document.getElementById('activity-instruction');
+      const instruction = instructionText || typeInstructions[activity.activity_type] || '';
+      const question = activity.question;
+      const spokenText = instruction;
+      const highlightElements = instructionEl ? [instructionEl, questionText] : [questionText];
+      listen.addEventListener('click', () => speakActivityText(
+        spokenText,
+        listen,
+        highlightElements,
+      ));
+    }
+    actions.appendChild(listen);
+  }
+  media.appendChild(actions);
+  responseArea.appendChild(media);
+}
+
 function renderChoice(activity) {
   const grid = document.createElement('div');
-  grid.className = 'options-grid';
+  const options = choiceItems(activity);
+  const hasPictures = options.some((option) => option && typeof option === 'object' && option.image_url);
+  const hideOptionMarkers = activity.group_title === 'Short Sentences & Picture Matching';
+  grid.className = `options-grid${hasPictures ? ' visual-options-grid' : ''}`;
+  if (hideOptionMarkers) grid.classList.add('without-option-markers');
   let selectedAnswer = '';
   let selectedButton = null;
 
-  activity.options.forEach((option, index) => {
+  options.forEach((option, index) => {
+    const value = option && typeof option === 'object' ? option.value : option;
+    const label = option && typeof option === 'object' ? (option.label || option.value) : option;
     const button = document.createElement('button');
     button.className = 'btn btn-option';
     button.type = 'button';
-    button.dataset.answer = option;
+    button.dataset.answer = value;
     button.setAttribute('aria-pressed', 'false');
 
-    const marker = document.createElement('span');
-    marker.className = 'option-marker';
-    marker.textContent = String.fromCharCode(65 + index);
+    if (!hideOptionMarkers) {
+      const marker = document.createElement('span');
+      marker.className = 'option-marker';
+      marker.textContent = String.fromCharCode(65 + index);
+      button.appendChild(marker);
+    }
+    if (option && typeof option === 'object' && option.image_url) {
+      button.prepend(createActivityVisual(
+        option.image_url,
+        option.alt || label,
+        option.image_mode === 'silhouette' ? 'is-silhouette' : '',
+      ));
+    }
     const copy = document.createElement('span');
-    copy.textContent = option;
-    button.append(marker, copy);
+    copy.className = 'option-copy';
+    copy.textContent = label;
+    button.appendChild(copy);
 
     button.addEventListener('click', () => {
       grid.querySelectorAll('.btn-option').forEach((choice) => {
@@ -184,7 +395,7 @@ function renderChoice(activity) {
       });
       button.classList.add('is-selected');
       button.setAttribute('aria-pressed', 'true');
-      selectedAnswer = option;
+      selectedAnswer = value;
       selectedButton = button;
       submit.disabled = false;
     });
@@ -198,75 +409,105 @@ function renderChoice(activity) {
 }
 
 function renderCloze(activity) {
+  const config = activityConfig(activity);
+  const phonicsBlank = config.presentation === 'grade1_phonics'
+    ? responseArea.querySelector('.grade1-phonics-blank')
+    : null;
+  const phonicsWord = phonicsBlank ? phonicsBlank.closest('.grade1-phonics-word') : null;
   const bank = document.createElement('div');
   bank.className = 'cloze-word-bank';
   bank.setAttribute('aria-label', 'Word bank');
-  
-  const selectedAnswers = []; // Array to hold up to 3 selected words
-  const selectedButtons = []; // Track which buttons are selected
+  let selectedAnswer = '';
+  let selectedButton = null;
 
-  activity.options.forEach((word) => {
+  choiceItems(activity).forEach((word) => {
     const button = document.createElement('button');
     button.type = 'button';
     button.className = 'cloze-chip';
     button.textContent = word;
     button.dataset.answer = word;
     button.setAttribute('aria-pressed', 'false');
-    
     button.addEventListener('click', () => {
-      const isSelected = button.classList.contains('is-selected');
-      
-      if (isSelected) {
-        // Deselect if already selected
-        button.classList.remove('is-selected');
-        button.setAttribute('aria-pressed', 'false');
-        const index = selectedButtons.indexOf(button);
-        selectedAnswers.splice(index, 1);
-        selectedButtons.splice(index, 1);
-      } else if (selectedAnswers.length < 3) {
-        // Select if less than 3 are selected
-        button.classList.add('is-selected');
-        button.setAttribute('aria-pressed', 'true');
-        selectedAnswers.push(word);
-        selectedButtons.push(button);
-      } else {
-        // Show message if trying to select more than 3
-        alert('You can only select 3 words!');
-        return;
+      bank.querySelectorAll('.cloze-chip').forEach((chip) => {
+        chip.classList.remove('is-selected');
+        chip.setAttribute('aria-pressed', 'false');
+      });
+      button.classList.add('is-selected');
+      button.setAttribute('aria-pressed', 'true');
+      selectedAnswer = word;
+      selectedButton = button;
+      if (phonicsBlank) {
+        phonicsBlank.textContent = word;
+        phonicsBlank.classList.add('has-letter');
+        phonicsWord.setAttribute(
+          'aria-label',
+          `Completed word: ${String(config.display_word).replace('_', word)}`,
+        );
       }
-      
-      // Enable submit only if exactly 3 words selected
-      submit.disabled = selectedAnswers.length !== 3;
+      submit.disabled = false;
     });
-    
     bank.appendChild(button);
   });
 
-  const submit = makeSubmitButton('Check the words');
+  const submit = makeSubmitButton('Check the word');
   submit.disabled = true;
-  
-  submit.addEventListener('click', () => {
-    // Format answer as object: {1: word1, 2: word2, 3: word3}
-    const formattedAnswer = {
-      '1': selectedAnswers[0],
-      '2': selectedAnswers[1],
-      '3': selectedAnswers[2]
-    };
-    submitActivity(activity, formattedAnswer, selectedButtons[0]);
-  });
-  
+  submit.addEventListener('click', () => submitActivity(activity, selectedAnswer, selectedButton));
   responseArea.append(bank, submit);
 }
+
 function renderSequence(activity) {
   const list = document.createElement('ol');
   list.className = 'sequence-list';
+  const config = activityConfig(activity);
+  const itemImages = config.item_images || {};
+  let draggedRow = null;
 
   activity.items.forEach((item) => {
     const row = document.createElement('li');
+    row.draggable = true;
+    row.classList.add('sequence-draggable');
+    row.setAttribute('aria-label', `Drag to reorder: ${item}`);
+    if (itemImages[item]) {
+      row.classList.add('has-picture');
+      row.appendChild(createActivityVisual(itemImages[item], item));
+    }
     const text = document.createElement('span');
+    text.className = 'sequence-copy';
     text.textContent = item;
     const controls = document.createElement('div');
     controls.className = 'sequence-controls';
+
+    row.addEventListener('dragstart', (event) => {
+      draggedRow = row;
+      row.classList.add('is-dragging');
+      event.dataTransfer.effectAllowed = 'move';
+      event.dataTransfer.setData('text/plain', item);
+    });
+
+    row.addEventListener('dragend', () => {
+      draggedRow = null;
+      list.querySelectorAll('li').forEach((entry) => {
+        entry.classList.remove('is-dragging', 'drag-over');
+      });
+    });
+
+    row.addEventListener('dragover', (event) => {
+      event.preventDefault();
+      if (draggedRow && draggedRow !== row) row.classList.add('drag-over');
+    });
+
+    row.addEventListener('dragleave', () => row.classList.remove('drag-over'));
+
+    row.addEventListener('drop', (event) => {
+      event.preventDefault();
+      row.classList.remove('drag-over');
+      if (!draggedRow || draggedRow === row) return;
+      const rows = [...list.children];
+      const draggedIndex = rows.indexOf(draggedRow);
+      const targetIndex = rows.indexOf(row);
+      if (draggedIndex < targetIndex) list.insertBefore(draggedRow, row.nextSibling);
+      else list.insertBefore(draggedRow, row);
+    });
 
     const up = document.createElement('button');
     up.type = 'button';
@@ -297,7 +538,7 @@ function renderSequence(activity) {
 
   const submit = makeSubmitButton('Check the order');
   submit.addEventListener('click', () => {
-    const answer = [...list.querySelectorAll('li > span')].map((item) => item.textContent);
+    const answer = [...list.querySelectorAll('.sequence-copy')].map((item) => item.textContent);
     submitActivity(activity, answer);
   });
   responseArea.append(list, submit);
@@ -387,271 +628,211 @@ function renderCrossword(activity) {
   responseArea.append(layout, submit);
 }
 
-function renderCharacterMatching(activity) {
-  const container = document.createElement('div');
-  container.className = 'character-matching-container';
-  
-  // Left side: Clues
-  const cluesSection = document.createElement('div');
-  cluesSection.className = 'matching-clues-section';
-  const cluesTitle = document.createElement('h3');
-  cluesTitle.textContent = 'Read the clues:';
-  cluesSection.appendChild(cluesTitle);
-  
-  const cluesList = document.createElement('div');
-  cluesList.className = 'clues-list';
-  
-  // Right side: Drop zones
-  const dropZonesSection = document.createElement('div');
-  dropZonesSection.className = 'matching-dropzones-section';
-  const dropZonesTitle = document.createElement('h3');
-  dropZonesTitle.textContent = 'Drag names here:';
-  dropZonesSection.appendChild(dropZonesTitle);
-  
-  const dropZonesList = document.createElement('div');
-  dropZonesList.className = 'dropzones-list';
-  
-  // Bottom: Draggable character cards
-  const cardsSection = document.createElement('div');
-  cardsSection.className = 'matching-cards-section';
-  const cardsTitle = document.createElement('h3');
-  cardsTitle.textContent = 'Character names:';
-  cardsSection.appendChild(cardsTitle);
-  
-  const cardsList = document.createElement('div');
-  cardsList.className = 'draggable-cards-list';
-  
-  // Store all answers to handle multiple clues
-  const allAnswers = {};
-  const dropZones = {};
-  
-  // Get all matching questions for this lesson
-  fetch(`/api/lessons/${activity.lesson_id || lessonId}/questions`)
-    .then(r => r.json())
-    .then(activities => {
-      const matchingActivities = activities.filter(a => a.activity_type === 'matching' && a.group_title === 'Who Am I?');
-      
-      // Create clues and drop zones
-      matchingActivities.forEach((act, index) => {
-        const clueDiv = document.createElement('div');
-        clueDiv.className = 'clue-item';
-        clueDiv.innerHTML = `<p><strong>Clue ${index + 1}:</strong> ${act.question}</p>`;
-        cluesList.appendChild(clueDiv);
-        
-        // Create corresponding drop zone
-        const dropZone = document.createElement('div');
-        dropZone.className = 'drop-zone';
-        dropZone.dataset.clueIndex = index;
-        dropZone.dataset.correctAnswer = act.correct_answer || '';
-        dropZone.innerHTML = `<p class="drop-zone-placeholder">Drop name here</p>`;
-        dropZone.style.minHeight = '60px';
-        dropZone.style.border = '2px dashed #999';
-        dropZone.style.borderRadius = '8px';
-        dropZone.style.padding = '10px';
-        dropZone.style.margin = '10px 0';
-        
-        // Drag over effect
-        dropZone.addEventListener('dragover', (e) => {
-          e.preventDefault();
-          dropZone.style.backgroundColor = '#e0f7e0';
-          dropZone.style.borderColor = '#22b76e';
-        });
-        
-        dropZone.addEventListener('dragleave', () => {
-          dropZone.style.backgroundColor = 'transparent';
-          dropZone.style.borderColor = '#999';
-        });
-        
-        dropZone.addEventListener('drop', (e) => {
-          e.preventDefault();
-          const cardText = e.dataTransfer.getData('text/plain');
-          
-          // Remove any existing card in this zone
-          const existing = dropZone.querySelector('.dropped-card');
-          if (existing) existing.remove();
-          
-          // Add new card to zone
-          const droppedCard = document.createElement('div');
-          droppedCard.className = 'dropped-card';
-          droppedCard.textContent = cardText;
-          droppedCard.style.padding = '10px';
-          droppedCard.style.backgroundColor = '#6ee0c2';
-          droppedCard.style.borderRadius = '6px';
-          droppedCard.style.color = 'white';
-          droppedCard.style.fontWeight = 'bold';
-          droppedCard.style.cursor = 'pointer';
-          droppedCard.title = 'Click to remove';
-          
-          // Allow removal by clicking
-          droppedCard.addEventListener('click', () => {
-            droppedCard.remove();
-            dropZone.innerHTML = '<p class="drop-zone-placeholder">Drop name here</p>';
-            allAnswers[index] = null;
-            checkSubmitEnabled();
-          });
-          
-          // Hide placeholder and add card
-          const placeholder = dropZone.querySelector('.drop-zone-placeholder');
-          if (placeholder) placeholder.remove();
-          dropZone.appendChild(droppedCard);
-          
-          // Store answer
-          allAnswers[index] = cardText;
-          checkSubmitEnabled();
-          
-          dropZone.style.backgroundColor = 'transparent';
-          dropZone.style.borderColor = '#999';
-        });
-        
-        dropZonesList.appendChild(dropZone);
-        dropZones[index] = dropZone;
-      });
-      
-      // Create draggable character name cards
-      const characterNames = matchingActivities.map(a => a.correct_answer || '');
-      const uniqueNames = [...new Set(characterNames)];
-      
-      uniqueNames.forEach((name) => {
-        const card = document.createElement('div');
-        card.className = 'character-card';
-        card.textContent = name;
-        card.draggable = true;
-        card.style.padding = '12px 16px';
-        card.style.margin = '8px';
-        card.style.backgroundColor = '#a996ee';
-        card.style.color = 'white';
-        card.style.borderRadius = '8px';
-        card.style.cursor = 'grab';
-        card.style.fontWeight = 'bold';
-        card.style.display = 'inline-block';
-        card.style.userSelect = 'none';
-        
-        card.addEventListener('dragstart', (e) => {
-          e.dataTransfer.effectAllowed = 'copy';
-          e.dataTransfer.setData('text/plain', name);
-          card.style.opacity = '0.6';
-        });
-        
-        card.addEventListener('dragend', () => {
-          card.style.opacity = '1';
-        });
-        
-        cardsList.appendChild(card);
-      });
-    });
-  
-  function checkSubmitEnabled() {
-    const zoneCount = Object.keys(dropZones).length;
-    const filledCount = Object.values(allAnswers).filter(a => a !== null).length;
-    submit.disabled = filledCount !== zoneCount;
+function renderDragMatch(activity) {
+  const config = activityConfig(activity);
+  const board = document.createElement('div');
+  board.className = 'drag-match-board';
+  const tray = document.createElement('div');
+  tray.className = 'drag-match-tray';
+  const targets = document.createElement('div');
+  targets.className = 'drag-match-targets';
+  const assignments = {};
+  let selectedPrompt = '';
+
+  function updateSubmit() {
+    submit.disabled = Object.keys(assignments).length !== (config.prompts || []).length;
   }
-  
-  cluesSection.appendChild(cluesList);
-  dropZonesSection.appendChild(dropZonesList);
-  cardsSection.appendChild(cardsList);
-  
-  container.appendChild(cluesSection);
-  container.appendChild(dropZonesSection);
-  container.appendChild(cardsSection);
-  
-  const submit = makeSubmitButton('Check answers');
-  submit.disabled = true;
-  
-  submit.addEventListener('click', () => {
-    submitActivity(activity, allAnswers);
+
+  function assign(promptKey, choiceKey) {
+    if (!promptKey || !choiceKey) return;
+    Object.keys(assignments).forEach((key) => {
+      if (assignments[key] === choiceKey) delete assignments[key];
+    });
+    assignments[promptKey] = choiceKey;
+    tray.querySelectorAll('.drag-match-chip').forEach((chip) => {
+      chip.classList.toggle('is-matched', Boolean(assignments[chip.dataset.prompt]));
+      chip.classList.remove('is-selected');
+    });
+    targets.querySelectorAll('.drag-match-target').forEach((target) => {
+      const prompt = Object.keys(assignments).find((key) => assignments[key] === target.dataset.choice) || '';
+      target.dataset.prompt = prompt;
+      const promptData = (config.prompts || []).find((item) => item.key === prompt);
+      target.querySelector('.drag-match-slot').textContent = promptData ? promptData.text : 'Drop a picture here';
+      target.classList.toggle('has-match', Boolean(prompt));
+    });
+    selectedPrompt = '';
+    updateSubmit();
+  }
+
+  (config.prompts || []).forEach((prompt) => {
+    const chip = document.createElement('button');
+    chip.type = 'button';
+    chip.className = 'drag-match-chip';
+    chip.dataset.prompt = prompt.key;
+    chip.draggable = true;
+    if (prompt.image_url) chip.appendChild(createActivityVisual(prompt.image_url, prompt.text));
+    const label = document.createElement('span');
+    label.textContent = prompt.text;
+    chip.appendChild(label);
+    chip.addEventListener('click', () => {
+      selectedPrompt = prompt.key;
+      tray.querySelectorAll('.drag-match-chip').forEach((item) => item.classList.toggle('is-selected', item === chip));
+    });
+    chip.addEventListener('dragstart', (event) => event.dataTransfer.setData('text/plain', prompt.key));
+    tray.appendChild(chip);
   });
-  
-  responseArea.append(container, submit);
-  
-  // Add some basic styling
-  const style = document.createElement('style');
-  style.textContent = `
-    .character-matching-container {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 20px;
-      margin: 20px 0;
-    }
-    .matching-clues-section, .matching-dropzones-section {
-      padding: 15px;
-      background: #f9f9f9;
-      border-radius: 8px;
-    }
-    .clue-item, .drop-zone {
-      margin: 10px 0;
-    }
-    .draggable-cards-list {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 10px;
-      margin-top: 10px;
-      padding: 15px;
-      background: #f9f9f9;
-      border-radius: 8px;
-    }
-    .character-card {
-      transition: transform 0.2s;
-    }
-    .character-card:hover {
-      transform: scale(1.05);
-    }
-    .dropped-card {
-      animation: dropAnimation 0.3s ease-out;
-    }
-    @keyframes dropAnimation {
-      from {
-        opacity: 0;
-        transform: scale(0.8);
-      }
-      to {
-        opacity: 1;
-        transform: scale(1);
-      }
-    }
-    @media (max-width: 768px) {
-      .character-matching-container {
-        grid-template-columns: 1fr;
-      }
-    }
-  `;
-  document.head.appendChild(style);
+
+  (config.choices || []).forEach((choice) => {
+    const target = document.createElement('button');
+    target.type = 'button';
+    target.className = 'drag-match-target';
+    target.dataset.choice = choice.key;
+    if (choice.image_url) target.appendChild(createActivityVisual(choice.image_url, choice.text));
+    const label = document.createElement('strong');
+    label.textContent = choice.text;
+    const slot = document.createElement('span');
+    slot.className = 'drag-match-slot';
+    slot.textContent = 'Drop a picture here';
+    target.append(label, slot);
+    target.addEventListener('click', () => assign(selectedPrompt, choice.key));
+    target.addEventListener('dragover', (event) => event.preventDefault());
+    target.addEventListener('drop', (event) => {
+      event.preventDefault();
+      assign(event.dataTransfer.getData('text/plain'), choice.key);
+    });
+    targets.appendChild(target);
+  });
+
+  const trayTitle = document.createElement('strong');
+  trayTitle.className = 'drag-match-heading';
+  trayTitle.textContent = 'Pictures';
+  tray.prepend(trayTitle);
+  const targetTitle = document.createElement('strong');
+  targetTitle.className = 'drag-match-heading';
+  targetTitle.textContent = 'Story places';
+  targets.prepend(targetTitle);
+  board.append(tray, targets);
+
+  const submit = makeSubmitButton('Check matches');
+  submit.disabled = true;
+  submit.addEventListener('click', () => submitActivity(activity, assignments));
+  responseArea.append(board, submit);
 }
 
-// Update the rendering logic to use new function for "Who Am I?"
 function renderMatching(activity) {
-  // Check if this is a character matching activity
-  if (activity.group_title === 'Who Am I?' || activity.activity_type === 'matching') {
-    renderCharacterMatching(activity);
-  } else {
-    // Original dropdown matching for other types
-    const config = activity.options || {};
-    const rows = document.createElement('div');
-    rows.className = 'matching-rows';
-    (config.prompts || []).forEach((prompt) => {
-      const row = document.createElement('label');
-      row.className = 'matching-row';
-      const word = document.createElement('strong');
-      word.textContent = prompt.text;
-      const select = document.createElement('select');
-      select.dataset.prompt = prompt.key;
-      select.innerHTML = '<option value="">Choose a meaning</option>';
-      (config.choices || []).forEach((choice) => {
-        const option = document.createElement('option');
-        option.value = choice.key;
-        option.textContent = `${choice.key}. ${choice.text}`;
-        select.appendChild(option);
-      });
-      row.append(word, select);
-      rows.appendChild(row);
-    });
-    const submit = makeSubmitButton('Check matches');
-    submit.addEventListener('click', () => {
-      const answer = {};
-      rows.querySelectorAll('select').forEach((select) => answer[select.dataset.prompt] = select.value);
-      submitActivity(activity, answer);
-    });
-    responseArea.append(rows, submit);
+  const config = activity.options || {};
+  if (config.presentation === 'drag_match') {
+    renderDragMatch(activity);
+    return;
   }
+  const promptColors = ['blue', 'orange', 'yellow', 'purple'];
+  currentMatches = {};
+  activePromptKey = null;
+
+  const board = document.createElement('div');
+  board.className = 'matching-board';
+
+  const promptsCol = document.createElement('div');
+  promptsCol.className = 'matching-prompt-cards';
+
+  const choicesCol = document.createElement('div');
+  choicesCol.className = 'matching-choice-cards';
+
+  const pairsCol = document.createElement('div');
+  pairsCol.className = 'matching-pairs';
+
+  const promptCards = {};
+  const choiceCards = {};
+
+  function removePair(promptKey) {
+    const pair = pairsCol.querySelector(`[data-prompt="${promptKey}"]`);
+    if (!pair) return;
+    const choiceKey = currentMatches[promptKey];
+    const promptCard = promptCards[promptKey];
+    const choiceCard = choiceCards[choiceKey];
+    promptCard.classList.remove('is-matched');
+    choiceCard.classList.remove('is-matched');
+    choiceCard.style.borderColor = '';
+    choiceCard.style.backgroundColor = '';
+    pair.remove();
+    delete currentMatches[promptKey];
+    if (activePromptKey === promptKey) {
+      activePromptKey = null;
+      promptsCol.querySelectorAll('.matching-prompt-card').forEach((c) => c.classList.remove('is-active'));
+    }
+  }
+
+
+  (config.prompts || []).forEach((prompt, promptIndex) => {
+    const color = promptColors[promptIndex % promptColors.length];
+    const card = document.createElement('button');
+    card.type = 'button';
+    card.className = 'matching-prompt-card';
+    card.dataset.prompt = prompt.key;
+    card.dataset.color = color;
+    card.setAttribute('aria-label', `Prompt ${promptIndex + 1}: ${prompt.text}`);
+    card.style.borderColor = color;
+    card.innerHTML = `<span class="matching-dot" style="background:${color}" aria-hidden="true"></span> ${prompt.text}`;
+    card.addEventListener('click', () => {
+      if (activePromptKey === prompt.key) {
+        activePromptKey = null;
+        card.classList.remove('is-active');
+      } else {
+        promptsCol.querySelectorAll('.matching-prompt-card').forEach((c) => c.classList.remove('is-active'));
+        activePromptKey = prompt.key;
+        card.classList.add('is-active');
+      }
+    });
+    promptCards[prompt.key] = card;
+    promptsCol.appendChild(card);
+  });
+
+  (config.choices || []).forEach((choice) => {
+    const card = document.createElement('button');
+    card.type = 'button';
+    card.className = 'matching-choice-card';
+    card.dataset.choice = choice.key;
+    card.setAttribute('aria-label', `Choice ${choice.key}: ${choice.text}`);
+    card.innerHTML = `<span class="matching-dot" aria-hidden="true"></span> ${choice.text}`;
+    card.addEventListener('click', () => {
+      if (!activePromptKey) return;
+      const choiceKey = card.dataset.choice;
+      if (currentMatches[activePromptKey] === choiceKey) {
+        removePair(activePromptKey);
+        return;
+      }
+      Object.keys(currentMatches).forEach((pk) => {
+        if (currentMatches[pk] === choiceKey) {
+          removePair(pk);
+        }
+      });
+      currentMatches[activePromptKey] = choiceKey;
+      const promptCard = promptCards[activePromptKey];
+      const color = promptCard.dataset.color;
+      const pair = document.createElement('div');
+      pair.className = 'matching-pair';
+      pair.dataset.prompt = activePromptKey;
+      pair.dataset.choice = choiceKey;
+      promptCard.classList.add('is-matched');
+      card.classList.add('is-matched');
+      card.style.borderColor = color;
+      card.style.backgroundColor = color + '18';
+      pair.appendChild(promptCard);
+      pair.appendChild(card);
+      pairsCol.appendChild(pair);
+    });
+    choiceCards[choice.key] = card;
+    choicesCol.appendChild(card);
+  });
+
+  board.append(promptsCol, choicesCol, pairsCol);
+  responseArea.append(board);
+
+  const submit = makeSubmitButton('Check matches');
+  submit.addEventListener('click', () => {
+    submitActivity(activity, { ...currentMatches });
+  });
+  responseArea.append(submit);
 }
 
 function renderWordScramble(activity) {
@@ -681,17 +862,128 @@ function renderWordScramble(activity) {
 }
 
 function renderOral(activity) {
+  const config = activityConfig(activity);
   const oral = document.createElement('div');
   oral.className = 'oral-response';
   const title = document.createElement('strong');
-  title.textContent = 'Say it in a full sentence';
+  title.textContent = config.focus_word ? `Say the word: ${config.focus_word}` : 'Say it in a full sentence';
   const help = document.createElement('span');
-  help.textContent = 'Tell the answer to a teacher, parent, or learning partner.';
+  help.textContent = config.focus_word
+    ? 'Listen, say the word clearly, then tick it as complete.'
+    : 'Tell the answer to a teacher, parent, or learning partner.';
   oral.append(title, help);
 
-  const submit = makeSubmitButton('I said my answer');
-  submit.addEventListener('click', () => submitActivity(activity, 'Answered aloud'));
-  responseArea.append(oral, submit);
+  const label = document.createElement('label');
+  label.className = 'reading-response-label';
+  label.setAttribute('for', 'oral-response');
+  label.textContent = 'Your spoken answer';
+
+  const answer = document.createElement('textarea');
+  answer.id = 'oral-response';
+  answer.className = 'reading-response';
+  answer.rows = 3;
+  answer.maxLength = 600;
+  answer.placeholder = 'Speak or type your answer here.';
+
+  const dictationWrap = attachDictationToTextarea(answer);
+
+  const submit = makeSubmitButton(config.focus_word ? 'I said the word' : 'I said my answer');
+  submit.addEventListener('click', () => {
+    const spokenText = (answer.value || '').trim();
+    submitActivity(activity, spokenText || 'Answered aloud');
+  });
+
+  responseArea.append(label, dictationWrap || answer, submit);
+}
+
+function attachDictationToTextarea(textarea) {
+  const SpeechRecognitionCtor = window.SpeechRecognition || window.webkitSpeechRecognition || window.mozSpeechRecognition;
+  const wrap = document.createElement('div');
+  wrap.className = 'dictation-wrap';
+
+  const mic = document.createElement('button');
+  mic.type = 'button';
+  mic.className = 'btn btn-light dictation-btn';
+  mic.textContent = '🎙 Speak';
+  mic.title = 'Use microphone to dictate your answer';
+
+  if (!SpeechRecognitionCtor) {
+    mic.disabled = true;
+    mic.textContent = 'Mic unavailable';
+    mic.title = 'Speech recognition is not supported in this browser.';
+    wrap.append(textarea, mic);
+    return wrap;
+  }
+
+  let recognition = null;
+  let listening = false;
+
+  const stopListening = () => {
+    if (recognition) {
+      try { recognition.stop(); } catch (error) {}
+    }
+    listening = false;
+    mic.textContent = '🎙 Speak again';
+    mic.classList.remove('is-listening');
+  };
+
+  const startListening = () => {
+    recognition = new SpeechRecognitionCtor();
+    recognition.lang = 'en-ZA';
+    recognition.continuous = false;
+    recognition.interimResults = false;
+    recognition.maxAlternatives = 1;
+
+    recognition.onstart = () => {
+      listening = true;
+      mic.textContent = '⏹ Stop';
+      mic.classList.add('is-listening');
+      textarea.focus();
+    };
+
+    recognition.onresult = (event) => {
+      const transcript = Array.from(event.results)
+        .map((result) => result[0].transcript)
+        .join(' ')
+        .trim();
+
+      if (transcript) {
+        textarea.value = transcript;
+        textarea.focus();
+      }
+    };
+
+    recognition.onerror = (event) => {
+      const message = event.error === 'not-allowed'
+        ? 'Microphone permission is needed to use speech-to-text.'
+        : 'Speech recognition is not available right now. Please type your answer instead.';
+      textarea.setAttribute('placeholder', message);
+      stopListening();
+      textarea.focus();
+    };
+
+    recognition.onend = () => {
+      if (listening) stopListening();
+    };
+
+    try {
+      recognition.start();
+    } catch (error) {
+      stopListening();
+      textarea.focus();
+    }
+  };
+
+  mic.addEventListener('click', () => {
+    if (listening) {
+      stopListening();
+      return;
+    }
+    startListening();
+  });
+
+  wrap.append(textarea, mic);
+  return wrap;
 }
 
 function renderWritten(activity) {
@@ -705,7 +997,9 @@ function renderWritten(activity) {
   answer.className = 'reading-response';
   answer.rows = 3;
   answer.maxLength = 600;
-  answer.placeholder = activity.activity_type === 'prediction' ? 'I think ... because ...' : 'Write one clear sentence.';
+  answer.placeholder = activity.activity_type === 'prediction'
+    ? 'I think ... because ...'
+    : (activity.activity_type === 'open_ended' ? 'Write two or more sentences. Use punctuation.' : 'Write one clear sentence.');
 
   const submit = makeSubmitButton('Compare my answer');
   submit.addEventListener('click', () => submitActivity(activity, answer.value));
@@ -816,10 +1110,28 @@ function renderActivity() {
     ? `Activity ${group.number} - Question ${questionNumber}`
     : `Activity ${group ? group.number : current + 1}`;
   document.getElementById('skill-label').textContent = `${group ? group.title : 'Story activity'} - ${skillLabels[activity.skill] || 'Read for meaning'}`;
-  document.getElementById('activity-instruction').textContent = typeInstructions[activity.activity_type] || 'Use the story to answer.';
-  document.getElementById('question-text').textContent = activity.question;
+  const config = activityConfig(activity);
+  const isGradeOnePhonics = config.presentation === 'grade1_phonics';
+  const isMatchIt = activity.group_title === 'Match It!';
+  const isFixMistake = activity.group_title === 'Fix the Mistake';
+  const isVisualMatch = activity.group_title === 'Visual Matching';
+  const instruction = isMatchIt
+    ? 'Match each one on the left to what happened on the right.'
+    : isVisualMatch
+      ? 'Look at the picture, then choose the word that names it.'
+      : isFixMistake
+        ? `One word in this sentence is wrong. Choose the word that belongs in the story. ${activity.question}`
+        : config.instruction
+          || typeInstructions[activity.activity_type]
+          || 'Use the story to answer.';
+  document.getElementById('activity-instruction').textContent = instruction;
+  const questionText = document.getElementById('question-text');
+  delete questionText.dataset.speechText;
+  questionText.textContent = activity.question;
+  questionText.classList.toggle('hidden', isGradeOnePhonics);
   setMascot('ready', 'Take your time and use the story.');
   updateProgress();
+  renderActivityMedia(activity, questionText, instruction);
 
   if (activity.options && activity.options.writing_template) {
     renderGuidedDiary(activity);
@@ -859,23 +1171,34 @@ function markChoice(selectedButton, data) {
 function markMatchingAnswers(data) {
   const expectedAnswers = data.correct_answer;
   if (!expectedAnswers || typeof expectedAnswers !== 'object') return;
-  responseArea.querySelectorAll('.matching-row').forEach((row) => {
-    const select = row.querySelector('select');
-    const correctValue = String(expectedAnswers[select.dataset.prompt] || '');
-    const isCorrect = select.value === correctValue;
-    row.classList.add(isCorrect ? 'match-correct' : 'match-wrong');
+  responseArea.querySelectorAll('.drag-match-target').forEach((target) => {
+    const promptKey = target.dataset.prompt;
+    if (!promptKey) return;
+    const isCorrect = String(expectedAnswers[promptKey] || '') === target.dataset.choice;
+    target.classList.add(isCorrect ? 'match-correct' : 'match-wrong');
+    const badge = document.createElement('span');
+    badge.className = 'matching-result-badge';
+    badge.textContent = isCorrect ? 'Correct' : 'Incorrect';
+    target.appendChild(badge);
+  });
+  responseArea.querySelectorAll('.matching-prompt-card').forEach((card) => {
+    const promptKey = card.dataset.prompt;
+    const choiceKey = currentMatches[promptKey] || '';
+    const correctValue = String(expectedAnswers[promptKey] || '');
+    const isCorrect = choiceKey === correctValue;
+    card.classList.add(isCorrect ? 'match-correct' : 'match-wrong');
 
     const badge = document.createElement('span');
     badge.className = 'matching-result-badge';
     badge.textContent = isCorrect ? 'Correct' : 'Incorrect';
-    row.querySelector('strong').appendChild(badge);
+    card.appendChild(badge);
 
     if (!isCorrect) {
-      const correctOption = [...select.options].find((option) => option.value === correctValue);
+      const correctCard = responseArea.querySelector(`.matching-choice-card[data-choice="${correctValue}"]`);
       const correction = document.createElement('span');
       correction.className = 'matching-correction';
-      correction.textContent = `Correct match: ${correctOption ? correctOption.textContent : correctValue}`;
-      row.appendChild(correction);
+      correction.textContent = `Correct match: ${correctCard ? correctCard.textContent : correctValue}`;
+      card.appendChild(correction);
     }
   });
 }
@@ -993,7 +1316,7 @@ async function submitActivity(activity, answer, selectedButton = null) {
 
 async function loadActivities() {
   try {
-    const response = await fetch(`/api/lessons/${lessonId}/questions`);
+    const response = await fetch(`/api/lessons/${lessonId}/questions`, {cache: 'no-store'});
     if (!response.ok) throw new Error('Activities could not be loaded.');
     activities = await response.json();
     const groups = new Map();
@@ -1025,154 +1348,14 @@ nextButton.addEventListener('click', () => {
   renderActivity();
 });
 
-loadActivities();
-<script>
-const childId = {{ child_id }};
-const lessonId = {{ lesson_id }};
-const totalQuestions = {{ total_questions }};
-const storageKey = `sgila_lesson_${lessonId}`;
-let questions = [];
-let current = 0;
-let score = 0;
-const nextQuestionBtn = document.getElementById('next-question-btn');
-const mascot = document.getElementById('mascot-reaction');
-const msgArea = document.getElementById('message-area');
-const KOALY_IMAGES = {
-  ready: "{% static 'img/koaly_cutout.png' %}",
-  happy: "{% static 'img/koaly_happy.png' %}",
-  sad: "{% static 'img/koaly_sad.png' %}",
+window.onerror = function(msg, url, line, col, error) {
+  console.error('Global error:', msg, error);
+  if (messageArea) {
+    messageArea.className = 'message-area wrong';
+    messageArea.textContent = 'Error: ' + msg;
+  }
 };
-let answerAudioContext = null;
 
-function setMascot(reaction, label) {
-  mascot.className = `mascot reactive-koaly koaly-${reaction}`;
-  mascot.querySelector('img').src = KOALY_IMAGES[reaction] || KOALY_IMAGES.ready;
-  mascot.querySelector('span').textContent = label;
-}
-
-function primeAnswerAudio() {
-  const AudioContext = window.AudioContext || window.webkitAudioContext;
-  if (!AudioContext) return null;
-  if (!answerAudioContext) answerAudioContext = new AudioContext();
-  if (answerAudioContext.state === 'suspended') answerAudioContext.resume();
-  return answerAudioContext;
-}
-
-function playTone(ctx, start, frequency, duration, type, volume) {
-  const oscillator = ctx.createOscillator();
-  const gain = ctx.createGain();
-  oscillator.type = type;
-  oscillator.frequency.setValueAtTime(frequency, start);
-  gain.gain.setValueAtTime(0.0001, start);
-  gain.gain.exponentialRampToValueAtTime(volume, start + 0.025);
-  gain.gain.exponentialRampToValueAtTime(0.0001, start + duration);
-  oscillator.connect(gain);
-  gain.connect(ctx.destination);
-  oscillator.start(start);
-  oscillator.stop(start + duration + 0.02);
-}
-
-function playAnswerSound(correct) {
-  const ctx = primeAnswerAudio();
-  if (!ctx) return;
-  const now = ctx.currentTime + 0.02;
-  if (correct) {
-    playTone(ctx, now, 523.25, 0.12, 'sine', 0.12);
-    playTone(ctx, now + 0.1, 659.25, 0.13, 'sine', 0.12);
-    playTone(ctx, now + 0.21, 783.99, 0.18, 'triangle', 0.10);
-  } else {
-    playTone(ctx, now, 220, 0.16, 'triangle', 0.10);
-    playTone(ctx, now + 0.15, 164.81, 0.22, 'sine', 0.08);
-  }
-}
-
-function saveScore() {
-  const existing = JSON.parse(sessionStorage.getItem(storageKey) || '{}');
-  existing.comprehension_score = score;
-  existing.comprehension_total = totalQuestions;
-  sessionStorage.setItem(storageKey, JSON.stringify(existing));
-}
-
-async function loadQuestions() {
-  const res = await fetch(`/api/lessons/${lessonId}/questions`);
-  questions = await res.json();
-  showQuestion();
-}
-
-function showQuestion() {
-  if (current >= questions.length) {
-    saveScore();
-    document.getElementById('question-area').classList.add('hidden');
-    document.getElementById('results-area').classList.remove('hidden');
-    nextQuestionBtn.classList.add('hidden');
-    msgArea.classList.add('hidden');
-    setMascot('happy', 'Great work!');
-    return;
-  }
-  setMascot('ready', 'Koaly');
-  msgArea.classList.add('hidden');
-  nextQuestionBtn.classList.add('hidden');
-  const q = questions[current];
-  document.getElementById('question-text').textContent = `Q${current + 1}: ${q.question}`;
-  const area = document.getElementById('options-area');
-  area.innerHTML = '';
-  q.options.forEach((opt) => {
-    const btn = document.createElement('button');
-    btn.className = 'btn btn-option choice-btn';
-    // Store original text attribute so we can read it easily later
-    btn.setAttribute('data-text', opt);
-    btn.textContent = opt;
-    btn.onclick = () => checkAnswer(q.question_id, opt);
-    area.appendChild(btn);
-  });
-}
-
-async function checkAnswer(questionId, answer) {
-  primeAnswerAudio();
-  const optionButtons = document.querySelectorAll('#options-area button');
-  optionButtons.forEach((button) => button.disabled = true);
-  const res = await fetch('/api/check-answer', {
-    method: 'POST',
-    headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({child_id: childId, lesson_id: lessonId, question_id: questionId, child_answer: answer})
-  });
-  const data = await res.json();
-  
-  optionButtons.forEach((button) => {
-    const optionText = button.getAttribute('data-text');
-    if (optionText === answer) {
-      if (data.correct) {
-        button.classList.add('choice-correct');
-        button.innerHTML = `${optionText} <span style="font-size: 1.3rem; margin-left: 10px;">✅</span>`;
-      } else {
-        button.classList.add('choice-wrong');
-        button.innerHTML = `${optionText} <span style="font-size: 1.3rem; margin-left: 10px;">❌</span>`;
-      }
-    }
-    // Show correct checkmark on the right answer if the child was wrong
-    if (!data.correct && optionText === data.correct_answer) {
-      button.classList.add('choice-correct');
-      button.innerHTML = `${optionText} <span style="font-size: 1.3rem; margin-left: 10px;">✅</span>`;
-    }
-  });
-
-  msgArea.className = `message-area ${data.correct ? 'correct' : 'wrong'}`;
-  msgArea.textContent = data.correct ? `✨ Correct! ${data.message}` : `💡 Keep trying! ${data.message}`;
-  msgArea.classList.remove('hidden');
-
-  setMascot(data.correct ? 'happy' : 'sad', data.correct ? 'Great!' : 'Try again');
-  playAnswerSound(data.correct);
-  if (data.correct) score++;
-  
-  nextQuestionBtn.textContent = current === questions.length - 1 ? 'Finish questions' : 'Next question';
-  nextQuestionBtn.classList.remove('hidden');
-}
-
-nextQuestionBtn.addEventListener('click', () => {
-  current++;
-  showQuestion();
-});
-
-loadQuestions();
+loadActivities();
 </script>
 {% endblock %}

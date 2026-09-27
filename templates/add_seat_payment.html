@@ -1,0 +1,138 @@
+{% extends 'base.html' %}
+{% load static %}
+{% block title %}Confirm seats - SGILA{% endblock %}
+{% block content %}
+<section class="auth-layout auth-compact">
+
+  <aside class="auth-intro">
+    <img class="auth-koaly-peek" src="{% static 'img/koaly_cutout.png' %}" alt="" aria-hidden="true">
+    <p class="eyebrow">Last step</p>
+    <h1>Confirm your extra seats</h1>
+    <p>
+      {{ quantity }} extra seat{{ quantity|pluralize }} &times; R{{ seat_price }}/month
+      = <strong>R{{ total_price }}/month</strong>, added to your current plan.
+    </p>
+    <p class="payment-security-note">
+      Your card/account number is never stored in full, we only keep the
+      last 4 digits so you can recognise your payment method later.
+    </p>
+  </aside>
+
+  <div class="form-card">
+    {% if has_payment_on_file %}
+      <div class="add-seat-on-file" id="on-file-option">
+        <h2>Use the payment method on file</h2>
+        <p>
+          {% if subscription.payment_method == 'debit_order' %}
+            {{ subscription.bank_name }} account ending in {{ subscription.account_last4 }}
+          {% else %}
+            Card ending in {{ subscription.card_last4 }}
+          {% endif %}
+        </p>
+        <form method="POST">
+          {% csrf_token %}
+          <input type="hidden" name="action" value="use_on_file">
+          <button class="btn btn-primary btn-full" type="submit">Confirm and add {{ quantity }} seat{{ quantity|pluralize }}</button>
+        </form>
+        <button type="button" class="btn btn-light btn-full" id="use-new-method-toggle">Use a different payment method</button>
+      </div>
+    {% endif %}
+
+    <form method="POST" id="payment-form" class="{% if has_payment_on_file %}is-hidden{% endif %}">
+      {% csrf_token %}
+      <input type="hidden" name="action" value="new_method">
+      <input type="hidden" name="payment_method" id="payment-method-input" value="card">
+
+      <div class="tabs payment-tabs" id="payment-tabs">
+        <a href="#" data-method="card" class="active">Card</a>
+        <a href="#" data-method="debit_order">Bank debit order</a>
+      </div>
+
+      <div id="card-fields">
+        <h2>Card details</h2>
+        <label>Name on card
+          <input type="text" name="name_on_card" autocomplete="cc-name">
+        </label>
+        <label>Card number
+          <input type="text" name="card_number" inputmode="numeric" maxlength="19"
+                 placeholder="1234 5678 9012 3456" autocomplete="cc-number">
+        </label>
+        <div class="two-col">
+          <label>Expiry (MM/YYYY)
+            <input type="text" name="expiry" placeholder="08/2028" autocomplete="cc-exp">
+          </label>
+          <label>CVV
+            <input type="text" name="cvv" inputmode="numeric" maxlength="4"
+                   placeholder="123" autocomplete="cc-csc">
+          </label>
+        </div>
+      </div>
+
+      <div id="debit-fields" class="is-hidden">
+        <h2>Bank debit order details</h2>
+        <label>Account holder name
+          <input type="text" name="account_holder">
+        </label>
+        <label>Bank name
+          <input type="text" name="bank_name" placeholder="e.g. Standard Bank">
+        </label>
+        <div class="two-col">
+          <label>Account number
+            <input type="text" name="account_number" inputmode="numeric">
+          </label>
+          <label>Branch code
+            <input type="text" name="branch_code" inputmode="numeric">
+          </label>
+        </div>
+      </div>
+
+      <button class="btn btn-primary btn-full payment-submit" type="submit">
+        Confirm and add {{ quantity }} seat{{ quantity|pluralize }}
+      </button>
+    </form>
+
+    <p class="form-note subscription-back-link">
+      <a href="/subscription/add-seat">&larr; Change quantity</a>
+    </p>
+  </div>
+</section>
+
+<script>
+(function () {
+  var toggle = document.getElementById('use-new-method-toggle');
+  var paymentForm = document.getElementById('payment-form');
+  var onFileOption = document.getElementById('on-file-option');
+  if (toggle) {
+    toggle.addEventListener('click', function () {
+      paymentForm.classList.remove('is-hidden');
+      onFileOption.classList.add('is-hidden');
+    });
+  }
+
+  var tabs = document.querySelectorAll('#payment-tabs a');
+  var methodInput = document.getElementById('payment-method-input');
+  var cardFields = document.getElementById('card-fields');
+  var debitFields = document.getElementById('debit-fields');
+
+  tabs.forEach(function (tab) {
+    tab.addEventListener('click', function (e) {
+      e.preventDefault();
+      tabs.forEach(function (t) { t.classList.remove('active'); });
+      tab.classList.add('active');
+      var method = tab.dataset.method;
+      methodInput.value = method;
+      cardFields.classList.toggle('is-hidden', method !== 'card');
+      debitFields.classList.toggle('is-hidden', method !== 'debit_order');
+    });
+  });
+
+  var cardNumberInput = document.querySelector('input[name="card_number"]');
+  if (cardNumberInput) {
+    cardNumberInput.addEventListener('input', function () {
+      var digits = cardNumberInput.value.replace(/\D/g, '').slice(0, 19);
+      cardNumberInput.value = digits.replace(/(.{4})/g, '$1 ').trim();
+    });
+  }
+})();
+</script>
+{% endblock %}

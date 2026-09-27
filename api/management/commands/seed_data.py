@@ -1,10 +1,13 @@
 import random
 import re
+from datetime import timedelta
 
 from django.contrib.auth.hashers import make_password
 from django.core.management.base import BaseCommand
+from django.utils import timezone
 
 from api.curriculum_enrichment import (
+    LESSON_COVERS,
     LESSON_WORDS,
     LESSON_SPELLING,
     PRONUNCIATION_WORDS,
@@ -17,11 +20,16 @@ from api.curriculum_library import (
     MANDUS_SECRET_DIARY_ACTIVITIES,
     STORYBOARD_IMAGES,
 )
+from api.grade1_activity_blueprints import (
+    A_VERY_HOT_DAY_ACTIVITIES,
+    LERATOS_FRUIT_BASKET_ACTIVITIES,
+)
 from api.models import (
     CauseEffectPair,
     Child,
     ComprehensionQuestion,
     FeelingsQuestion,
+    GradeHistory,
     InferenceQuestion,
     Lesson,
     Parent,
@@ -32,12 +40,14 @@ from api.models import (
     SequencingActivity,
     SpellingActivity,
     StoryPage,
+    Subscription,
     Teacher,
     TeacherClass,
     ThemeQuestion,
     VisualActivityItem,
     VocabularyQuestion,
     WrittenResponsePrompt,
+    current_school_year,
 )
 
 
@@ -49,6 +59,7 @@ class Command(BaseCommand):
         Child.objects.all().delete()
         Parent.objects.all().delete()
         Teacher.objects.all().delete()
+        Subscription.objects.all().delete()
         self.stdout.write('Cleared existing SGILA demo data...')
 
         parent = Parent.objects.create(
@@ -107,6 +118,7 @@ class Command(BaseCommand):
             photo='child_photos/demo_child_photo.jpeg',
             password=make_password('password123'),
         )
+        self.mark_grade_confirmed(child)
 
         lerato_lesson = self.create_lerato_lesson()
         Progress.objects.create(
@@ -180,12 +192,67 @@ class Command(BaseCommand):
             photo='child_photos/demo_child_photo.jpeg',
             password=make_password('password123'),
         )
+        self.mark_grade_confirmed(child)
 
         self.create_big_book_lessons()
 
+    #-------------------------------------EXPIRED TRIAL DEMO ACCOUNT-------------------------------------------------------------------------------------
+        parent3 = Parent.objects.create(
+            full_name='Thandi Nkosi',
+            email='parent3@sgila.test',
+            phone='0710000099',
+            password=make_password('password123'),
+            accepted_popia=True,
+        )
+        child3 = Child.objects.create(
+            parent=parent3,
+            username='lindiwe_n',
+            first_name='Lindiwe',
+            last_name='Nkosi',
+            name='Lindiwe Nkosi',
+            age=8,
+            grade=2,
+            parent_email='parent3@sgila.test',
+            photo='child_photos/demo_child_photo.jpeg',
+            password=make_password('password123'),
+        )
+        expired_subscription = Subscription.objects.create(
+            parent=parent3,
+            plan_type='individual',
+            billing_cycle='monthly',
+            status='trial',
+        )
+        # created_at is auto_now_add, so it's set on .create() above — back it up
+        # past the 30-day window with a queryset .update(), which bypasses
+        # auto_now_add since it skips model.save().
+        Subscription.objects.filter(id=expired_subscription.id).update(
+            created_at=timezone.now() - timedelta(days=40),
+        )
+
         self.stdout.write(self.style.SUCCESS(
-            "Demo data loaded. Learner logins: sipho_d, lerato_m, nhlulelo_m; password password123."
+            "Demo data loaded. Logins: sipho_d / parent@sgila.test / teacher@sgila.test, password password123. Class code RAINB1. "
+            "Expired-trial demo: parent3@sgila.test / lindiwe_n, password password123 (trial started 40 days ago, payment is due)."
         ))
+        self.stdout.write(
+            "Both demo learners are marked as grade-confirmed for this school year, same as real "
+            "registration. To test the yearly grade-confirmation banner, backdate a learner in the "
+            "shell, e.g.:\n"
+            "  python manage.py shell -c \"from api.models import Child; c = Child.objects.get(username__iexact='sipho_d'); "
+            "c.grade_confirmed_year -= 1; c.save()\"\n"
+            "then log in as parent@sgila.test or teacher@sgila.test and open their dashboard."
+        )
+
+    def mark_grade_confirmed(self, child):
+        """Registering a child (real signup, or this seed command) counts as
+        confirming their grade for the current school year — see
+        Child.needs_grade_confirmation() and GradeHistory."""
+        child.grade_confirmed_year = current_school_year()
+        child.save(update_fields=['grade_confirmed_year'])
+        GradeHistory.objects.update_or_create(
+            child=child,
+            year=current_school_year(),
+            defaults={'grade': child.grade, 'confirmed_by': GradeHistory.REGISTRATION},
+        )
 
     def add_reading_activities(self, lesson, activities):
         for order, activity in enumerate(activities, 1):
@@ -257,34 +324,37 @@ class Command(BaseCommand):
             for page, panel in zip(pages, panel_sequence):
                 page.image_url = f'{storyboard_url}#panel-{panel}'
                 page.save(update_fields=['image_url'])
-            lesson.thumbnail_image = storyboard_url
+            lesson.thumbnail_image = LESSON_COVERS.get(lesson.title, storyboard_url)
+            lesson.save(update_fields=['thumbnail_image'])
+
+        cover_url = LESSON_COVERS.get(lesson.title)
+        if cover_url and lesson.thumbnail_image != cover_url:
+            lesson.thumbnail_image = cover_url
             lesson.save(update_fields=['thumbnail_image'])
 
         lesson.visual_items.all().delete()
         lesson.pronunciation_words.all().delete()
-        lesson.spelling_activities.all().delete()
         lesson_words = LESSON_WORDS.get(lesson.title)
         pronunciation_words = PRONUNCIATION_WORDS.get(lesson.title, lesson_words)
         vocab_sheet = VISUAL_VOCAB_SHEETS.get(lesson.title)
         if not lesson_words or len(lesson_words) < 5:
             raise ValueError(f'{lesson.title} must have at least five lesson words.')
 
-        if lesson.grade != 3:
-            english_words = [word for word, _isizulu, _image in lesson_words]
-            for word, isizulu_word, image_source in lesson_words:
-                image_url = (
-                    f'/static/img/vocab_sheets/{vocab_sheet}#panel-{image_source}'
-                    if isinstance(image_source, int)
-                    else image_source
-                )
-                options = english_words.copy()
-                random.Random(f'{lesson.title}:{word}').shuffle(options)
-                VisualActivityItem.objects.create(
-                    lesson=lesson,
-                    image_url=image_url,
-                    correct_word=word,
-                    word_options=','.join(options),
-                )
+        english_words = [word for word, _isizulu, _image in lesson_words]
+        for word, isizulu_word, image_source in lesson_words:
+            image_url = (
+                f'/static/img/vocab_sheets/{vocab_sheet}#panel-{image_source}'
+                if isinstance(image_source, int)
+                else image_source
+            )
+            options = english_words.copy()
+            random.Random(f'{lesson.title}:{word}').shuffle(options)
+            VisualActivityItem.objects.create(
+                lesson=lesson,
+                image_url=image_url,
+                correct_word=word,
+                word_options=','.join(options),
+            )
         for word, isizulu_word, image_source in pronunciation_words:
             image_url = (
                 f'/static/img/vocab_sheets/{vocab_sheet}#panel-{image_source}'
@@ -301,26 +371,10 @@ class Command(BaseCommand):
                 isizulu_word=isizulu_word,
             )
 
-        if lesson.grade != 3:
-            return
-
-        spelling_words = list(LESSON_SPELLING.get(lesson.title, []))
-        existing_answers = {answer.lower() for _display_text, answer in spelling_words}
-        for word, _isizulu_word, _image_source in lesson_words:
-            if len(spelling_words) >= 5:
-                break
-            if word.lower() in existing_answers:
-                continue
-            display_text = word
-            for vowel in 'aeiouAEIOU':
-                if vowel in display_text:
-                    display_text = display_text.replace(vowel, '_', 1)
-                    break
-            spelling_words.append((display_text, word))
-            existing_answers.add(word.lower())
-
+        spelling_words = LESSON_SPELLING.get(lesson.title)
         if spelling_words:
-            for display_text, answer in spelling_words[:5]:
+            lesson.spelling_activities.all().delete()
+            for display_text, answer in spelling_words:
                 SpellingActivity.objects.create(
                     lesson=lesson,
                     activity_type=SpellingActivity.FILL_VOWEL,
@@ -332,7 +386,7 @@ class Command(BaseCommand):
         lesson = Lesson.objects.create(
             title="Lerato's Fruit Basket",
             grade=1,
-            thumbnail_image='/static/img/lerato/Fruits.avif',
+            thumbnail_image=LESSON_COVERS["Lerato's Fruit Basket"],
         )
 
         pages = [
@@ -382,37 +436,7 @@ class Command(BaseCommand):
                 correct_answer=answer,
             )
 
-        self.add_reading_activities(lesson, [
-            {
-                'activity_type': ReadingActivity.MULTIPLE_CHOICE,
-                'skill': 'literal_comprehension',
-                'question': 'What did Mother buy?',
-                'options': ['A mango', 'A basket', 'A banana'],
-                'correct_answer': 'A mango',
-            },
-            {
-                'activity_type': ReadingActivity.ORAL_RESPONSE,
-                'skill': 'literal_comprehension',
-                'question': 'Why does Lerato eat fruit?',
-                'correct_answer': 'She eats fruit to stay healthy and strong.',
-            },
-            {
-                'activity_type': ReadingActivity.SEQUENCING,
-                'skill': 'sequencing',
-                'question': 'Put the story in order.',
-                'items_in_correct_order': [
-                    'Mother buys a mango.',
-                    'Lerato puts it in the basket.',
-                    'Lerato eats fruit to stay strong.',
-                ],
-            },
-            {
-                'activity_type': ReadingActivity.TRUE_FALSE,
-                'skill': 'literal_comprehension',
-                'question': 'Lerato keeps fruit in a basket.',
-                'correct_answer': 'True',
-            },
-        ])
+        self.add_reading_activities(lesson, LERATOS_FRUIT_BASKET_ACTIVITIES)
 
         fruit_words = [
             ('Apple', 'apple', 'Ihhabhula', '/static/img/lerato/fruit_apple.png'),
@@ -849,7 +873,7 @@ class Command(BaseCommand):
         lesson = Lesson.objects.create(
             title=title,
             grade=grade,
-            thumbnail_image=storyboard_url or pages[0][2],
+            thumbnail_image=LESSON_COVERS.get(title) or storyboard_url or pages[0][2],
         )
         for page_number, text, image_url, highlighted_words in pages:
             StoryPage.objects.create(
@@ -924,37 +948,7 @@ class Command(BaseCommand):
                     'fish,laughed,swim',
                 ),
             ],
-            activities=[
-                {
-                    'activity_type': ReadingActivity.MULTIPLE_CHOICE,
-                    'skill': 'literal_comprehension',
-                    'question': 'Why did they stop playing?',
-                    'options': ['It was too hot.', 'They lost the ball.', 'School started.'],
-                    'correct_answer': 'It was too hot.',
-                },
-                {
-                    'activity_type': ReadingActivity.ORAL_RESPONSE,
-                    'skill': 'literal_comprehension',
-                    'question': 'Who played soccer?',
-                    'correct_answer': 'Karabo, Tshepo and Cathy played soccer.',
-                },
-                {
-                    'activity_type': ReadingActivity.SEQUENCING,
-                    'skill': 'sequencing',
-                    'question': 'Put the story in order.',
-                    'items_in_correct_order': [
-                        'The friends play soccer.',
-                        'Karabo remembers the pond.',
-                        'Karabo jumps into the water.',
-                    ],
-                },
-                {
-                    'activity_type': ReadingActivity.TRUE_FALSE,
-                    'skill': 'literal_comprehension',
-                    'question': 'A fish sat on Karabo\'s head.',
-                    'correct_answer': 'True',
-                },
-            ],
+            activities=A_VERY_HOT_DAY_ACTIVITIES,
         )
 
         self.create_story_lesson(

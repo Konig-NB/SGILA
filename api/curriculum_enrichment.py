@@ -26,6 +26,15 @@ STORYBOARD_PAGE_PANELS = {
 }
 
 
+LESSON_COVERS = {
+    "Lerato's Fruit Basket": '/static/img/covers/g1_lerato_fruit_basket.webp',
+    'A Very Hot Day': '/static/img/covers/g1_very_hot_day.webp',
+    'Ben Goes to School': '/static/img/covers/g1_ben_goes_to_school.webp',
+    "Olwethu's First Day": '/static/img/covers/g1_olwethu_first_day.webp',
+    'Bongi Waits': '/static/img/covers/g1_bongi_waits.webp',
+}
+
+
 VISUAL_VOCAB_SHEETS = {
     'A Very Hot Day': 'g1_hot_vocab.png',
     'Ben Goes to School': 'g1_ben_vocab.png',
@@ -211,10 +220,11 @@ PRONUNCIATION_WORDS = {
 LESSON_SPELLING = {
     "Mandu's Secret Diary": [
         ('d_ary', 'diary'),
-        ('b_d', 'bed'),
+        ('s_cret', 'secret'),
+        ('h_de', 'hide'),
+        ('cl_e', 'clue'),
+        ('fl_ur', 'flour'),
         ('d_g', 'dog'),
-        ('tr_p', 'trap'),
-        ('op_n', 'open'),
     ],
 }
 
@@ -383,6 +393,7 @@ MATCHING_ACTIVITY_INDEX = {
     'The School Shed Is on Fire': 1,
     'Spring Day Surprise': 1,
     "Mandu's Secret Diary": 1,
+    'Soccer Trouble': 1,
     'The River Mistake': 1,
     'Stage Fright': 1,
     'Why Mapula Missed School': 2,

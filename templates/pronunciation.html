@@ -3,7 +3,7 @@
 {% block content %}
 <section class="activity-shell">
   <div class="activity-top">
-    <a href="{{ previous_activity_url }}" class="back-link">Back</a>
+    <a href="/lessons/{{ lesson.id }}/visual-activity" class="back-link">Back</a>
     <span class="step-pill">Pronunciation</span>
   </div>
   <h1>Listen and say each word</h1>
@@ -34,7 +34,7 @@
   </div>
   <p id="pronunciation-status" class="message-area hidden" role="status"></p>
   <div class="center">
-    <a href="{{ next_activity_url }}" class="btn btn-primary">Next activity</a>
+    <a href="/lessons/{{ lesson.id }}/spelling" class="btn btn-primary">Spelling activity</a>
   </div>
 </section>
 <script>

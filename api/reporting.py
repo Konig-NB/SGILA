@@ -86,6 +86,8 @@ def scores_for_record(record):
         if record.lesson.grade == 3:
             scores.pop('sequencing', None)
             scores.pop('visual_literacy', None)
+        elif not record.lesson.sequencing_activities.exists():
+            scores.pop('sequencing', None)
         return scores
 
     lesson = record.lesson

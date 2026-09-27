@@ -1,0 +1,16 @@
+{% extends 'base.html' %}
+{% block title %}Access paused - SGILA{% endblock %}
+{% block content %}
+<section class="account-state-page">
+  <article class="account-state-card account-state-card-child" role="alert">
+    <span class="account-state-mark" aria-hidden="true">!</span>
+    <p class="eyebrow">Learner account</p>
+    <h1>{{ title }}</h1>
+    <p>{{ message }}</p>
+    <div class="account-state-actions">
+      <a href="/login?role=learner" class="btn btn-light">Back to learner sign in</a>
+      <a href="/login?role=parent" class="btn btn-primary">Parent sign in</a>
+    </div>
+  </article>
+</section>
+{% endblock %}

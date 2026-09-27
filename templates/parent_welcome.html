@@ -1,0 +1,35 @@
+{% extends 'base.html' %}
+{% load static %}
+{% block title %}Welcome - SGILA{% endblock %}
+{% block body_class %}welcome-body{% endblock %}
+{% block content %}
+
+<div class="welcome-overlay">
+  <div class="welcome-modal">
+    <img class="welcome-koaly" src="{% static 'img/koaly_happy.png' %}" alt="" aria-hidden="true">
+    <p class="eyebrow">Welcome to SGILA</p>
+    <h1>Hi {{ parent.full_name }}, you're all set!</h1>
+    <p class="welcome-intro">Here's what to know before you add your first child.</p>
+
+    <ul class="welcome-facts">
+      <li>
+        <strong>Free {{ trial_days }}-day trial</strong>
+        <span>You're on our Family plan{% if trial_end %}, running until {{ trial_end|date:"j F Y" }}{% endif %}. No card needed to get started.</span>
+      </li>
+      <li>
+        <strong>Up to {{ active_learner_cap }} active learners</strong>
+        <span>Add as many children as you like. Up to {{ active_learner_cap }} can be active at once on the Family plan, so pick which ones need access right now, you can adjust this any time from a learner's report page.</span>
+      </li>
+      <li>
+        <strong>After your trial ends</strong>
+        <span>You'll choose a plan to keep access to your dashboard and your children's lessons. Family plan continues at R89/month for up to 4 active learners, or Individual at R49/month for 1.</span>
+      </li>
+    </ul>
+
+    <div class="welcome-actions">
+      <a class="btn btn-primary" href="/parent/dashboard">Go to my dashboard</a>
+    </div>
+  </div>
+</div>
+
+{% endblock %}

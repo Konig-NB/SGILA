@@ -6,16 +6,19 @@ Read the docstring at the top of each view to understand what screen it serves.
 from django.http import JsonResponse
 from django.db.models import Q
 from django.views.decorators.csrf import csrf_exempt
+from django.views.decorators.cache import never_cache
 from django.views.decorators.http import require_http_methods
 from .validators import password_strength_errors
 from .validators import password_strength_errors
 from django.contrib.auth.hashers import check_password, make_password
 import json
 import hashlib
+import re
 
 import random
 from django.core.mail import send_mail
 from django.conf import settings as django_settings
+from django.utils import timezone
 
 import secrets
 from .models import (
@@ -32,8 +35,10 @@ from .models import (
     WrittenResponsePrompt,
     OTPToken, PasswordResetToken,
     Message,
+    Subscription,
     title_case,
 )
+from .account_access import child_access_status, linked_parent_for_child
 from .jwt_utils import create_access_token, token_from_request
 from .reporting import rows_for_record
 
@@ -78,6 +83,7 @@ def password_matches(raw, stored):
 
 
 def set_learner_session(request, child):
+    request.session.flush()
     request.session['account_role'] = 'learner'
     request.session['account_id'] = child.id
     request.session['account_name'] = child.name
@@ -177,6 +183,31 @@ def spelling_answer_is_correct(activity, raw_answer):
     return normalise_spelling_answer(raw_answer) == normalise_spelling_answer(activity.answer)
 
 
+def looks_like_readable_english_text(value):
+    """Reject gibberish and keep review answers readable for a young learner."""
+    text = str(value or '').strip()
+    if not text:
+        return False
+    if len(text) < 8:
+        return False
+    text = text.replace('’', "'")
+    if re.search(r'[^A-Za-z\s\'\-.,!?;:]', text):
+        return False
+    words = re.findall(r"[A-Za-z']+", text)
+    if len(words) < 2:
+        return False
+    if any(len(word) < 2 and word.lower() not in {'a', 'i'} for word in words):
+        return False
+    vowels = sum(1 for word in words for ch in word.lower() if ch in 'aeiou')
+    return vowels >= max(2, len(words) // 2)
+
+
+def has_two_punctuated_sentences(value):
+    """Require at least two sentences that end with punctuation."""
+    text = str(value or '').strip()
+    return len(re.findall(r'[.!?](?=\s|$)', text)) >= 2
+
+
 def normalise_reading_answer(value):
     """Compare short learner answers without case or punctuation noise."""
     value = str(value or '').strip().lower()
@@ -193,10 +224,6 @@ def structured_reading_answer(activity):
     return value if isinstance(value, dict) else {}
 
 
-def is_structured_matching(activity):
-    return activity.activity_type == ReadingActivity.MATCHING and isinstance(activity.options, dict)
-
-
 def reading_answer_score(activity, child_answer):
     if activity.activity_type == ReadingActivity.SEQUENCING:
         correct = list(child_answer or []) == list(activity.items_in_correct_order or [])
@@ -205,18 +232,29 @@ def reading_answer_score(activity, child_answer):
     if activity.activity_type in {
         ReadingActivity.CROSSWORD,
         ReadingActivity.WORD_SCRAMBLE,
-    } or is_structured_matching(activity):
+    }:
         expected = structured_reading_answer(activity)
         submitted = child_answer if isinstance(child_answer, dict) else {}
         score = 0
         for key, answer in expected.items():
             child_value = submitted.get(str(key), submitted.get(key, ''))
-            if activity.activity_type == ReadingActivity.MATCHING:
-                correct = str(child_value) == str(answer)
-            else:
-                correct = normalise_reading_answer(child_value) == normalise_reading_answer(answer)
+            correct = normalise_reading_answer(child_value) == normalise_reading_answer(answer)
             score += int(correct)
         return score, len(expected)
+
+    if activity.activity_type == ReadingActivity.MATCHING:
+        if isinstance(activity.options, dict):
+            expected = structured_reading_answer(activity)
+            submitted = child_answer if isinstance(child_answer, dict) else {}
+            score = 0
+            for key, answer in expected.items():
+                child_value = submitted.get(str(key), submitted.get(key, ''))
+                correct = str(child_value) == str(answer)
+                score += int(correct)
+            return score, len(expected)
+
+        correct = normalise_reading_answer(child_answer) == normalise_reading_answer(activity.correct_answer)
+        return (1 if correct else 0), 1
 
     correct = normalise_reading_answer(child_answer) == normalise_reading_answer(activity.correct_answer)
     return (1 if correct else 0), 1
@@ -236,6 +274,8 @@ def reading_model_answer(activity):
     }:
         return '; '.join(structured_reading_answer(activity).values())
     if activity.activity_type == ReadingActivity.MATCHING:
+        if not isinstance(activity.options, dict):
+            return str(activity.correct_answer or '')
         config = activity.options if isinstance(activity.options, dict) else {}
         prompts = {str(item.get('key')): item.get('text', '') for item in config.get('prompts', [])}
         choices = {str(item.get('key')): item.get('text', '') for item in config.get('choices', [])}
@@ -244,7 +284,6 @@ def reading_model_answer(activity):
             for prompt_key, choice_key in structured_reading_answer(activity).items()
         )
     return activity.correct_answer
-
 
 # ─────────────────────────────────────────────────────────────
 # OTP HELPERS
@@ -380,6 +419,9 @@ def verify_otp(request):
             password=make_password(pending.get('password', '')),
             accepted_popia=bool(pending.get('accepted_popia')),
         )
+        # Same as the web registration flow — the free trial runs on the
+        # Family plan, created eagerly so plan_type is never ambiguous.
+        Subscription.objects.create(parent=account, plan_type='family', status='trial')
         redirect_to = '/parent/dashboard'
     else:
         account = Teacher.objects.create(
@@ -483,13 +525,25 @@ def login(request):
         ).first()
         if not child or not password_matches(password, child.password):
             return JsonResponse({'login_successful': False, 'message': 'Incorrect username or password.'}, status=401)
+        allowed, reason = child_access_status(child)
+        if not allowed:
+            request.session.flush()
+            return JsonResponse({
+                'login_successful': False,
+                'access_blocked': True,
+                'reason': reason,
+                'message': 'Learner access is paused. Ask a parent to check the SGILA account.',
+                'redirect_to': f'/account-access?reason={reason}',
+            }, status=403)
         set_learner_session(request, child)
+        linked_parent = linked_parent_for_child(child)
         token = create_access_token({
             'sub': child.id,
             'role': 'learner',
             'email': child.parent_email,
             'name': child.name,
             'grade': child.grade,
+            'parent_auth_version': linked_parent.auth_version if linked_parent else None,
         })
         return JsonResponse({
             'login_successful': True,
@@ -510,12 +564,24 @@ def login(request):
             return JsonResponse({'login_successful': False, 'message': 'Incorrect email or password.'}, status=401)
         if not password_matches(password, account.password):
             return JsonResponse({'login_successful': False, 'message': 'Incorrect email or password.'}, status=401)
+        if role in ('parent', 'teacher') and not account.is_active:
+            request.session.flush()
+            request.session['pending_reactivation_role'] = role
+            request.session['pending_reactivation_account_id'] = account.id
+            request.session['pending_reactivation_verified_at'] = int(timezone.now().timestamp())
+            return JsonResponse({
+                'login_successful': False,
+                'reactivation_required': True,
+                'message': 'This account is deactivated. Confirm reactivation to continue.',
+                'redirect_to': '/account/reactivate',
+            }, status=403)
         token = create_access_token({
             'sub': account.id,
             'role': role,
             'email': email,
             'name': account.full_name,
             'grade': None,
+            'auth_version': getattr(account, 'auth_version', 0),
         })
         return JsonResponse({
             'login_successful': True,
@@ -714,6 +780,7 @@ def story(request, lesson_id):
 # POST /api/check-answer
 # ─────────────────────────────────────────────────────────────
 
+@never_cache
 @require_http_methods(["GET"])
 def questions(request, lesson_id):
     """
@@ -794,8 +861,14 @@ def check_reading_activity(request):
     elif activity.activity_type in {
         ReadingActivity.CROSSWORD,
         ReadingActivity.WORD_SCRAMBLE,
-    } or is_structured_matching(activity):
+    }:
         has_answer = isinstance(child_answer, dict) and bool(child_answer)
+    elif activity.activity_type == ReadingActivity.MATCHING:
+        has_answer = (
+            (isinstance(child_answer, dict) and bool(child_answer))
+            or (isinstance(child_answer, str) and bool(str(child_answer).strip()))
+            or (isinstance(child_answer, list) and bool(child_answer))
+        )
     else:
         has_answer = bool(str(child_answer or '').strip())
     if not has_answer:
@@ -815,6 +888,12 @@ def check_reading_activity(request):
                 'response': child_answer,
             },
         )
+
+    if activity.requires_review and isinstance(child_answer, str):
+        if activity.activity_type == ReadingActivity.OPEN_ENDED and not has_two_punctuated_sentences(child_answer):
+            return JsonResponse({'error': 'Please write two or more sentences and use your punctuation.'}, status=400)
+        if not looks_like_readable_english_text(child_answer):
+            return JsonResponse({'error': 'Please write your answer in readable English words.'}, status=400)
 
     review_required = activity.requires_review
     awarded, possible = reading_answer_score(activity, child_answer)
@@ -866,10 +945,12 @@ def check_reading_activity(request):
         message = 'Not quite. Read the story clue and compare it with the answer.'
 
     model_answer = reading_model_answer(activity)
-    correct_answer = structured_reading_answer(activity) if activity.activity_type in {
-        ReadingActivity.CROSSWORD,
-        ReadingActivity.WORD_SCRAMBLE,
-    } or is_structured_matching(activity) else activity.correct_answer
+    if activity.activity_type in {ReadingActivity.CROSSWORD, ReadingActivity.WORD_SCRAMBLE}:
+        correct_answer = structured_reading_answer(activity)
+    elif activity.activity_type == ReadingActivity.MATCHING and isinstance(activity.options, dict):
+        correct_answer = structured_reading_answer(activity)
+    else:
+        correct_answer = activity.correct_answer
 
     return JsonResponse({
         'correct': is_correct,
@@ -1073,11 +1154,8 @@ def spelling(request, lesson_id):
     except Lesson.DoesNotExist:
         return JsonResponse({'error': 'Lesson not found'}, status=404)
 
-    if lesson.grade != 3:
-        return JsonResponse({'error': 'Spelling is available for Grade 3 lessons only.'}, status=404)
-
     result = {}
-    activities = lesson.spelling_activities.all()[:5]
+    activities = lesson.spelling_activities.all()
 
     fill_vowel_words = []
     drag_words = []
@@ -1146,6 +1224,19 @@ def check_spelling_answer(request):
         }, status=400)
 
     correct = spelling_answer_is_correct(activity, answer)
+    # Store the running spelling score as each answer is checked. This lets the
+    # learner's pause screen show an accurate score before the final form submit.
+    answers_key = session_score_key(lesson_id, 'spelling_answers')
+    answers = request.session.get(answers_key, {})
+    answers[str(activity.id)] = bool(correct)
+    request.session[answers_key] = answers
+    request.session[session_score_key(lesson_id, 'spelling_score')] = sum(
+        1 for is_correct in answers.values() if is_correct
+    )
+    request.session[session_score_key(lesson_id, 'spelling_total')] = SpellingActivity.objects.filter(
+        lesson_id=lesson_id
+    ).count()
+    request.session.modified = True
     return JsonResponse({
         'correct': correct,
         'message': 'Correct! Great spelling.' if correct else 'Not quite. Check the missing letters and try again.',
