@@ -33,7 +33,7 @@
     <div class="nav-links">
       <button type="button" id="theme-toggle" class="theme-toggle" aria-label="Toggle dark mode" aria-pressed="false">
         <span class="theme-toggle-icon" aria-hidden="true"></span>
-        <span class="theme-toggle-label">Dark mode</span>
+        <span class="theme-toggle-label">Dark Mode</span>
       </button>
       {% if request.session.account_role == 'learner' %}
         <span>{{ request.session.child_name }}</span>
@@ -180,7 +180,7 @@
 
     function reflect() {
       toggle.setAttribute('aria-pressed', isDark() ? 'true' : 'false');
-      toggle.querySelector('.theme-toggle-label').textContent = isDark() ? 'Light mode' : 'Dark mode';
+      toggle.querySelector('.theme-toggle-label').textContent = isDark() ? 'Light Mode' : 'Dark Mode';
     }
 
     toggle.addEventListener('click', function () {
