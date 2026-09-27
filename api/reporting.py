@@ -83,9 +83,36 @@ def scores_for_record(record):
             key: dict(values or {})
             for key, values in record.assessment_scores.items()
         }
+        lesson = record.lesson
+        valid_skills = set(
+            lesson.reading_activities.values_list('skill', flat=True)
+        )
+        if lesson.questions.exists() or lesson.reading_activities.exists():
+            valid_skills.add('reading')
+        if lesson.visual_items.exists():
+            valid_skills.add('visual_literacy')
+        if lesson.spelling_activities.exists():
+            valid_skills.add('spelling')
+        legacy_activity_skills = {
+            'sequencing': lesson.sequencing_activities.exists(),
+            'inference': lesson.inference_questions.exists(),
+            'emotional_literacy': lesson.feelings_questions.exists(),
+            'cause_effect': lesson.cause_effect_pairs.exists(),
+            'summarising': lesson.theme_questions.exists(),
+            'prediction': lesson.prediction_questions.exists(),
+        }
+        valid_skills.update(
+            key for key, exists in legacy_activity_skills.items() if exists
+        )
+        if lesson.grade == 3:
+            valid_skills.update(key for key in scores if key.startswith('grade3_'))
+        scores = {
+            key: values
+            for key, values in scores.items()
+            if key in valid_skills
+        }
         if record.lesson.grade == 3:
-            scores.pop('sequencing', None)
-            scores.pop('visual_literacy', None)
+            scores = {key: values for key, values in scores.items() if key.startswith('grade3_')}
         elif not record.lesson.sequencing_activities.exists():
             scores.pop('sequencing', None)
         return scores
