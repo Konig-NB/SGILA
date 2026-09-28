@@ -9,6 +9,7 @@ from django.core.management import call_command
 from django.test import Client, TestCase, override_settings
 
 from api.curriculum_enrichment import (
+    EXTRA_ACTIVITIES,
     LESSON_COVERS,
     LESSON_WORDS,
     LESSON_SPELLING,
@@ -89,6 +90,12 @@ class SgilaFlowTests(TestCase):
         session['child_name'] = child.name
         session['child_grade'] = child.grade
         session.save()
+
+    def test_terrible_twins_extra_activity_is_marked_as_comprehension(self):
+        self.assertEqual(
+            EXTRA_ACTIVITIES['The Terrible Twins']['skill'],
+            'literal_comprehension',
+        )
 
     def test_frontend_has_one_layered_stylesheet_without_force_overrides(self):
         project_root = Path(__file__).resolve().parent.parent
@@ -171,7 +178,8 @@ class SgilaFlowTests(TestCase):
             "otp_session": str(parent_otp.id),
             "code": parent_otp.code,
         })
-        self.assertRedirects(parent_response, "/parent/dashboard")
+        self.assertRedirects(parent_response, "/welcome")
+        self.assertEqual(self.client.get("/welcome").status_code, 200)
         self.assertEqual(self.client.get("/parent/dashboard").status_code, 200)
 
         self.client.get("/logout")
@@ -692,7 +700,7 @@ class SgilaFlowTests(TestCase):
             'child_answer': "rsfkhdfjlgb'oil",
         }), content_type='application/json')
         self.assertEqual(bad_response.status_code, 400)
-        self.assertIn('readable English', bad_response.json()['error'])
+        self.assertIn('not clear enough', bad_response.json()['error'])
 
         good_response = self.client.post('/api/check-reading-activity', json.dumps({
             'child_id': child.id,
@@ -703,6 +711,53 @@ class SgilaFlowTests(TestCase):
         self.assertEqual(good_response.status_code, 200)
         self.assertTrue(good_response.json()['review_required'])
         self.assertEqual(good_response.json()['model_answer'], 'because it was used to help the dog get better')
+
+    def test_text_answers_reject_gibberish_and_allow_capitalised_name(self):
+        child = Child.objects.create(
+            name='Amina',
+            age=10,
+            grade=4,
+            parent_email='sensible-answers@example.com',
+            password='hash',
+        )
+        lesson = Lesson.objects.create(title='Sensible answer check', grade=4)
+        activity = ReadingActivity.objects.create(
+            lesson=lesson,
+            order=1,
+            group_number=1,
+            group_title='Prediction',
+            activity_type=ReadingActivity.PREDICTION,
+            skill='prediction',
+            question='Who do you think will come next?',
+            correct_answer='Amina',
+        )
+        self.sign_in_child(child)
+
+        gibberish = self.client.post('/api/check-reading-activity', json.dumps({
+            'child_id': child.id,
+            'lesson_id': lesson.id,
+            'activity_id': activity.id,
+            'child_answer': 'xqzv lqkzro mntp',
+        }), content_type='application/json')
+        self.assertEqual(gibberish.status_code, 400)
+        self.assertIn('not clear enough', gibberish.json()['error'])
+
+        vowel_gibberish = self.client.post('/api/check-reading-activity', json.dumps({
+            'child_id': child.id,
+            'lesson_id': lesson.id,
+            'activity_id': activity.id,
+            'child_answer': 'Aeiou qwerty',
+        }), content_type='application/json')
+        self.assertEqual(vowel_gibberish.status_code, 400)
+        self.assertIn('not clear enough', vowel_gibberish.json()['error'])
+
+        valid_name = self.client.post('/api/check-reading-activity', json.dumps({
+            'child_id': child.id,
+            'lesson_id': lesson.id,
+            'activity_id': activity.id,
+            'child_answer': 'Mandla',
+        }), content_type='application/json')
+        self.assertEqual(valid_name.status_code, 200)
 
     def test_open_ended_response_requires_two_punctuated_sentences(self):
         child = Child.objects.create(
@@ -1597,6 +1652,31 @@ class GradeConfirmationTests(TestCase):
         self.child.refresh_from_db()
         self.assertEqual(self.child.grade, 2)
         self.assertTrue(self.child.needs_grade_confirmation())
+
+    def test_unusual_grade_jump_gets_a_warning_but_still_applies(self):
+        """A jump of more than one grade isn't blocked (rare but legitimate
+        cases exist), but the parent/teacher gets a heads-up in case it was a
+        mis-click rather than an intended multi-grade jump."""
+        self.child.grade_confirmed_year = current_school_year() - 1
+        self.child.save(update_fields=['grade_confirmed_year'])
+        self.login_parent()
+
+        response = self.client.post(f'/confirm-grade/{self.child.id}', {'grade': '4'}, follow=True)
+
+        self.child.refresh_from_db()
+        self.assertEqual(self.child.grade, 4)  # still applied
+        warnings = [m for m in response.context['messages']]
+        self.assertTrue(any('jump' in str(m).lower() for m in warnings))
+
+    def test_normal_one_grade_promotion_gets_no_jump_warning(self):
+        self.child.grade_confirmed_year = current_school_year() - 1
+        self.child.save(update_fields=['grade_confirmed_year'])
+        self.login_parent()
+
+        response = self.client.post(f'/confirm-grade/{self.child.id}', {'grade': '3'}, follow=True)
+
+        messages_text = [str(m).lower() for m in response.context['messages']]
+        self.assertFalse(any('jump' in m for m in messages_text))
 
 
 class GradeReminderEmailTests(TestCase):

@@ -35,6 +35,7 @@ from .models import (
     WrittenResponsePrompt,
     OTPToken, PasswordResetToken,
     Message,
+    Subscription,
     title_case,
 )
 from .account_access import child_access_status, linked_parent_for_child
@@ -183,22 +184,51 @@ def spelling_answer_is_correct(activity, raw_answer):
 
 
 def looks_like_readable_english_text(value):
-    """Reject gibberish and keep review answers readable for a young learner."""
+    """Reject gibberish but allow a capitalised proper name as a sensible answer."""
     text = str(value or '').strip()
     if not text:
-        return False
-    if len(text) < 8:
         return False
     text = text.replace('’', "'")
     if re.search(r'[^A-Za-z\s\'\-.,!?;:]', text):
         return False
+
     words = re.findall(r"[A-Za-z']+", text)
+    if not words:
+        return False
+
+    lower_words = [word.lower() for word in words]
+    common_words = {
+        'a', 'i', 'the', 'and', 'but', 'or', 'if', 'as', 'at', 'be', 'by', 'for', 'from', 'in', 'into', 'it',
+        'its', 'of', 'on', 'or', 'that', 'this', 'to', 'too', 'up', 'with', 'was', 'were', 'is', 'are', 'am',
+        'he', 'she', 'they', 'them', 'their', 'we', 'you', 'your', 'our', 'us', 'me', 'my', 'his', 'her',
+        'because', 'before', 'after', 'while', 'when', 'then', 'there', 'here', 'again', 'one', 'two', 'three',
+        'went', 'came', 'looked', 'found', 'helped', 'help', 'made', 'felt', 'thought', 'said', 'saw', 'told',
+        'smiled', 'laughed', 'ran', 'walked', 'played', 'read', 'write', 'writing', 'asked', 'asked', 'called',
+        'school', 'teacher', 'friend', 'friends', 'family', 'dog', 'cat', 'home', 'story', 'answer', 'questions',
+        'happy', 'sad', 'angry', 'afraid', 'proud', 'worried', 'excited', 'nervous', 'quiet', 'little', 'big',
+        'good', 'bad', 'right', 'wrong', 'strong', 'quick', 'slow', 'early', 'late', 'inside', 'outside', 'under',
+        'next', 'last', 'first', 'day', 'days', 'night', 'morning', 'afternoon', 'evening', 'time', 'times',
+        'people', 'child', 'children', 'man', 'woman', 'boy', 'girl', 'name', 'names', 'mum', 'dad', 'mother',
+        'father', 'grandma', 'grandpa', 'class', 'room', 'house', 'teacher', 'book', 'books', 'page', 'pages',
+        'rain', 'sun', 'wind', 'cloud', 'clouds', 'water', 'ground', 'road', 'tree', 'trees', 'park', 'field',
+    }
+
+    capitalised_name = bool(words) and all(re.fullmatch(r"[A-Z][a-zA-Z']+", word) for word in words)
+    if capitalised_name and len(words) <= 3:
+        return True
+
     if len(words) < 2:
         return False
     if any(len(word) < 2 and word.lower() not in {'a', 'i'} for word in words):
         return False
-    vowels = sum(1 for word in words for ch in word.lower() if ch in 'aeiou')
-    return vowels >= max(2, len(words) // 2)
+    if any(re.fullmatch(r"[bcdfghjklmnpqrstvwxyz]{4,}", word.lower()) for word in words):
+        return False
+    if any(word.lower() in {'qwerty', 'asdf', 'zxcvbn', 'lkjhg'} for word in words):
+        return False
+
+    return any(word.lower() in common_words for word in words) or sum(
+        1 for word in lower_words if word in common_words
+    ) >= max(1, len(words) // 2)
 
 
 def has_two_punctuated_sentences(value):
@@ -418,6 +448,9 @@ def verify_otp(request):
             password=make_password(pending.get('password', '')),
             accepted_popia=bool(pending.get('accepted_popia')),
         )
+        # Same as the web registration flow — the free trial runs on the
+        # Family plan, created eagerly so plan_type is never ambiguous.
+        Subscription.objects.create(parent=account, plan_type='family', status='trial')
         redirect_to = '/parent/dashboard'
     else:
         account = Teacher.objects.create(
@@ -889,7 +922,7 @@ def check_reading_activity(request):
         if activity.activity_type == ReadingActivity.OPEN_ENDED and not has_two_punctuated_sentences(child_answer):
             return JsonResponse({'error': 'Please write two or more sentences and use your punctuation.'}, status=400)
         if not looks_like_readable_english_text(child_answer):
-            return JsonResponse({'error': 'Please write your answer in readable English words.'}, status=400)
+            return JsonResponse({'error': 'That answer is not clear enough. Please try again.'}, status=400)
 
     review_required = activity.requires_review
     awarded, possible = reading_answer_score(activity, child_answer)

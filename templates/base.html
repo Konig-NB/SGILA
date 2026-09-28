@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>{% block title %}SGILA{% endblock %}</title>
   {% load static %}
-  <link rel="stylesheet" href="{% static 'css/sgila_app.css' %}?v=clean-styles-20260916-3">
+  <link rel="stylesheet" href="{% static 'css/sgila_app.css' %}?v=dark-theme-dashboard-20260927-8">
   <script>
     // Applied before paint so the page never flashes the wrong theme on load.
     (function () {
@@ -33,7 +33,7 @@
     <div class="nav-links">
       <button type="button" id="theme-toggle" class="theme-toggle" aria-label="Toggle dark mode" aria-pressed="false">
         <span class="theme-toggle-icon" aria-hidden="true"></span>
-        <span class="theme-toggle-label">Dark mode</span>
+        <span class="theme-toggle-label">Dark Mode</span>
       </button>
       {% if request.session.account_role == 'learner' %}
         <span>{{ request.session.child_name }}</span>
@@ -178,7 +178,7 @@
           body: JSON.stringify({resume_url: resumeUrl, score: score})
         });
         if (!response.ok) throw new Error('Could not save your place.');
-        window.location.href = '/grade/{{ request.session.child_grade }}';
+        window.location.href = '/grade/{{ request.session.child_grade }}?activity_menu=' + current[1];
       } catch (error) {
         pauseButton.disabled = false;
         pauseButton.textContent = 'Take a break';
@@ -200,7 +200,7 @@
 
     function reflect() {
       toggle.setAttribute('aria-pressed', isDark() ? 'true' : 'false');
-      toggle.querySelector('.theme-toggle-label').textContent = isDark() ? 'Light mode' : 'Dark mode';
+      toggle.querySelector('.theme-toggle-label').textContent = isDark() ? 'Light Mode' : 'Dark Mode';
     }
 
     toggle.addEventListener('click', function () {

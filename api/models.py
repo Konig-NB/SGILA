@@ -101,26 +101,29 @@ class Child(models.Model):
     # tell "already reminded, don't spam" apart from "already confirmed, don't remind".
     grade_reminder_sent_year = models.IntegerField(null=True, blank=True)
     school_name = models.CharField(max_length=160, blank=True)
-    deactivated_reason = models.CharField(max_length=120, blank=True, default='')
     parent_email = models.EmailField()
     photo = models.FileField(upload_to='child_photos/', blank=True)
     password = models.CharField(max_length=300)   # hashed by Django
     paused_activities = models.JSONField(default=dict, blank=True)
 
     # --- Deactivation ------------------------------------------------------
-    # A learner can be paused two ways: individually (a parent turns off just
-    # this one child from the learner report) or as part of the parent's own
-    # account being deactivated (every currently-active child is swept along
-    # with it). `deactivated_reason` is what lets reactivation tell those
-    # apart: reactivating the parent only brings back children whose reason
-    # is DEACTIVATED_PARENT_CASCADE. A child the parent paused on purpose
-    # (DEACTIVATED_MANUAL) stays off until reactivated on its own, even after
-    # the parent account comes back.
+    # A learner can end up paused three ways: individually (a parent turns off
+    # just this one child from the learner report), as part of the parent's
+    # own account being deactivated (every currently-active child is swept
+    # along with it), or because the parent's plan is already at its active-
+    # learner limit (see account_access.py). `deactivated_reason` is what lets
+    # reactivation tell those apart: reactivating the parent only brings back
+    # children whose reason is DEACTIVATED_PARENT_CASCADE. A child the parent
+    # paused on purpose (DEACTIVATED_MANUAL) or one sitting over the plan's
+    # seat limit (DEACTIVATED_PLAN_CAPACITY) stays off until reactivated on
+    # its own, even after the parent account comes back.
     DEACTIVATED_PARENT_CASCADE = 'parent_cascade'
     DEACTIVATED_MANUAL = 'manual'
+    DEACTIVATED_PLAN_CAPACITY = 'plan_capacity'
     DEACTIVATED_REASON_CHOICES = [
         (DEACTIVATED_PARENT_CASCADE, "Parent account deactivated"),
         (DEACTIVATED_MANUAL, "Deactivated individually"),
+        (DEACTIVATED_PLAN_CAPACITY, "Over the plan's active-learner limit"),
     ]
     is_active = models.BooleanField(default=True)
     deactivated_at = models.DateTimeField(null=True, blank=True)
@@ -777,6 +780,20 @@ class Subscription(models.Model):
     plan_type = models.CharField(max_length=20, choices=PLAN_CHOICES)
     billing_cycle = models.CharField(max_length=10, choices=BILLING_CYCLE_CHOICES, blank=True)
     status = models.CharField(max_length=12, choices=STATUS_CHOICES, default='trial')
+
+    # Paid add-on seats beyond the plan's base active-learner limit (see
+    # account_access.PLAN_CHILD_CAPS) — e.g. a Family plan (4 seats) parent
+    # who buys one extra seat to activate a 5th child gets extra_active_seats=1,
+    # rather than being made to hold a second, separate subscription. Not
+    # meaningful for 'enterprise', which has no cap to begin with.
+    extra_active_seats = models.PositiveIntegerField(default=0)
+    # Holds the quantity a parent picked on the "how many seats" step, until
+    # the payment step (or reuse of the card/account already on file)
+    # confirms it and folds it into extra_active_seats. Same idea as how
+    # plan_type + status='pending' already carry the base-plan choice across
+    # to subscription_payment_page.
+    pending_seat_quantity = models.PositiveIntegerField(default=0)
+    SEAT_PRICE = 25  # rand per extra active-learner seat, per month
 
     # Enterprise / government-package redemption.
     school_name = models.CharField(max_length=200, blank=True)

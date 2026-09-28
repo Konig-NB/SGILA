@@ -66,14 +66,31 @@ const typeInstructions = {
   true_false: 'Decide whether the sentence is true or false.',
   open_ended: 'Write two or more clear sentences and use your punctuation.',
   sequencing: 'Use the arrows to put the events in story order.',
-  matching: 'Match each item with the best answer.',
-  match_it: 'Choose a match for all four, then check your answers. One option on the right belongs to no one. Match each one on the left to what happened on the right.',
+  matching: Number('{{ lesson.grade }}') === 4
+    ? 'Match each item with the best answer.'
+    : 'Select a word, then choose its meaning, or drag the word onto a meaning.',
+  match_it: Number('{{ lesson.grade }}') === 4
+    ? 'Choose a match for all four, then check your answers. One option on the right belongs to no one. Match each one on the left to what happened on the right.'
+    : 'Select a word, then choose its meaning, or drag the word onto a meaning.',
   cloze: 'Choose the words that complete the sentence.',
   oral_response: 'Say your answer out loud. You do not need to type.',
   prediction: 'Write what you think will happen and give a story clue.',
   reasoning: 'Write your answer and explain your thinking.',
   crossword: 'Use the clues to complete every word in the crossword.',
   word_scramble: 'Unscramble every set of letters, then check your spelling.',
+};
+const activityTypeLabels = {
+  multiple_choice: 'Multiple Choice',
+  true_false: 'True or False',
+  open_ended: 'Open-Ended Response',
+  sequencing: 'Sequencing',
+  matching: 'Matching',
+  cloze: 'Fill in the Blank',
+  oral_response: 'Oral Response',
+  prediction: 'Prediction',
+  reasoning: 'Reasoning',
+  crossword: 'Crossword',
+  word_scramble: 'Word Scramble',
 };
 const skillLabels = {
   literal_comprehension: 'Remember the story',
@@ -87,6 +104,22 @@ const skillLabels = {
   fact_vs_opinion: 'Think carefully',
   spelling: 'Build the story words',
   visual_literacy: 'Look closely at pictures',
+};
+const assessmentLabels = {
+  literal_comprehension: 'Comprehension',
+  sequencing: 'Comprehension',
+  inference: 'Comprehension',
+  vocabulary_in_context: 'Vocabulary',
+  prediction: 'Comprehension',
+  summarising: 'Comprehension',
+  character_motivation: 'Comprehension',
+  text_to_self: 'Comprehension',
+  fact_vs_opinion: 'Comprehension',
+  spelling: 'Spelling',
+  visual_literacy: 'Visual matching',
+  reading: 'Reading',
+  emotional_literacy: 'Comprehension',
+  cause_effect: 'Comprehension',
 };
 const KOALY_IMAGES = {
   ready: "{% static 'img/koaly_cutout.png' %}",
@@ -115,6 +148,12 @@ function setMascot(reaction, label) {
   mascot.querySelector('span').textContent = label;
 }
 
+function activityTitle(activity, group) {
+  const criterion = assessmentLabels[activity?.skill] || (group?.title || 'Story Activity').replace(/\s+Questions?$/i, '').trim();
+  const format = activityTypeLabels[activity.activity_type] || 'Activity';
+  return `${criterion} - ${format}`;
+}
+
 function saveScore() {
   const existing = JSON.parse(sessionStorage.getItem(storageKey) || '{}');
   existing.comprehension_score = score;
@@ -126,9 +165,18 @@ function buildActivityMap() {
   const map = document.getElementById('activity-map');
   map.innerHTML = '';
   activityGroups.forEach((group) => {
-    const step = document.createElement('span');
+    const step = document.createElement('button');
+    step.type = 'button';
+    step.className = 'activity-map-step';
     step.textContent = group.number;
-    step.setAttribute('aria-label', `Activity ${group.number}: ${group.title}`);
+    const firstActivity = activities[group.indexes[0]];
+    step.setAttribute('aria-label', `Activity ${group.number}: ${activityTitle(firstActivity, group)}`);
+    step.addEventListener('click', () => {
+      current = group.indexes[0];
+      document.getElementById('question-area').classList.remove('hidden');
+      document.getElementById('results-area').classList.add('hidden');
+      renderActivity();
+    });
     if (group.indexes.every((index) => index < completedCount)) step.classList.add('is-done');
     if (group.indexes.includes(current) && current < activities.length) step.classList.add('is-current');
     map.appendChild(step);
@@ -356,8 +404,10 @@ function renderChoice(activity) {
   const options = choiceItems(activity);
   const hasPictures = options.some((option) => option && typeof option === 'object' && option.image_url);
   const hideOptionMarkers = activity.group_title === 'Short Sentences & Picture Matching';
+  const hideGradeFourChoiceMarkers = Number('{{ lesson.grade }}') === 4
+    && ['multiple_choice', 'true_false'].includes(activity.activity_type);
   grid.className = `options-grid${hasPictures ? ' visual-options-grid' : ''}`;
-  if (hideOptionMarkers) grid.classList.add('without-option-markers');
+  if (hideOptionMarkers || hideGradeFourChoiceMarkers) grid.classList.add('without-option-markers');
   let selectedAnswer = '';
   let selectedButton = null;
 
@@ -370,7 +420,7 @@ function renderChoice(activity) {
     button.dataset.answer = value;
     button.setAttribute('aria-pressed', 'false');
 
-    if (!hideOptionMarkers) {
+    if (!hideOptionMarkers && !hideGradeFourChoiceMarkers) {
       const marker = document.createElement('span');
       marker.className = 'option-marker';
       marker.textContent = String.fromCharCode(65 + index);
@@ -569,6 +619,32 @@ function renderCrossword(activity) {
   grid.style.setProperty('--crossword-columns', columns);
   grid.setAttribute('aria-label', 'Crossword answer grid');
 
+  const focusNextCrosswordCell = (input) => {
+    const cells = [...grid.querySelectorAll('input[data-cell]')];
+    const nextCell = cells[cells.indexOf(input) + 1];
+    if (nextCell) nextCell.focus();
+  };
+
+  const focusCrosswordCell = (input, rowStep, columnStep) => {
+    const [row, column] = input.dataset.cell.split('-').map(Number);
+    const candidates = [...grid.querySelectorAll('input[data-cell]')]
+      .map((cell) => ({
+        cell,
+        row: Number(cell.dataset.cell.split('-')[0]),
+        column: Number(cell.dataset.cell.split('-')[1]),
+      }))
+      .filter((candidate) => (
+        (rowStep && candidate.column === column && (candidate.row - row) * rowStep > 0)
+        || (columnStep && candidate.row === row && (candidate.column - column) * columnStep > 0)
+      ))
+      .sort((first, second) => {
+        const firstDistance = Math.abs(first.row - row) + Math.abs(first.column - column);
+        const secondDistance = Math.abs(second.row - row) + Math.abs(second.column - column);
+        return firstDistance - secondDistance;
+      });
+    if (candidates[0]) candidates[0].cell.focus();
+  };
+
   for (let row = 0; row < rows; row++) {
     for (let column = 0; column < columns; column++) {
       const key = `${row}-${column}`;
@@ -588,6 +664,21 @@ function renderCrossword(activity) {
         input.setAttribute('aria-label', `Crossword row ${row + 1}, column ${column + 1}`);
         input.addEventListener('input', () => {
           input.value = input.value.replace(/[^A-Za-z]/g, '').toUpperCase();
+          if (input.value) focusNextCrosswordCell(input);
+        });
+        input.addEventListener('keydown', (event) => {
+          const directions = {
+            ArrowUp: [-1, 0],
+            ArrowDown: [1, 0],
+            ArrowLeft: [0, -1],
+            ArrowRight: [0, 1],
+          };
+          const direction = directions[event.key];
+          if (!direction) return;
+          const [rowStep, columnStep] = direction;
+          const previousFocus = document.activeElement;
+          focusCrosswordCell(input, rowStep, columnStep);
+          if (document.activeElement !== previousFocus) event.preventDefault();
         });
         cell.appendChild(input);
       }
@@ -721,116 +812,231 @@ function renderDragMatch(activity) {
 
 function renderMatching(activity) {
   const config = activity.options || {};
+  const isGradeFourMatching = Number('{{ lesson.grade }}') === 4
+    && Array.isArray(config.prompts)
+    && Array.isArray(config.choices);
+
   if (config.presentation === 'drag_match') {
     renderDragMatch(activity);
     return;
   }
-  const promptColors = ['blue', 'orange', 'yellow', 'purple'];
-  currentMatches = {};
-  activePromptKey = null;
+
+  if (isGradeFourMatching) {
+    const promptColors = ['blue', 'orange', 'yellow', 'purple'];
+    const currentMatches = {};
+    let activePromptKey = null;
+
+    const board = document.createElement('div');
+    board.className = 'matching-board';
+
+    const promptsCol = document.createElement('div');
+    promptsCol.className = 'matching-prompt-cards';
+
+    const choicesCol = document.createElement('div');
+    choicesCol.className = 'matching-choice-cards';
+
+    const promptCards = {};
+    const choiceCards = {};
+
+    function updateMatchStyles() {
+      Object.entries(promptCards).forEach(([promptKey, card]) => {
+        const isSelected = activePromptKey === promptKey;
+        const isMatched = Boolean(currentMatches[promptKey]);
+        card.classList.toggle('is-active', isSelected);
+        card.classList.toggle('is-matched', isMatched);
+        if (isMatched) {
+          card.style.borderColor = card.dataset.color || 'blue';
+          card.style.backgroundColor = `${card.dataset.color || 'blue'}18`;
+        } else {
+          card.style.borderColor = card.dataset.color || 'blue';
+          card.style.backgroundColor = '';
+        }
+      });
+
+      Object.entries(choiceCards).forEach(([choiceKey, card]) => {
+        const matchedPrompt = Object.keys(currentMatches).find((promptKey) => currentMatches[promptKey] === choiceKey);
+        const isMatched = Boolean(matchedPrompt);
+        card.classList.toggle('is-matched', isMatched);
+        if (isMatched) {
+          const promptCard = promptCards[matchedPrompt];
+          const color = promptCard ? promptCard.dataset.color : 'blue';
+          card.style.borderColor = color;
+          card.style.backgroundColor = `${color}18`;
+        } else {
+          card.style.borderColor = '';
+          card.style.backgroundColor = '';
+        }
+      });
+    }
+
+    (config.prompts || []).forEach((prompt, promptIndex) => {
+      const color = promptColors[promptIndex % promptColors.length];
+      const card = document.createElement('button');
+      card.type = 'button';
+      card.className = 'matching-prompt-card';
+      card.dataset.prompt = prompt.key;
+      card.dataset.color = color;
+      card.setAttribute('aria-label', `Prompt: ${prompt.text}`);
+      card.style.borderColor = color;
+      card.textContent = prompt.text;
+      card.addEventListener('click', () => {
+        if (activePromptKey === prompt.key) {
+          activePromptKey = null;
+        } else {
+          activePromptKey = prompt.key;
+        }
+        updateMatchStyles();
+      });
+      promptCards[prompt.key] = card;
+      promptsCol.appendChild(card);
+    });
+
+    (config.choices || []).forEach((choice) => {
+      const card = document.createElement('button');
+      card.type = 'button';
+      card.className = 'matching-choice-card';
+      card.dataset.choice = choice.key;
+      card.setAttribute('aria-label', `Choice: ${choice.text}`);
+      card.textContent = choice.text;
+      card.addEventListener('click', () => {
+        if (!activePromptKey) return;
+
+        const promptKey = activePromptKey;
+        const choiceKey = card.dataset.choice;
+        const previousPromptForChoice = Object.keys(currentMatches).find((key) => currentMatches[key] === choiceKey);
+
+        if (previousPromptForChoice && previousPromptForChoice !== promptKey) {
+          delete currentMatches[previousPromptForChoice];
+        }
+
+        if (currentMatches[promptKey] === choiceKey) {
+          delete currentMatches[promptKey];
+          activePromptKey = null;
+        } else {
+          currentMatches[promptKey] = choiceKey;
+          activePromptKey = null;
+        }
+
+        updateMatchStyles();
+      });
+      choiceCards[choice.key] = card;
+      choicesCol.appendChild(card);
+    });
+
+    board.append(promptsCol, choicesCol);
+    responseArea.append(board);
+
+    const submit = makeSubmitButton('Check matches');
+    submit.addEventListener('click', () => {
+      window.sgilaCurrentMatches = { ...currentMatches };
+      submitActivity(activity, { ...currentMatches });
+    });
+    responseArea.append(submit);
+    return;
+  }
 
   const board = document.createElement('div');
   board.className = 'matching-board';
+  const words = document.createElement('div');
+  words.className = 'matching-word-bank';
+  const meanings = document.createElement('div');
+  meanings.className = 'matching-meaning-bank';
+  const assignments = {};
+  const promptByChoice = {};
+  let selectedPrompt = '';
+  let draggedPrompt = '';
 
-  const promptsCol = document.createElement('div');
-  promptsCol.className = 'matching-prompt-cards';
+  const promptText = (promptKey) => (
+    (config.prompts || []).find((prompt) => prompt.key === promptKey)?.text || promptKey
+  );
 
-  const choicesCol = document.createElement('div');
-  choicesCol.className = 'matching-choice-cards';
-
-  const pairsCol = document.createElement('div');
-  pairsCol.className = 'matching-pairs';
-
-  const promptCards = {};
-  const choiceCards = {};
-
-  function removePair(promptKey) {
-    const pair = pairsCol.querySelector(`[data-prompt="${promptKey}"]`);
-    if (!pair) return;
-    const choiceKey = currentMatches[promptKey];
-    const promptCard = promptCards[promptKey];
-    const choiceCard = choiceCards[choiceKey];
-    promptCard.classList.remove('is-matched');
-    choiceCard.classList.remove('is-matched');
-    choiceCard.style.borderColor = '';
-    choiceCard.style.backgroundColor = '';
-    pair.remove();
-    delete currentMatches[promptKey];
-    if (activePromptKey === promptKey) {
-      activePromptKey = null;
-      promptsCol.querySelectorAll('.matching-prompt-card').forEach((c) => c.classList.remove('is-active'));
-    }
-  }
-
-
-  (config.prompts || []).forEach((prompt, promptIndex) => {
-    const color = promptColors[promptIndex % promptColors.length];
-    const card = document.createElement('button');
-    card.type = 'button';
-    card.className = 'matching-prompt-card';
-    card.dataset.prompt = prompt.key;
-    card.dataset.color = color;
-    card.setAttribute('aria-label', `Prompt ${promptIndex + 1}: ${prompt.text}`);
-    card.style.borderColor = color;
-    card.innerHTML = `<span class="matching-dot" style="background:${color}" aria-hidden="true"></span><span class="badge" aria-hidden="true">${promptIndex + 1}</span> ${prompt.text}`;
-    card.addEventListener('click', () => {
-      if (activePromptKey === prompt.key) {
-        activePromptKey = null;
-        card.classList.remove('is-active');
-      } else {
-        promptsCol.querySelectorAll('.matching-prompt-card').forEach((c) => c.classList.remove('is-active'));
-        activePromptKey = prompt.key;
-        card.classList.add('is-active');
-      }
+  const updateBoard = () => {
+    words.querySelectorAll('button').forEach((word) => {
+      word.dataset.choice = assignments[word.dataset.prompt] || '';
+      word.classList.toggle('is-selected', word.dataset.prompt === selectedPrompt);
+      word.classList.toggle('is-matched', Boolean(assignments[word.dataset.prompt]));
     });
-    promptCards[prompt.key] = card;
-    promptsCol.appendChild(card);
+    meanings.querySelectorAll('button').forEach((meaning) => {
+      const promptKey = promptByChoice[meaning.dataset.choice] || '';
+      meaning.classList.toggle('is-matched', Boolean(promptKey));
+      meaning.classList.toggle('is-selected', meaning.dataset.choice === assignments[selectedPrompt]);
+      meaning.setAttribute('aria-label', promptKey
+        ? `${meaning.textContent}, matched with ${promptText(promptKey)}`
+        : meaning.textContent);
+    });
+  };
+
+  const assignChoice = (promptKey, choiceKey) => {
+    if (!promptKey || !choiceKey) return;
+    const previousChoice = assignments[promptKey];
+    if (previousChoice) delete promptByChoice[previousChoice];
+    const previousPrompt = promptByChoice[choiceKey];
+    if (previousPrompt) delete assignments[previousPrompt];
+    assignments[promptKey] = choiceKey;
+    promptByChoice[choiceKey] = promptKey;
+    selectedPrompt = promptKey;
+    updateBoard();
+    submit.disabled = Object.keys(assignments).length !== (config.prompts || []).length;
+  };
+
+  (config.prompts || []).forEach((prompt) => {
+    const word = document.createElement('button');
+    word.type = 'button';
+    word.className = 'matching-word';
+    word.dataset.prompt = prompt.key;
+    word.draggable = true;
+    word.textContent = prompt.text;
+    word.addEventListener('click', () => {
+      selectedPrompt = prompt.key;
+      updateBoard();
+    });
+    word.addEventListener('pointerdown', () => {
+      selectedPrompt = prompt.key;
+      draggedPrompt = prompt.key;
+      updateBoard();
+    });
+    word.addEventListener('dragstart', (event) => {
+      selectedPrompt = prompt.key;
+      event.dataTransfer.setData('text/plain', prompt.key);
+      updateBoard();
+    });
+    words.appendChild(word);
   });
 
   (config.choices || []).forEach((choice) => {
-    const card = document.createElement('button');
-    card.type = 'button';
-    card.className = 'matching-choice-card';
-    card.dataset.choice = choice.key;
-    card.setAttribute('aria-label', `Choice ${choice.key}: ${choice.text}`);
-    card.innerHTML = `<span class="matching-dot" aria-hidden="true"></span><span class="badge" aria-hidden="true">${choice.key}</span> ${choice.text}`;
-    card.addEventListener('click', () => {
-      if (!activePromptKey) return;
-      const choiceKey = card.dataset.choice;
-      if (currentMatches[activePromptKey] === choiceKey) {
-        removePair(activePromptKey);
-        return;
-      }
-      Object.keys(currentMatches).forEach((pk) => {
-        if (currentMatches[pk] === choiceKey) {
-          removePair(pk);
-        }
-      });
-      currentMatches[activePromptKey] = choiceKey;
-      const promptCard = promptCards[activePromptKey];
-      const color = promptCard.dataset.color;
-      const pair = document.createElement('div');
-      pair.className = 'matching-pair';
-      pair.dataset.prompt = activePromptKey;
-      pair.dataset.choice = choiceKey;
-      promptCard.classList.add('is-matched');
-      card.classList.add('is-matched');
-      card.style.borderColor = color;
-      card.style.backgroundColor = color + '18';
-      pair.appendChild(promptCard);
-      pair.appendChild(card);
-      pairsCol.appendChild(pair);
+    const meaning = document.createElement('button');
+    meaning.type = 'button';
+    meaning.className = 'matching-meaning';
+    meaning.dataset.choice = choice.key;
+    meaning.textContent = choice.text;
+    meaning.addEventListener('click', () => assignChoice(selectedPrompt, choice.key));
+    meaning.addEventListener('pointerup', () => assignChoice(selectedPrompt, choice.key));
+    meaning.addEventListener('pointerenter', () => {
+      if (draggedPrompt) assignChoice(draggedPrompt, choice.key);
     });
-    choiceCards[choice.key] = card;
-    choicesCol.appendChild(card);
+    meaning.addEventListener('dragover', (event) => event.preventDefault());
+    meaning.addEventListener('drop', (event) => {
+      event.preventDefault();
+      assignChoice(event.dataTransfer.getData('text/plain'), choice.key);
+    });
+    meanings.appendChild(meaning);
   });
 
-  board.append(promptsCol, choicesCol, pairsCol);
+  const wordsTitle = document.createElement('strong');
+  wordsTitle.className = 'matching-column-title';
+  wordsTitle.textContent = 'Words';
+  words.prepend(wordsTitle);
+  const meaningsTitle = document.createElement('strong');
+  meaningsTitle.className = 'matching-column-title';
+  meaningsTitle.textContent = 'Meanings';
+  meanings.prepend(meaningsTitle);
+  board.append(words, meanings);
   responseArea.append(board);
 
   const submit = makeSubmitButton('Check matches');
+  submit.disabled = true;
   submit.addEventListener('click', () => {
-    submitActivity(activity, { ...currentMatches });
+    submitActivity(activity, assignments);
   });
   responseArea.append(submit);
 }
@@ -1109,7 +1315,7 @@ function renderActivity() {
   document.getElementById('activity-number').textContent = questionNumber
     ? `Activity ${group.number} - Question ${questionNumber}`
     : `Activity ${group ? group.number : current + 1}`;
-  document.getElementById('skill-label').textContent = `${group ? group.title : 'Story activity'} - ${skillLabels[activity.skill] || 'Read for meaning'}`;
+  document.getElementById('skill-label').textContent = activityTitle(activity, group);
   const config = activityConfig(activity);
   const isGradeOnePhonics = config.presentation === 'grade1_phonics';
   const isMatchIt = activity.group_title === 'Match It!';
@@ -1171,6 +1377,7 @@ function markChoice(selectedButton, data) {
 function markMatchingAnswers(data) {
   const expectedAnswers = data.correct_answer;
   if (!expectedAnswers || typeof expectedAnswers !== 'object') return;
+
   responseArea.querySelectorAll('.drag-match-target').forEach((target) => {
     const promptKey = target.dataset.prompt;
     if (!promptKey) return;
@@ -1181,25 +1388,54 @@ function markMatchingAnswers(data) {
     badge.textContent = isCorrect ? 'Correct' : 'Incorrect';
     target.appendChild(badge);
   });
-  responseArea.querySelectorAll('.matching-prompt-card').forEach((card) => {
-    const promptKey = card.dataset.prompt;
-    const choiceKey = currentMatches[promptKey] || '';
-    const correctValue = String(expectedAnswers[promptKey] || '');
-    const isCorrect = choiceKey === correctValue;
-    card.classList.add(isCorrect ? 'match-correct' : 'match-wrong');
+
+  const gradeFourCards = responseArea.querySelectorAll('.matching-prompt-card');
+  if (gradeFourCards.length) {
+    gradeFourCards.forEach((card) => {
+      const promptKey = card.dataset.prompt;
+      const selection = window.sgilaCurrentMatches && window.sgilaCurrentMatches[promptKey];
+      const choiceKey = selection || card.dataset.choice || '';
+      const correctValue = String(expectedAnswers[promptKey] || '');
+      const isCorrect = choiceKey === correctValue;
+      card.classList.add(isCorrect ? 'match-correct' : 'match-wrong');
+
+      const badge = document.createElement('span');
+      badge.className = 'matching-result-badge';
+      badge.textContent = isCorrect ? 'Correct' : 'Incorrect';
+      card.appendChild(badge);
+    });
+    return;
+  }
+
+  responseArea.querySelectorAll('.matching-word').forEach((word) => {
+    const correctValue = String(expectedAnswers[word.dataset.prompt] || '');
+    const isCorrect = word.dataset.choice === correctValue;
+    word.classList.add(isCorrect ? 'match-correct' : 'match-wrong');
+    const badge = document.createElement('span');
+    badge.className = 'matching-result-badge';
+    badge.textContent = isCorrect ? 'Correct' : 'Incorrect';
+    word.appendChild(badge);
+  });
+  responseArea.querySelectorAll('.matching-row').forEach((row) => {
+    if (row.dataset.choice !== undefined) {
+      const correctValue = String(expectedAnswers[row.dataset.prompt] || '');
+      const isCorrect = row.dataset.choice === correctValue;
+      row.classList.add(isCorrect ? 'match-correct' : 'match-wrong');
+      const badge = document.createElement('span');
+      badge.className = 'matching-result-badge';
+      badge.textContent = isCorrect ? 'Correct' : 'Incorrect';
+      row.querySelector('strong').appendChild(badge);
+      return;
+    }
+    const select = row.querySelector('select');
+    const correctValue = String(expectedAnswers[select.dataset.prompt] || '');
+    const isCorrect = select.value === correctValue;
+    row.classList.add(isCorrect ? 'match-correct' : 'match-wrong');
 
     const badge = document.createElement('span');
     badge.className = 'matching-result-badge';
     badge.textContent = isCorrect ? 'Correct' : 'Incorrect';
-    card.appendChild(badge);
-
-    if (!isCorrect) {
-      const correctCard = responseArea.querySelector(`.matching-choice-card[data-choice="${correctValue}"]`);
-      const correction = document.createElement('span');
-      correction.className = 'matching-correction';
-      correction.textContent = `Correct match: ${correctCard ? correctCard.textContent : correctValue}`;
-      card.appendChild(correction);
-    }
+    row.querySelector('strong').appendChild(badge);
   });
 }
 
