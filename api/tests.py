@@ -1,5 +1,6 @@
 import json
 import re
+from datetime import timedelta
 from unittest.mock import patch
 from pathlib import Path
 
@@ -7,6 +8,7 @@ from django.contrib.auth.hashers import make_password
 from django.core import mail
 from django.core.management import call_command
 from django.test import Client, TestCase, override_settings
+from django.utils import timezone
 
 from api.curriculum_enrichment import (
     EXTRA_ACTIVITIES,
@@ -1338,6 +1340,142 @@ class SgilaFlowTests(TestCase):
         self.assertContains(response, f'/lessons/{lesson.id}/questions')
         self.assertContains(response, f'/lessons/{lesson.id}/pronunciation')
         self.assertContains(response, f'/lessons/{lesson.id}/spelling')
+
+
+class ChildReassignmentCooldownTests(TestCase):
+    def setUp(self):
+        self.client = Client()
+        self.parent = Parent.objects.create(
+            full_name='Test Parent',
+            email='cooldown-parent@example.com',
+            password=make_password('password123'),
+            accepted_popia=True,
+        )
+        self.subscription = Subscription.objects.create(
+            parent=self.parent,
+            plan_type='individual',
+            status='active',
+        )
+        self.first_child = Child.objects.create(
+            parent=self.parent,
+            username='firstcooldownchild',
+            name='First Learner',
+            age=7,
+            grade=1,
+            parent_email=self.parent.email,
+            password=make_password('password123'),
+        )
+        self.second_child = Child.objects.create(
+            parent=self.parent,
+            username='secondcooldownchild',
+            name='Second Learner',
+            age=7,
+            grade=1,
+            parent_email=self.parent.email,
+            password=make_password('password123'),
+            is_active=False,
+        )
+
+    def test_recent_manual_pause_blocks_different_child_but_allows_same_child(self):
+        from api.account_access import can_activate_child, child_reassignment_cooldown_until
+
+        self.first_child.deactivate(Child.DEACTIVATED_MANUAL)
+
+        self.assertFalse(can_activate_child(self.parent, child=self.second_child))
+        self.assertIsNotNone(child_reassignment_cooldown_until(self.parent, child=self.second_child))
+        self.assertTrue(can_activate_child(self.parent, child=self.first_child))
+
+    def test_expired_cooldown_releases_the_seat(self):
+        from api.account_access import can_activate_child, child_reassignment_cooldown_until
+
+        self.first_child.deactivate(Child.DEACTIVATED_MANUAL)
+        self.first_child.deactivated_at = timezone.now() - timedelta(days=4)
+        self.first_child.save(update_fields=['deactivated_at'])
+
+        self.assertTrue(can_activate_child(self.parent, child=self.second_child))
+        self.assertIsNone(child_reassignment_cooldown_until(self.parent, child=self.second_child))
+
+    def test_adding_a_paid_seat_bypasses_the_cooldown(self):
+        from api.account_access import can_activate_child, child_reassignment_cooldown_until
+
+        self.first_child.deactivate(Child.DEACTIVATED_MANUAL)
+        self.subscription.extra_active_seats = 1
+        self.subscription.save(update_fields=['extra_active_seats'])
+
+        self.assertTrue(can_activate_child(self.parent, child=self.second_child))
+        self.assertIsNone(child_reassignment_cooldown_until(self.parent, child=self.second_child))
+
+    def test_countdown_is_when_enough_cooling_seats_expire(self):
+        from api.account_access import can_activate_child, child_reassignment_cooldown_until
+
+        self.subscription.plan_type = 'family'
+        self.subscription.save(update_fields=['plan_type'])
+        self.first_child.deactivate(Child.DEACTIVATED_MANUAL)
+        self.first_child.deactivated_at = timezone.now() - timedelta(days=2)
+        self.first_child.save(update_fields=['deactivated_at'])
+        self.second_child.deactivate(Child.DEACTIVATED_MANUAL)
+        for index in range(2):
+            Child.objects.create(
+                parent=self.parent,
+                username=f'activecooldownchild{index}',
+                name=f'Active Learner {index}',
+                age=7,
+                grade=1,
+                parent_email=self.parent.email,
+                password=make_password('password123'),
+            )
+        target_child = Child.objects.create(
+            parent=self.parent,
+            username='targetcooldownchild',
+            name='Target Learner',
+            age=7,
+            grade=1,
+            parent_email=self.parent.email,
+            password=make_password('password123'),
+            is_active=False,
+        )
+
+        self.assertFalse(can_activate_child(self.parent, child=target_child))
+        self.assertEqual(
+            child_reassignment_cooldown_until(self.parent, child=target_child),
+            self.first_child.deactivated_at + timedelta(days=3),
+        )
+
+    def test_report_shows_cooldown_date_and_add_seat_option(self):
+        from api.account_access import CHILD_REASSIGNMENT_COOLDOWN
+
+        self.first_child.deactivate(Child.DEACTIVATED_MANUAL)
+        expected_date = timezone.localtime(
+            self.first_child.deactivated_at + CHILD_REASSIGNMENT_COOLDOWN
+        ).strftime('%d %B %Y').lstrip('0')
+        session = self.client.session
+        session['account_role'] = 'parent'
+        session['account_id'] = self.parent.id
+        session['account_name'] = self.parent.full_name
+        session.save()
+
+        response = self.client.get(f'/dashboard/{self.second_child.id}')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Seat cooling down')
+        self.assertContains(response, expected_date)
+        self.assertContains(response, '/subscription/add-seat')
+
+        same_child_response = self.client.get(f'/dashboard/{self.first_child.id}')
+
+        self.assertContains(same_child_response, 'You can reactivate First Learner now')
+        self.assertContains(same_child_response, 'Another learner can use this seat on')
+        self.assertContains(same_child_response, expected_date)
+
+        response = self.client.post(f'/dashboard/{self.second_child.id}/reactivate', follow=True)
+
+        self.second_child.refresh_from_db()
+        self.assertFalse(self.second_child.is_active)
+        self.assertContains(response, 'A learner was recently paused')
+        self.assertContains(response, expected_date)
+        self.assertContains(response, 'class="account-dialog cooldown-notice-dialog"')
+        self.assertContains(response, 'role="alertdialog"')
+        self.assertNotContains(response, 'class="alert alert-cooldown-popup error"')
 
 
 class CurriculumSeedTests(TestCase):
