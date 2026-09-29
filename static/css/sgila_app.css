@@ -8129,15 +8129,36 @@ body:not(.diagram-body) .comprehension-panel {
 
 body:not(.diagram-body) .question-meta {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
   gap: 16px;
   margin-bottom: 16px;
 }
 
-body:not(.diagram-body) .activity-number {
+body:not(.diagram-body) .question-meta-copy {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  min-width: 0;
+}
+
+body:not(.diagram-body) .question-meta-copy .activity-number,
+body:not(.diagram-body) .question-meta-copy .question-number {
+  display: inline;
+  width: auto;
+  height: auto;
+  padding: 0;
+  border-radius: 0;
+  background: transparent;
   color: var(--auto-23304a-t);
   font-weight: 900;
+  line-height: 1.3;
+}
+
+body:not(.diagram-body) .question-meta-copy .question-number {
+  color: var(--auto-14624c-t);
+  font-size: 1rem;
 }
 
 body:not(.diagram-body) .activity-stage {
@@ -8453,6 +8474,17 @@ body:not(.diagram-body) .matching-meaning {
   cursor: pointer;
 }
 
+body:not(.diagram-body) .matching-word {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+body:not(.diagram-body) .matching-word[hidden],
+body:not(.diagram-body) .matching-meaning[hidden] {
+  display: none;
+}
+
 body:not(.diagram-body) .matching-word:hover,
 body:not(.diagram-body) .matching-meaning:hover,
 body:not(.diagram-body) .matching-word:focus,
@@ -8590,9 +8622,38 @@ body:not(.diagram-body) .matching-pairs {
 }
 body:not(.diagram-body) .matching-pair {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 16px;
   padding: 8px 0;
+}
+body:not(.diagram-body) .matching-pair-card {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+  padding: 8px 12px;
+  border: 2px solid var(--auto-d8dee8-bd);
+  border-radius: 10px;
+  background: var(--surface);
+  color: var(--auto-23304a-t);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+body:not(.diagram-body) .matching-pair-card:focus-visible {
+  outline: 3px solid rgba(77, 110, 169, 0.35);
+  outline-offset: 2px;
+}
+body:not(.diagram-body) .matching-pair.match-correct .matching-result-badge {
+  border-color: #168b70;
+  background: #168b70;
+  color: var(--white);
+}
+body:not(.diagram-body) .matching-pair.match-wrong .matching-result-badge {
+  border-color: #d64552;
+  background: #d64552;
+  color: var(--white);
 }
 body:not(.diagram-body) .matching-prompt-card:hover,
 body:not(.diagram-body) .matching-choice-card:hover {
