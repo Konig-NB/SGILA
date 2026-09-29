@@ -268,7 +268,7 @@ function finishActivity(activity, score, possible, message, speakSummary = true)
   feedback.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
   if (speakSummary) speakFeedback(feedbackCopy.speechText, feedback);
   if (completedActivities.size === 6) {
-    document.getElementById('final-score-button').hidden = false;
+    const finalButton = document.getElementById('final-score-button');
     completionPayload = {
       total_score: totalScore,
       total_possible: totalPossible,
@@ -282,6 +282,10 @@ function finishActivity(activity, score, possible, message, speakSummary = true)
       })),
     };
     completionRequest = saveActivityResults();
+    finalButton.hidden = false;
+    finalButton.disabled = false;
+    finalButton.textContent = 'View final score';
+    openFinalScoreDashboard(true);
   }
   updateProgress();
 }
@@ -758,20 +762,27 @@ setupQuestionPages(activitySections[2], '.truth-card');
 setupQuestionPages(activitySections[4], '.listen-spell-row');
 const finalScorePanel = document.createElement('div'); finalScorePanel.id = 'final-score-panel'; finalScorePanel.className = 'final-score-panel'; finalScorePanel.hidden = true;
 const finalScoreButton = document.createElement('button'); finalScoreButton.id = 'final-score-button'; finalScoreButton.type = 'button'; finalScoreButton.className = 'btn btn-primary btn-large btn-full'; finalScoreButton.textContent = 'View final score'; finalScoreButton.hidden = true;
-finalScoreButton.addEventListener('click', async () => {
+
+async function openFinalScoreDashboard(autoOpen = false) {
   finalScoreButton.disabled = true;
-  finalScoreButton.textContent = 'Saving final score...';
+  if (!autoOpen) {
+    finalScoreButton.textContent = 'Saving final score...';
+  }
   try {
     const response = await (completionRequest || saveActivityResults());
-    if (!response.ok) throw new Error('Could not save final score.');
-    const lessonId = document.querySelector('.grade3-activities').dataset.lessonId;
-    window.location.assign(`/lessons/${lessonId}/results`);
+    if (!response || !response.ok) throw new Error('Could not save final score.');
+    const lessonId = document.querySelector('.grade3-activities')?.dataset.lessonId;
+    if (lessonId) {
+      window.location.assign(`/lessons/${lessonId}/results`);
+    }
   } catch {
     completionRequest = null;
     finalScoreButton.disabled = false;
     finalScoreButton.textContent = 'Retry final score';
   }
-});
+}
+
+finalScoreButton.addEventListener('click', () => openFinalScoreDashboard(false));
 const navigation = document.createElement('div'); navigation.className = 'activity-navigation';
 const previous = document.createElement('button'); previous.type = 'button'; previous.className = 'btn btn-light'; previous.textContent = 'Previous activity';
 const next = document.createElement('button'); next.type = 'button'; next.className = 'btn btn-primary'; next.textContent = 'Next activity';
