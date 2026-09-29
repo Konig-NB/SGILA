@@ -12597,6 +12597,40 @@ body:not(.diagram-body) .learner-activation-btn:not(.learner-activation-btn--rea
   color: #12323f !important;
 }
 
+[data-theme="dark"] body:not(.diagram-body) .cooldown-notice-dialog {
+  border-color: var(--line);
+  color: var(--ink);
+  background: var(--surface);
+  box-shadow: 0 28px 80px rgba(0, 0, 0, .42);
+}
+
+[data-theme="dark"] body:not(.diagram-body) .cooldown-notice-dialog::backdrop {
+  background: rgba(5, 17, 25, .76);
+}
+
+[data-theme="dark"] body:not(.diagram-body) .cooldown-notice-dialog .account-dialog-heading h2 {
+  color: var(--ink);
+}
+
+[data-theme="dark"] body:not(.diagram-body) .cooldown-notice-dialog .account-dialog-form > p {
+  color: var(--muted);
+}
+
+[data-theme="dark"] body:not(.diagram-body) .cooldown-notice-dialog .account-dialog-icon {
+  background: var(--sun);
+  color: #12323f;
+}
+
+[data-theme="dark"] body:not(.diagram-body) .cooldown-notice-dialog .btn-light {
+  border-color: var(--line);
+  color: var(--ink);
+  background: #294b57;
+}
+
+[data-theme="dark"] body:not(.diagram-body) .cooldown-notice-dialog .btn-light:hover {
+  background: #365f6c;
+}
+
 /* Grade 3 activity workbook layout. */
 body:not(.diagram-body) .grade3-activities {
   max-width: 980px;

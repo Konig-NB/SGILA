@@ -30,7 +30,31 @@
       </section>
     {% else %}
       <section class="learner-activation-row learner-activation-row--paused" role="status">
-        {% if child.deactivated_reason == 'plan_capacity' %}
+        {% if activation_cooldown_until %}
+          <span class="lr-paused-badge">Seat cooling down</span>
+          <span>
+            A learner was recently paused. {{ child.name }} can be activated on {{ activation_cooldown_until|date:"j F Y" }}.
+          </span>
+          <form method="post" action="/dashboard/{{ child.id }}/reactivate" class="learner-activation-form"
+            data-confirm-title="Activate learner?"
+            data-confirm-message="Activate {{ child.name|escapejs }}'s profile?">
+            {% csrf_token %}
+            <button type="submit" class="btn learner-activation-btn learner-activation-btn--reactivate">Activate learner</button>
+          </form>
+          <a href="/subscription/add-seat" class="btn btn-light learner-activation-btn">Add a seat</a>
+        {% elif seat_reassignment_cooldown_until and child.deactivated_reason == 'manual' %}
+          <span class="lr-paused-badge">Seat cooling down</span>
+          <span>
+            You can reactivate {{ child.name }} now. Another learner can use this seat on {{ seat_reassignment_cooldown_until|date:"j F Y" }}.
+          </span>
+          <form method="post" action="/dashboard/{{ child.id }}/reactivate" class="learner-activation-form"
+            data-confirm-title="Reactivate learner?"
+            data-confirm-message="Reactivate {{ child.name|escapejs }}'s profile?">
+            {% csrf_token %}
+            <button type="submit" class="btn learner-activation-btn learner-activation-btn--reactivate">Reactivate learner</button>
+          </form>
+          <a href="/subscription/add-seat" class="btn btn-light learner-activation-btn">Add a seat</a>
+        {% elif child.deactivated_reason == 'plan_capacity' %}
           <span class="lr-paused-badge">Plan full</span>
           <span>
             {{ child.name }}'s profile is over your plan's {{ plan_cap }}-learner limit and cannot sign in.

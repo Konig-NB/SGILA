@@ -70,6 +70,7 @@ from api.models import (
 from api.account_access import (
     active_child_count,
     can_activate_child,
+    child_reassignment_cooldown_until,
     child_access_status,
     linked_parent_for_child,
     plan_active_child_cap,
@@ -562,11 +563,15 @@ def register_learner(request):
     if parent and not can_activate_child(parent, child=child):
         cap = plan_active_child_cap(parent)
         child.deactivate(Child.DEACTIVATED_PLAN_CAPACITY)
+        cooldown_until = child_reassignment_cooldown_until(parent, child=child)
+        if cooldown_until:
+            available_on = timezone.localtime(cooldown_until).strftime('%d %B %Y').lstrip('0')
+            reason = f"A learner was recently paused. This profile can be activated after {available_on}, or sooner by adding a seat."
+        else:
+            reason = f"Your parent's plan already has {cap} active learners."
         messages.warning(
             request,
-            f"Profile created, but your parent's plan already has {cap} active learners. "
-            "Ask your parent to deactivate another learner, or add a seat to the plan, "
-            "before signing in.",
+            f"Profile created, but it is paused. {reason} Ask your parent to update the plan before signing in.",
         )
         return redirect('/login?role=learner')
 
@@ -1400,12 +1405,16 @@ def parent_add_child(request):
                 messages.success(request, 'Child profile added.')
             else:
                 cap = plan_active_child_cap(parent)
+                cooldown_until = child_reassignment_cooldown_until(parent, child=child)
                 child.deactivate(Child.DEACTIVATED_PLAN_CAPACITY)
+                if cooldown_until:
+                    available_on = timezone.localtime(cooldown_until).strftime('%d %B %Y').lstrip('0')
+                    reason = f"A learner was recently paused. {child.name} can be activated after {available_on}, or sooner by adding a seat."
+                else:
+                    reason = f"Your plan already has {cap} active learners."
                 messages.warning(
                     request,
-                    f"Child profile added, but your plan already has {cap} active learners. "
-                    f"{child.name} is saved but not active — deactivate another learner or add "
-                    "a seat to your plan to give them access.",
+                    f"Child profile added, but it is paused. {reason}",
                 )
             return redirect('/parent/dashboard')
 
@@ -3261,11 +3270,16 @@ def dashboard_page(request, child_id):
     can_manage_activation = role == 'parent'
     capacity_has_room = True
     plan_cap = None
-    if can_manage_activation and child.deactivated_reason == Child.DEACTIVATED_PLAN_CAPACITY:
+    activation_cooldown_until = None
+    seat_reassignment_cooldown_until = None
+    if can_manage_activation:
         parent = linked_parent_for_child(child)
         if parent:
             plan_cap = plan_active_child_cap(parent)
-            capacity_has_room = can_activate_child(parent, child=child)
+            if not child.is_active:
+                capacity_has_room = can_activate_child(parent, child=child)
+                activation_cooldown_until = child_reassignment_cooldown_until(parent, child=child)
+                seat_reassignment_cooldown_until = child_reassignment_cooldown_until(parent)
 
     return render(request, 'dashboard.html', {
         'child': child,
@@ -3283,6 +3297,8 @@ def dashboard_page(request, child_id):
         'can_manage_activation': can_manage_activation,
         'plan_cap': plan_cap,
         'capacity_has_room': capacity_has_room,
+        'activation_cooldown_until': activation_cooldown_until,
+        'seat_reassignment_cooldown_until': seat_reassignment_cooldown_until,
     })
 
 
@@ -3316,11 +3332,19 @@ def reactivate_child(request, child_id):
         parent = linked_parent_for_child(child)
         if parent and not can_activate_child(parent, child=child):
             cap = plan_active_child_cap(parent)
-            messages.error(
-                request,
-                f"Your plan already has {cap} active learners. Deactivate another "
-                f"learner first, or add a seat to your plan to activate {child.name} too.",
-            )
+            cooldown_until = child_reassignment_cooldown_until(parent, child=child)
+            if cooldown_until:
+                available_on = timezone.localtime(cooldown_until).strftime('%d %B %Y').lstrip('0')
+                message = (
+                    f"A learner was recently paused. To activate a different learner now, add a seat. "
+                    f"Otherwise, {child.name} can be activated on {available_on}."
+                )
+            else:
+                message = (
+                    f"Your plan already has {cap} active learners. Deactivate another "
+                    f"learner first, or add a seat to activate {child.name} too."
+                )
+            messages.error(request, message, extra_tags='cooldown-popup')
             return redirect(f'/dashboard/{child.id}')
         child.reactivate()
     messages.success(request, f'{child.name}\u2019s profile is active again.')

@@ -1,6 +1,9 @@
 """Central account and learner access decisions used by web and API views."""
 
+from datetime import timedelta
+
 from django.db.models import Q
+from django.utils import timezone
 
 from .models import Child, Parent, Subscription
 
@@ -9,6 +12,7 @@ ACCESS_PARENT_DEACTIVATED = 'parent_deactivated'
 ACCESS_TEACHER_DEACTIVATED = 'teacher_deactivated'
 ACCESS_LEARNER_DEACTIVATED = 'learner_deactivated'
 ACCESS_SUBSCRIPTION_INACTIVE = 'subscription_inactive'
+CHILD_REASSIGNMENT_COOLDOWN = timedelta(days=3)
 
 # Base number of learners a plan allows active at once, before any paid
 # extra seats (Subscription.extra_active_seats). None means uncapped.
@@ -62,6 +66,42 @@ def active_child_count(parent, exclude_child_id=None):
     return queryset.count()
 
 
+def child_reassignment_cooldown_until(parent, child=None, now=None):
+    """Return when a recently paused learner's seat can be reassigned, if
+    that cooldown is the reason another learner cannot use available capacity.
+    """
+    cap = plan_active_child_cap(parent)
+    if cap is None:
+        return None
+
+    exclude_id = child.id if child else None
+    active_count = active_child_count(parent, exclude_child_id=exclude_id)
+    if active_count >= cap:
+        return None
+
+    now = now or timezone.now()
+    cutoff = now - CHILD_REASSIGNMENT_COOLDOWN
+    cooling_children = Child.objects.filter(
+        (Q(parent=parent) | Q(parent_email__iexact=parent.email)),
+        is_active=False,
+        deactivated_reason=Child.DEACTIVATED_MANUAL,
+        deactivated_at__gt=cutoff,
+    )
+    if exclude_id is not None:
+        cooling_children = cooling_children.exclude(id=exclude_id)
+    cooling_children = cooling_children.distinct()
+
+    cooling_count = cooling_children.count()
+    if active_count + cooling_count < cap:
+        return None
+
+    required_expirations = active_count + cooling_count - cap + 1
+    next_available_deactivation = cooling_children.order_by('deactivated_at').values_list(
+        'deactivated_at', flat=True
+    )[required_expirations - 1]
+    return next_available_deactivation + CHILD_REASSIGNMENT_COOLDOWN
+
+
 def can_activate_child(parent, child=None):
     """Whether one more of this parent's children can be made active right
     now. Pass the child being (re)activated so it doesn't count against its
@@ -71,7 +111,20 @@ def can_activate_child(parent, child=None):
     if cap is None:
         return True
     exclude_id = child.id if child else None
-    return active_child_count(parent, exclude_child_id=exclude_id) < cap
+    current_active = active_child_count(parent, exclude_child_id=exclude_id)
+    if current_active >= cap:
+        return False
+
+    cutoff = timezone.now() - CHILD_REASSIGNMENT_COOLDOWN
+    cooling_children = Child.objects.filter(
+        (Q(parent=parent) | Q(parent_email__iexact=parent.email)),
+        is_active=False,
+        deactivated_reason=Child.DEACTIVATED_MANUAL,
+        deactivated_at__gt=cutoff,
+    )
+    if exclude_id is not None:
+        cooling_children = cooling_children.exclude(id=exclude_id)
+    return current_active + cooling_children.distinct().count() < cap
 
 
 def child_access_status(child):
