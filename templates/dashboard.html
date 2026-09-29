@@ -37,10 +37,11 @@
             {% if not capacity_has_room %}Deactivate another learner, or add a seat to your plan, to activate {{ child.name }}.{% endif %}
           </span>
           <form method="post" action="/dashboard/{{ child.id }}/reactivate" class="learner-activation-form"
-            data-confirm-title="Activate learner?"
-            data-confirm-message="Activate {{ child.name|escapejs }}'s profile?">
+            data-confirm-title="{% if capacity_has_room %}Activate learner?{% else %}Plan full{% endif %}"
+            data-confirm-message="{% if capacity_has_room %}Activate {{ child.name|escapejs }}'s profile?{% else %}Your plan already has {{ plan_cap }} active learners. Deactivate another learner or add a seat before activating {{ child.name|escapejs }}.{% endif %}"
+            data-blocked="{% if capacity_has_room %}false{% else %}true{% endif %}">
             {% csrf_token %}
-            <button type="submit" class="btn learner-activation-btn learner-activation-btn--reactivate" {% if not capacity_has_room %}disabled{% endif %}>Activate learner</button>
+            <button type="submit" class="btn learner-activation-btn learner-activation-btn--reactivate">Activate learner</button>
           </form>
           {% if not capacity_has_room %}
             <a href="/subscription/add-seat" class="btn btn-light learner-activation-btn">Add a seat</a>
@@ -214,7 +215,11 @@
       pendingForm = form;
       title.textContent = form.dataset.confirmTitle || 'Please confirm';
       message.textContent = form.dataset.confirmMessage || 'Are you sure you want to continue?';
-      continueButton.classList.toggle('is-reactivate', form.action.endsWith('/reactivate'));
+      const isBlocked = form.dataset.blocked === 'true';
+      continueButton.hidden = isBlocked;
+      continueButton.style.display = isBlocked ? 'none' : '';
+      cancelButton.textContent = isBlocked ? 'Close' : 'Cancel';
+      continueButton.classList.toggle('is-reactivate', !isBlocked && form.action.endsWith('/reactivate'));
       if (typeof dialog.showModal === 'function') dialog.showModal();
       else dialog.setAttribute('open', '');
       cancelButton.focus();
