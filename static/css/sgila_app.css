@@ -6259,11 +6259,73 @@ body:not(.diagram-body) .gc-banner-list {
   gap: 10px;
 }
 
+body:not(.diagram-body) .gc-confirm-card {
+  display: grid;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid rgba(220, 225, 238, .48);
+  border-radius: 12px;
+  background: rgba(var(--surface-rgb), .58);
+}
+
+body:not(.diagram-body) .gc-confirm-card-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 8px;
+}
+
+body:not(.diagram-body) .gc-confirm-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+body:not(.diagram-body) .gc-confirm-inline-form {
+  display: inline-flex;
+  margin: 0;
+}
+
+body:not(.diagram-body) .gc-confirm-actions .lr-btn,
+body:not(.diagram-body) .gc-confirm-row .lr-btn {
+  min-height: 42px;
+  padding: 10px 16px;
+  border-radius: 12px;
+  font-size: .82rem;
+}
+
+body:not(.diagram-body) .gc-btn-primary,
+body:not(.diagram-body) .gc-confirm-btn {
+  border: 1px solid #35b88e !important;
+  color: #103d3c !important;
+  background: #68d8bd !important;
+  box-shadow: 0 2px 0 rgba(16, 61, 60, .16);
+}
+
+body:not(.diagram-body) .gc-btn-secondary {
+  border: 1px solid #d4a72c !important;
+  color: #493408 !important;
+  background: #f4c547 !important;
+  box-shadow: 0 2px 0 rgba(73, 52, 8, .16);
+}
+
+body:not(.diagram-body) .gc-confirm-fallback {
+  color: #9a6b12;
+  font-size: .82rem;
+  font-weight: 800;
+}
+
+body:not(.diagram-body) .gc-confirm-fallback summary {
+  width: fit-content;
+  cursor: pointer;
+}
+
 body:not(.diagram-body) .gc-confirm-row {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 10px;
+  margin-top: 8px;
   padding: 10px 14px;
   border: 1px solid rgba(220, 225, 238, .84);
   border-radius: 14px;
@@ -6285,6 +6347,12 @@ body:not(.diagram-body) .gc-confirm-label {
   color: #6d7482;
   font-size: .86rem;
   font-weight: 700;
+}
+
+body:not(.diagram-body) .gc-confirm-select-label {
+  color: inherit;
+  font-size: .8rem;
+  font-weight: 800;
 }
 
 body:not(.diagram-body) .gc-confirm-select {
@@ -6733,6 +6801,145 @@ body:not(.diagram-body) .lr-btn {
 [data-theme="dark"] body:not(.diagram-body) .lr-btn {
   background: var(--surface) !important;
   color: var(--ink) !important;
+}
+
+[data-theme="dark"] body:not(.diagram-body) .gc-banner {
+  border-color: rgba(218, 174, 52, .58);
+  background: linear-gradient(135deg, rgba(75, 62, 31, .76), rgba(20, 66, 59, .82));
+  box-shadow: 0 14px 34px rgba(0, 0, 0, .16);
+}
+
+[data-theme="dark"] body:not(.diagram-body) .gc-banner-head strong,
+[data-theme="dark"] body:not(.diagram-body) .gc-confirm-fallback {
+  color: #ffc83d;
+}
+
+[data-theme="dark"] body:not(.diagram-body) .gc-banner-head p,
+[data-theme="dark"] body:not(.diagram-body) .gc-confirm-current {
+  color: #a9becd;
+}
+
+[data-theme="dark"] body:not(.diagram-body) .gc-confirm-card {
+  border-color: rgba(135, 174, 184, .17);
+  background: rgba(24, 57, 68, .84);
+}
+
+[data-theme="dark"] body:not(.diagram-body) .gc-confirm-name {
+  color: #f3f5f4;
+}
+
+[data-theme="dark"] body:not(.diagram-body) .gc-btn-primary,
+[data-theme="dark"] body:not(.diagram-body) .gc-confirm-btn {
+  color: #111111 !important;
+  background: #68d8bd !important;
+}
+
+[data-theme="dark"] body:not(.diagram-body) .gc-btn-secondary {
+  border: 1px solid #d6aa32 !important;
+  color: #ffc83d !important;
+  background: rgba(14, 52, 69, .86) !important;
+  box-shadow: inset 0 0 0 1px rgba(214, 170, 50, .12);
+}
+
+[data-theme="dark"] body:not(.diagram-body) .gc-confirm-row {
+  border-color: rgba(113, 161, 174, .22);
+  background: rgba(14, 52, 69, .76);
+}
+
+[data-theme="dark"] body:not(.diagram-body) .gc-confirm-select-label {
+  color: #dce6e8;
+}
+
+[data-theme="dark"] body:not(.diagram-body) .gc-confirm-select {
+  border-color: rgba(113, 161, 174, .36);
+  color: #eaf1f2;
+  background: #183b4b;
+  color-scheme: dark;
+}
+
+body:not(.diagram-body) .gc-confirm-dialog {
+  width: min(460px, calc(100% - 32px));
+  max-height: calc(100vh - 32px);
+  overflow: auto;
+  padding: clamp(20px, 4vw, 28px);
+  border: 1px solid rgba(112, 136, 158, .34);
+  border-radius: 18px;
+  color: var(--ink);
+  background: var(--surface);
+  box-shadow: 0 28px 80px rgba(0, 0, 0, .32);
+}
+
+body:not(.diagram-body) .gc-confirm-dialog::backdrop {
+  background: rgba(7, 19, 29, .68);
+}
+
+body:not(.diagram-body) .gc-confirm-dialog-card {
+  display: grid;
+  gap: 10px;
+}
+
+body:not(.diagram-body) .gc-confirm-dialog-card .eyebrow,
+body:not(.diagram-body) .gc-confirm-dialog-card h2,
+body:not(.diagram-body) .gc-confirm-dialog-card p {
+  margin: 0;
+}
+
+body:not(.diagram-body) .gc-confirm-dialog-card h2 {
+  color: var(--ink);
+}
+
+body:not(.diagram-body) .gc-confirm-dialog-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+body:not(.diagram-body) .gc-confirm-dialog-actions .lr-btn {
+  min-height: 42px;
+  padding: 10px 16px;
+  border-radius: 12px;
+}
+
+body:not(.diagram-body) .gc-dialog-cancel {
+  border: 1px solid rgba(112, 136, 158, .48);
+  background: transparent;
+}
+
+body:not(.diagram-body) .gc-dialog-confirm {
+  border: 1px solid transparent;
+  color: #103d3c;
+  background: #68d8bd;
+}
+
+[data-theme="dark"] body:not(.diagram-body) .gc-confirm-dialog {
+  border-color: rgba(113, 161, 174, .4);
+  color: #eaf1f2;
+  background: #183b4b;
+}
+
+[data-theme="dark"] body:not(.diagram-body) .gc-confirm-dialog-card .eyebrow {
+  color: #ffc83d;
+}
+
+[data-theme="dark"] body:not(.diagram-body) .gc-confirm-dialog-card h2 {
+  color: #f3f5f4;
+}
+
+[data-theme="dark"] body:not(.diagram-body) .gc-dialog-cancel {
+  border: 1px solid rgba(153, 181, 190, .4);
+  color: #eaf1f2 !important;
+  background: rgba(14, 52, 69, .86) !important;
+}
+
+[data-theme="dark"] body:not(.diagram-body) .gc-dialog-confirm {
+  color: #103d3c !important;
+  background: #68d8bd !important;
+}
+
+[data-theme="dark"] body:not(.diagram-body) .gc-confirm-dialog::backdrop {
+  background: rgba(4, 16, 24, .76);
 }
 
 body:not(.diagram-body) .main-content:has(.single-learner-report) {
@@ -11989,6 +12196,16 @@ body:not(.diagram-body) .account-status-banner a {
   font-weight: 900;
 }
 
+[data-theme="dark"] body:not(.diagram-body) .account-status-banner {
+  border-color: rgba(218, 174, 52, .48);
+  color: #e5edef;
+  background: rgba(23, 44, 48, .88);
+}
+
+[data-theme="dark"] body:not(.diagram-body) .account-status-banner a {
+  color: #ffc83d;
+}
+
 body:not(.diagram-body) .learner-activation-row {
   display: flex;
   flex-wrap: wrap;
@@ -12010,6 +12227,12 @@ body:not(.diagram-body) .learner-activation-row--paused {
   color: #6a3d08;
 }
 
+[data-theme="dark"] body:not(.diagram-body) .learner-activation-row--paused {
+  border-color: rgba(248, 200, 75, .45);
+  background: rgba(var(--auto-rgb-255-244-199), .28);
+  color: #f5df9c;
+}
+
 body:not(.diagram-body) .learner-activation-row .lr-paused-badge {
   margin-top: 0;
 }
@@ -12019,7 +12242,7 @@ body:not(.diagram-body) .learner-activation-btn {
 }
 
 body:not(.diagram-body) .learner-activation-btn--reactivate {
-  color: #fff;
+  color: #000;
   background: #30cb7f;
 }
 
