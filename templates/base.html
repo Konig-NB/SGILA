@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>{% block title %}SGILA{% endblock %}</title>
   {% load static %}
-  <link rel="stylesheet" href="{% static 'css/sgila_app.css' %}?v=dark-theme-dashboard-20260927-8">
+  <link rel="stylesheet" href="{% static 'css/sgila_app.css' %}?v=help-category-disclosures-20260930-02">
   <script>
     // Applied before paint so the page never flashes the wrong theme on load.
     (function () {
@@ -26,8 +26,7 @@
     {% if request.path == '/' and not request.session.account_role %}
     <div class="home-nav-links" aria-label="Homepage sections">
       <a href="#stories">Stories</a>
-      <a href="#family-entry">For families</a>
-      <a href="#school-entry">For schools</a>
+      <a href="/help/">Help and Feedback</a>
     </div>
     {% endif %}
     <div class="nav-links">

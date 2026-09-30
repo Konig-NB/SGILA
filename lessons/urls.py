@@ -1,8 +1,10 @@
 from django.urls import path
 from . import views
+from api.help_center_views import help_center_page
 
 urlpatterns = [
     path('', views.welcome, name='welcome'),
+    path('help/', help_center_page, name='help-center'),
     path('terms', views.terms_page, name='terms'),
     path('ui-flow', views.ui_flow_diagram, name='ui-flow-diagram'),
     path('download/ui-flow-pdf', views.download_ui_flow_pdf, name='download-ui-flow-pdf'),
