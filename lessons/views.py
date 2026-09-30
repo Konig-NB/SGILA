@@ -3029,6 +3029,12 @@ def add_seat_page(request):
 
     parent = get_object_or_404(Parent, id=request.session['account_id'])
     subscription = get_object_or_404(Subscription, parent=parent)
+    target_child_id = request.POST.get('child_id') or request.GET.get('child_id')
+    if target_child_id:
+        get_object_or_404(
+            Child.objects.filter(Q(parent=parent) | Q(parent_email__iexact=parent.email)),
+            id=target_child_id,
+        )
 
     if subscription.plan_type not in ('individual', 'family'):
         messages.error(request, 'Extra seats are not available on this plan.')
@@ -3045,12 +3051,16 @@ def add_seat_page(request):
         else:
             subscription.pending_seat_quantity = quantity
             subscription.save(update_fields=['pending_seat_quantity'])
-            return redirect('/subscription/add-seat/payment')
+            payment_url = '/subscription/add-seat/payment'
+            if target_child_id:
+                payment_url += f'?child_id={target_child_id}'
+            return redirect(payment_url)
 
     return render(request, 'add_seat.html', {
         'subscription': subscription,
         'seat_price': Subscription.SEAT_PRICE,
         'active_learner_cap': plan_active_child_cap(parent),
+        'target_child_id': target_child_id,
     })
 
 
@@ -3067,6 +3077,13 @@ def add_seat_payment_page(request):
 
     parent = get_object_or_404(Parent, id=request.session['account_id'])
     subscription = get_object_or_404(Subscription, parent=parent)
+    target_child_id = request.POST.get('child_id') or request.GET.get('child_id')
+    target_child = None
+    if target_child_id:
+        target_child = get_object_or_404(
+            Child.objects.filter(Q(parent=parent) | Q(parent_email__iexact=parent.email)),
+            id=target_child_id,
+        )
 
     quantity = subscription.pending_seat_quantity
     if quantity < 1:
@@ -3080,6 +3097,7 @@ def add_seat_payment_page(request):
         'seat_price': Subscription.SEAT_PRICE,
         'total_price': total_price,
         'has_payment_on_file': has_payment_on_file,
+        'target_child_id': target_child_id,
     }
 
     if request.method == 'POST':
@@ -3119,6 +3137,8 @@ def add_seat_payment_page(request):
         subscription.extra_active_seats += quantity
         subscription.pending_seat_quantity = 0
         subscription.save()
+        if target_child and not target_child.is_active:
+            target_child.reactivate()
 
         messages.success(
             request,

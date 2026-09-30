@@ -1820,6 +1820,36 @@ class ChildReassignmentCooldownTests(TestCase):
         self.assertTrue(can_activate_child(self.parent, child=self.second_child))
         self.assertIsNone(child_reassignment_cooldown_until(self.parent, child=self.second_child))
 
+    def test_add_seat_purchase_activates_the_learner_that_needed_it(self):
+        self.first_child.deactivate(Child.DEACTIVATED_MANUAL)
+        self.subscription.card_last4 = '4242'
+        self.subscription.save(update_fields=['card_last4'])
+        session = self.client.session
+        session['account_role'] = 'parent'
+        session['account_id'] = self.parent.id
+        session.save()
+
+        response = self.client.post(
+            f'/subscription/add-seat?child_id={self.second_child.id}',
+            {'quantity': 1},
+        )
+
+        self.assertRedirects(
+            response,
+            f'/subscription/add-seat/payment?child_id={self.second_child.id}',
+        )
+        response = self.client.post(
+            f'/subscription/add-seat/payment?child_id={self.second_child.id}',
+            {'action': 'use_on_file', 'child_id': self.second_child.id},
+        )
+
+        self.assertRedirects(response, '/parent/dashboard')
+        self.second_child.refresh_from_db()
+        self.subscription.refresh_from_db()
+        self.assertTrue(self.second_child.is_active)
+        self.assertEqual(self.subscription.extra_active_seats, 1)
+        self.assertFalse(self.first_child.is_active)
+
     def test_countdown_is_when_enough_cooling_seats_expire(self):
         from api.account_access import can_activate_child, child_reassignment_cooldown_until
 
@@ -1875,6 +1905,7 @@ class ChildReassignmentCooldownTests(TestCase):
         self.assertContains(response, 'Seat cooling down')
         self.assertContains(response, expected_date)
         self.assertContains(response, '/subscription/add-seat')
+        self.assertContains(response, f'?child_id={self.second_child.id}')
 
         same_child_response = self.client.get(f'/dashboard/{self.first_child.id}')
 
