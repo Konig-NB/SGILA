@@ -1345,6 +1345,14 @@ def parent_add_child(request):
     if request.session.get('account_role') != 'parent':
         return redirect('/login?role=parent')
     parent = get_object_or_404(Parent, id=request.session['account_id'])
+    current_year = timezone.localdate().year
+    oldest_birth_year = current_year - 12
+    youngest_birth_year = current_year - 5
+    form_context = {
+        'parent': parent,
+        'date_of_birth_min': f'{oldest_birth_year}-01-01',
+        'date_of_birth_max': f'{youngest_birth_year}-12-31',
+    }
 
     if request.method == 'POST':
         username = normalize_child_username(request.POST.get('username'))
@@ -1354,20 +1362,23 @@ def parent_add_child(request):
             messages.error(request, 'That username is already taken. Please choose another one.')
         else:
             date_of_birth_raw = (request.POST.get('date_of_birth') or '').strip()
+            if not date_of_birth_raw:
+                messages.error(request, 'Please enter a date of birth.')
+                return render(request, 'add_child.html', form_context)
             date_of_birth = parse_date(date_of_birth_raw) if date_of_birth_raw else None
-            if date_of_birth_raw and not date_of_birth:
+            if not date_of_birth:
                 messages.error(request, 'Please enter a valid date of birth.')
-                return render(request, 'add_child.html', {'parent': parent})
-            if date_of_birth and date_of_birth > timezone.localdate():
-                messages.error(request, 'Date of birth cannot be in the future.')
-                return render(request, 'add_child.html', {'parent': parent})
+                return render(request, 'add_child.html', form_context)
+            if not oldest_birth_year <= date_of_birth.year <= youngest_birth_year:
+                messages.error(request, 'Child must be between 5 and 12 years old.')
+                return render(request, 'add_child.html', form_context)
 
             legacy_age = request.POST.get('age')
             try:
                 legacy_age = int(legacy_age) if legacy_age not in (None, '') else None
             except (TypeError, ValueError):
                 messages.error(request, 'Please enter a valid age.')
-                return render(request, 'add_child.html', {'parent': parent})
+                return render(request, 'add_child.html', form_context)
 
             first_name = request.POST.get('first_name', '').strip()
             last_name = request.POST.get('last_name', '').strip()
@@ -1378,7 +1389,7 @@ def parent_add_child(request):
                 teacher, teacher_class = resolve_class_code(class_code)
                 if not teacher:
                     messages.error(request, 'That teacher class code was not found.')
-                    return render(request, 'add_child.html', {'parent': parent})
+                    return render(request, 'add_child.html', form_context)
 
             child = Child.objects.create(
                 parent=parent,
@@ -1418,7 +1429,7 @@ def parent_add_child(request):
                 )
             return redirect('/parent/dashboard')
 
-    return render(request, 'add_child.html', {'parent': parent})
+    return render(request, 'add_child.html', form_context)
 
 
 # ───────────────────────── AI story generation ─────────────────────────
