@@ -587,6 +587,7 @@ class SgilaFlowTests(TestCase):
             "username": "lethum",
             "first_name": "Lethu",
             "last_name": "Mokoena",
+            "date_of_birth": f"{timezone.localdate().year - 7}-06-01",
             "age": 7,
             "grade": 1,
             "school_name": "",
@@ -601,6 +602,71 @@ class SgilaFlowTests(TestCase):
         self.assertEqual(child.teacher, teacher)
         self.assertEqual(child.teacher_class, teacher_class)
         self.assertEqual(child.school_name, teacher.school_name)
+
+    def test_parent_add_child_enforces_five_to_twelve_birth_year_window(self):
+        parent = Parent.objects.create(
+            full_name="Nomsa Dlamini",
+            email="nomsa@example.com",
+            password="hash",
+            accepted_popia=True,
+        )
+        session = self.client.session
+        session['account_role'] = 'parent'
+        session['account_id'] = parent.id
+        session['account_name'] = parent.full_name
+        session.save()
+        current_year = timezone.localdate().year
+
+        for username, birth_year in (
+            ('youngest', current_year - 5),
+            ('oldest', current_year - 12),
+        ):
+            with self.subTest(username=username):
+                response = self.client.post('/parent/add-child', {
+                    'username': username,
+                    'first_name': 'Test',
+                    'last_name': 'Learner',
+                    'date_of_birth': f'{birth_year}-06-01',
+                    'grade': 1,
+                    'password': 'password123',
+                })
+                self.assertEqual(response.status_code, 302)
+                self.assertTrue(Child.objects.filter(username__iexact=username).exists())
+
+        for username, birth_year in (
+            ('too-young', current_year - 4),
+            ('too-old', current_year - 13),
+        ):
+            with self.subTest(username=username):
+                response = self.client.post('/parent/add-child', {
+                    'username': username,
+                    'first_name': 'Test',
+                    'last_name': 'Learner',
+                    'date_of_birth': f'{birth_year}-06-01',
+                    'grade': 1,
+                    'password': 'password123',
+                })
+                self.assertEqual(response.status_code, 200)
+                self.assertFalse(Child.objects.filter(username__iexact=username).exists())
+
+    def test_parent_add_child_form_uses_current_five_to_twelve_year_bounds(self):
+        parent = Parent.objects.create(
+            full_name="Nomsa Dlamini",
+            email="nomsa@example.com",
+            password="hash",
+            accepted_popia=True,
+        )
+        session = self.client.session
+        session['account_role'] = 'parent'
+        session['account_id'] = parent.id
+        session['account_name'] = parent.full_name
+        session.save()
+
+        response = self.client.get('/parent/add-child')
+
+        current_year = timezone.localdate().year
+        self.assertContains(response, f'min="{current_year - 12}-01-01"')
+        self.assertContains(response, f'max="{current_year - 5}-12-31"')
 
     def test_parent_add_child_page_has_username_and_photo_upload(self):
         parent = Parent.objects.create(

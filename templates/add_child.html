@@ -27,7 +27,7 @@
     </div>
 
     <div class="two-col">
-      <label>Date of birth<input type="date" name="date_of_birth" max="{% now 'Y-m-d' %}" required></label>
+      <label>Date of birth<input type="date" name="date_of_birth" min="{{ date_of_birth_min }}" max="{{ date_of_birth_max }}" required></label>
       <label>Grade
         <select name="grade" required>
           <option value="">-- select --</option>
