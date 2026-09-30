@@ -84,6 +84,8 @@ def scores_for_record(record):
             for key, values in record.assessment_scores.items()
         }
         lesson = record.lesson
+        if lesson.grade == 3:
+            return {key: values for key, values in scores.items() if key.startswith('grade3_')}
         valid_skills = set(
             lesson.reading_activities.values_list('skill', flat=True)
         )
@@ -109,9 +111,7 @@ def scores_for_record(record):
             for key, values in scores.items()
             if key in valid_skills
         }
-        if record.lesson.grade == 3:
-            scores = {key: values for key, values in scores.items() if key.startswith('grade3_')}
-        elif not record.lesson.sequencing_activities.exists():
+        if not record.lesson.sequencing_activities.exists():
             scores.pop('sequencing', None)
         return scores
 

@@ -59,6 +59,57 @@ class ActivityMenuLabelTests(TestCase):
 
 
 class ActivityScoreReportingTests(TestCase):
+	def test_grade_three_completion_marks_appear_in_the_report(self):
+		parent = Parent.objects.create(
+			full_name='Grade Three Parent',
+			email='grade-three-parent@example.com',
+			password='not-a-real-password',
+		)
+		child = Child.objects.create(
+			parent=parent,
+			name='Grade Three Learner',
+			username='GradeThreeLearner',
+			grade=3,
+			parent_email=parent.email,
+			password='not-a-real-password',
+		)
+		lesson = Lesson.objects.create(title='Grade Three Story', grade=3)
+		client = Client()
+		session = client.session
+		session['account_role'] = 'learner'
+		session['account_id'] = child.id
+		session['child_id'] = child.id
+		session['child_grade'] = child.grade
+		session.save()
+		activity_scores = [
+			{'number': str(number), 'score': score, 'total': 5}
+			for number, score in enumerate([4, 3, 2, 5, 1, 4], start=1)
+		]
+
+		response = client.post(
+			f'/lessons/{lesson.id}/activities/complete',
+			data=json.dumps({
+				'total_score': 19,
+				'total_possible': 30,
+				'activity_scores': activity_scores,
+			}),
+			content_type='application/json',
+		)
+
+		self.assertEqual(response.status_code, 200)
+		record = Progress.objects.get(child=child, lesson=lesson)
+		self.assertEqual(
+			{row['key']: row['score'] for row in rows_for_record(record)},
+			{
+				'grade3_comprehension_check': 4,
+				'grade3_visual_match': 3,
+				'grade3_true_false': 2,
+				'grade3_word_detective': 5,
+				'grade3_listen_spell': 1,
+				'grade3_word_balloon': 4,
+			},
+		)
+
 	def test_missing_activity_is_excluded_from_stored_breakdown(self):
 		parent = Parent.objects.create(
 			full_name='Score Parent',
