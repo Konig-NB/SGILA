@@ -121,7 +121,11 @@ REST_FRAMEWORK = {
     'DEFAULT_RENDERER_CLASSES': [
         'rest_framework.renderers.JSONRenderer',
         'rest_framework.renderers.BrowsableAPIRenderer',
-    ]
+    ],
+    'DEFAULT_THROTTLE_RATES': {
+        'help_ticket': '5/hour',
+        'feedback': '5/hour',
+    },
 }
 
 # EMAIL (OTP delivery)
@@ -153,6 +157,7 @@ DEFAULT_FROM_EMAIL = os.environ.get(
     'DEFAULT_FROM_EMAIL',
     f'SGILA <{EMAIL_HOST_USER}>' if EMAIL_HOST_USER else 'SGILA <noreply@localhost>',
 )
+SUPPORT_EMAIL = os.environ.get('SUPPORT_EMAIL', 'sgila.support@gmail.com')
 
 # ─── JWT ───────────────────────────────────────────────────────────────────────
 # Access tokens are signed with SECRET_KEY via HS256.
