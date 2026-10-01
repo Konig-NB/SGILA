@@ -10,8 +10,23 @@ from .models import (
     Parent, Teacher, Child, Lesson, StoryPage, ComprehensionQuestion, ReadingActivity,
     VisualActivityItem, PronunciationWord, SpellingActivity, Progress,
     TeacherClass, Message, Subscription, PackageCode, AIStoryJob, GradeHistory,
+    Grade4StoryBlueprint, Grade4VocabularyItem,
     AccountActionOTP,
 )
+
+
+@admin.register(Grade4StoryBlueprint)
+class Grade4StoryBlueprintAdmin(admin.ModelAdmin):
+    list_display = ('name', 'genre', 'learning_focus', 'active')
+    list_filter = ('genre', 'active')
+    search_fields = ('name', 'setting', 'learning_focus')
+
+
+@admin.register(Grade4VocabularyItem)
+class Grade4VocabularyItemAdmin(admin.ModelAdmin):
+    list_display = ('word', 'term', 'part_of_speech', 'active')
+    list_filter = ('term', 'part_of_speech', 'active')
+    search_fields = ('word', 'meaning', 'example')
 
 @admin.register(PackageCode)
 class PackageCodeAdmin(admin.ModelAdmin):

@@ -4,7 +4,7 @@ from datetime import date, timedelta
 
 from django.db import models
 from django.utils import timezone
-
+from django.contrib.auth import get_user_model
 
 def capitalize_first(value):
     """Return text with its first non-space character capitalized."""
@@ -298,10 +298,14 @@ class Lesson(models.Model):
     """One lesson card shown on the home page."""
     title = models.CharField(max_length=200)
     grade = models.IntegerField()
+    character_description = models.TextField(blank=True)
     thumbnail_image = models.CharField(max_length=300, blank=True)
     curriculum_source = models.CharField(max_length=120, blank=True)
     source_attribution = models.TextField(blank=True)
     is_ai_generated = models.BooleanField(default=False)
+    # Grade 4 generation recipe (blueprint, retrieved vocabulary and activity mix)
+    # is retained with the story for traceability and future retrieval decisions.
+    generation_metadata = models.JSONField(default=dict, blank=True)
     # AI-generated stories belong to the learner who unlocked them. Workbook
     # lessons (and any shared/reviewed AI stories) have no owner and remain
     # available to every learner in the grade.
@@ -317,7 +321,13 @@ class Lesson(models.Model):
 
 class StoryPage(models.Model):
     """One page inside a story — text + image + audio."""
-    lesson = models.ForeignKey(Lesson, on_delete=models.CASCADE, related_name='pages')
+    lesson = models.ForeignKey(
+        Lesson,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='pages',
+    )
     page_number = models.IntegerField()
     text = models.TextField()
     image_url = models.CharField(max_length=300, blank=True)
@@ -1041,3 +1051,41 @@ class AIStoryJob(models.Model):
 
     def __str__(self):
         return f"AI story job for {self.child.name} (grade {self.grade}) — {self.status}"
+
+
+class Grade4StoryBlueprint(models.Model):
+    """Reusable, database-backed plot and learning constraints for Grade 4 AI stories."""
+
+    name = models.CharField(max_length=120, unique=True)
+    genre = models.CharField(max_length=40)
+    setting = models.CharField(max_length=160)
+    character_role = models.CharField(max_length=120)
+    challenge = models.TextField()
+    resolution_pattern = models.TextField()
+    learning_focus = models.CharField(max_length=120)
+    vocabulary_tags = models.JSONField(default=list, blank=True)
+    active = models.BooleanField(default=True)
+
+    class Meta:
+        ordering = ['name']
+
+    def __str__(self):
+        return self.name
+
+
+class Grade4VocabularyItem(models.Model):
+    """Curated Grade 4 vocabulary retrievable by topic for generated stories."""
+
+    word = models.CharField(max_length=80, unique=True)
+    meaning = models.CharField(max_length=240)
+    part_of_speech = models.CharField(max_length=40, blank=True)
+    example = models.CharField(max_length=240, blank=True)
+    tags = models.JSONField(default=list, blank=True)
+    term = models.PositiveSmallIntegerField(default=1)
+    active = models.BooleanField(default=True)
+
+    class Meta:
+        ordering = ['word']
+
+    def __str__(self):
+        return self.word

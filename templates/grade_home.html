@@ -77,7 +77,11 @@
 <section class="ai-story-panel" id="ai-story-panel">
   <div>
     <h2>Explore more stories</h2>
+    {% if ai_story_thresholds_enabled %}
     <p>Once every story here is mastered, unlock a brand-new AI-written story made just for you.</p>
+    {% else %}
+    <p>Create a brand-new AI-written story whenever you are ready.</p>
+    {% endif %}
   </div>
   <button type="button" class="btn btn-primary" id="ai-story-btn"
     {% if not ai_story_available and not ai_story_job_id %}disabled{% endif %}>

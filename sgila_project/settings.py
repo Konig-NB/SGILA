@@ -110,6 +110,8 @@ MEDIA_URL = '/media/'
 MEDIA_ROOT = BASE_DIR / 'media'
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
+ENABLE_STORY_THRESHOLDS = False
+
 SESSION_COOKIE_SECURE = not DEBUG
 CSRF_COOKIE_SECURE = not DEBUG
 SECURE_SSL_REDIRECT = os.environ.get('DJANGO_SECURE_SSL_REDIRECT', str(not DEBUG)).lower() in {'1', 'true', 'yes', 'on'}
@@ -162,12 +164,20 @@ JWT_ACCESS_TOKEN_LIFETIME_HOURS = 8  # informational; enforced in api/jwt_utils.
 # Base URL used in password-reset emails
 SITE_URL = os.environ.get('SITE_URL', 'http://127.0.0.1:8000')
 
-# ─── AI story generation (Gemini text + Pollinations illustrations) ────────────
-# Leave GEMINI_API_KEY blank to keep the feature disabled — the "Explore more
-# stories" button will show a friendly "not configured yet" message instead
-# of failing. No SDK/pip dependency needed; both providers are called with
-# plain HTTPS requests (see lessons/views.py).
+from google import genai
+client = genai.Client()  # Automatically reads GEMINI_API_KEY from environment
+# ─── AI story generation ─────────────────────────────────────────────────────
+# Grade 4 uses Groq for text and Pollinations with Cloudflare Workers AI as an
+# image fallback. Other grades retain their existing Gemini/Pollinations path.
+# All providers are called with plain HTTPS requests (see lessons/views.py).
+GROQ_API_KEY = os.environ.get('GROQ_API_KEY', '')
+GROQ_MODEL = os.environ.get('GROQ_MODEL', 'qwen/qwen3.8-27b')
 GEMINI_API_KEY = os.environ.get('GEMINI_API_KEY', '')
-GEMINI_MODEL = os.environ.get('GEMINI_MODEL', 'gemini-2.5-flash')
+GEMINI_MODEL = os.environ.get('GEMINI_MODEL', 'gemini-flash-lite-latest')
 POLLINATIONS_MODEL = os.environ.get('POLLINATIONS_MODEL', 'flux')
 POLLINATIONS_API_KEY = os.environ.get('POLLINATIONS_API_KEY', '')
+CLOUDFLARE_ACCOUNT_ID = os.environ.get('CLOUDFLARE_ACCOUNT_ID', '')
+CLOUDFLARE_API_TOKEN = os.environ.get('CLOUDFLARE_API_TOKEN', '')
+CLOUDFLARE_IMAGE_MODEL = os.environ.get(
+    'CLOUDFLARE_IMAGE_MODEL', '@cf/black-forest-labs/flux-1-schnell',
+)
