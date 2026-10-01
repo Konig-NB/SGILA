@@ -5,7 +5,11 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>{% block title %}SGILA{% endblock %}</title>
   {% load static %}
+<<<<<<< HEAD
   <link rel="stylesheet" href="{% static 'css/sgila_app.css' %}?v=dark-muted-text-white-20261001-5">
+=======
+  <link rel="stylesheet" href="{% static 'css/sgila_app.css' %}?v=help-master-merge-20260930-01">
+>>>>>>> a19144c6ec4a1c9802672e37ec63775fa48666c1
   <script>
     // Applied before paint so the page never flashes the wrong theme on load.
     (function () {
@@ -26,8 +30,7 @@
     {% if request.path == '/' and not request.session.account_role %}
     <div class="home-nav-links" aria-label="Homepage sections">
       <a href="#stories">Stories</a>
-      <a href="#family-entry">For families</a>
-      <a href="#school-entry">For schools</a>
+      <a href="/help/">Help and Feedback</a>
     </div>
     {% endif %}
     <div class="nav-links">
@@ -166,6 +169,13 @@
 
     async function refreshScore() {
       scoreLabel.textContent = 'Loading your score...';
+      if (current[2] === 'activities' && typeof window.SgilaActivityScore === 'function') {
+        var liveScore = window.SgilaActivityScore();
+        if (liveScore && liveScore.total > 0) {
+          scoreLabel.textContent = 'Current score: ' + liveScore.score + ' / ' + liveScore.total;
+          return;
+        }
+      }
       try {
         var response = await fetch('/lessons/' + current[1] + '/activity-pause', {
           credentials: 'same-origin'
@@ -193,8 +203,16 @@
       pauseButton.disabled = true;
       pauseButton.textContent = 'Saving...';
       var resumeUrl = window.location.pathname;
+      var searchParams = new URLSearchParams(window.location.search);
       if (current[2] === 'questions' && typeof window.SgilaCurrentActivityIndex === 'function') {
         resumeUrl += '?activity_index=' + window.SgilaCurrentActivityIndex();
+      } else if (searchParams.has('activity_index')) {
+        resumeUrl += '?activity_index=' + searchParams.get('activity_index');
+        if (current[2] === 'activities' && searchParams.has('question_index')) {
+          resumeUrl += '&question_index=' + searchParams.get('question_index');
+        }
+      } else if (current[2] === 'activities') {
+        resumeUrl += '?activity_index=0';
       }
       var score = typeof window.SgilaActivityScore === 'function'
         ? window.SgilaActivityScore()

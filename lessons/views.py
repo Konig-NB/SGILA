@@ -212,19 +212,76 @@ def activity_choices_for(lesson):
     """Return the learner-facing activity menu for a lesson."""
     base = f'/lessons/{lesson.id}'
     choices = [{'label': 'Read the Story', 'url': f'{base}/story'}]
-    if lesson.grade == 3 and lesson.reading_activities.exists():
-        grade3_headings = [
-            'Story Questions: Find Details',
-            'Story Sequencer: Order Events',
-            'Fact Check: True or False',
-            'Word Detective: Discover Meanings',
-            'Listen and Spell: Build Words',
-        ]
-        choices.extend(
-            {'label': heading, 'url': f'{base}/activities'}
-            for heading in grade3_headings
-        )
+    if lesson.grade == 1 and lesson.reading_activities.exists():
+        ordered_activities = list(lesson.reading_activities.order_by('group_number', 'order', 'id'))
+        groups = {}
+        for index, activity in enumerate(ordered_activities):
+            inferred_group = activity.group_number or (
+                1 if activity.activity_type == 'cloze'
+                else 2 if activity.skill == 'literal_comprehension'
+                else 3 if activity.skill == 'vocabulary_in_context'
+                else activity.order
+            )
+            group_number = inferred_group
+            group_label = {
+                1: 'Spelling - Fill in the Blank',
+                2: 'Comprehension - Multiple Choice',
+                3: 'Vocabulary - Multiple Choice',
+            }.get(group_number, learner_activity_label(activity))
+            groups.setdefault(group_number, {
+                'label': group_label,
+                'url': f'{base}/questions?activity_index={index}',
+            })
+        choices.extend(groups.values())
+    elif lesson.grade == 2 and lesson.reading_activities.exists():
+        choices = [{'label': 'Read the Story', 'url': f'{base}/story'}]
+        ordered_activities = list(lesson.reading_activities.order_by('group_number', 'order', 'id'))
+        groups = {}
+        for index, activity in enumerate(ordered_activities):
+            group_number = activity.group_number or activity.order
+            group_label = {
+                1: 'Comprehension Questions',
+                2: 'Match It!',
+                3: 'Visual Matching',
+                4: 'Spelling',
+                5: 'Fix the Mistake',
+            }.get(group_number, learner_activity_label(activity))
+            groups.setdefault(group_number, {
+                'label': group_label,
+                'url': f'{base}/questions?activity_index={index}',
+            })
+        choices.extend(groups.values())
+    elif lesson.grade == 3:
+        choices = [{'label': 'Read the Story', 'url': f'{base}/story'}]
+        choices.extend([
+            {'label': 'Comprehension Questions - Remember the story', 'url': f'{base}/activities?activity_index=0'},
+            {'label': 'Sequencing - Put events in order', 'url': f'{base}/activities?activity_index=1'},
+            {'label': 'True or False - Think carefully', 'url': f'{base}/activities?activity_index=2'},
+            {'label': 'Word Detective - Find the missing words', 'url': f'{base}/activities?activity_index=3'},
+            {'label': 'Spelling Questions - Build the story words', 'url': f'{base}/activities?activity_index=4'},
+            {'label': 'Word Balloon Pop', 'url': f'{base}/activities?activity_index=5'},
+        ])
+    elif lesson.grade == 4 and (
+        lesson.vocabulary_questions.exists()
+        or lesson.sequencing_activities.exists()
+        or lesson.inference_questions.exists()
+        or lesson.prediction_questions.exists()
+        or lesson.feelings_questions.exists()
+        or lesson.cause_effect_pairs.exists()
+        or lesson.theme_questions.exists()
+    ):
+        choices = [{'label': 'Read the Story', 'url': f'{base}/story'}]
+        choices.extend([
+            {'label': 'Vocabulary: Explore New Words', 'url': f'{base}/vocabulary'},
+            {'label': 'Sequencing: Order Events', 'url': f'{base}/sequencing'},
+            {'label': 'Inference: Read Between the Lines', 'url': f'{base}/inference'},
+            {'label': 'Prediction: Think Ahead', 'url': f'{base}/prediction'},
+            {'label': 'Feelings: Understand Characters', 'url': f'{base}/feelings'},
+            {'label': 'Cause and Effect: Follow the Story', 'url': f'{base}/cause-effect'},
+            {'label': 'Main Lesson: Find the Big Idea', 'url': f'{base}/theme'},
+        ])
     elif lesson.grade == 4 and lesson.reading_activities.exists():
+        choices = [{'label': 'Read the Story', 'url': f'{base}/story'}]
         groups = {}
         for activity in lesson.reading_activities.order_by('order', 'id'):
             group_number = activity.group_number or activity.order
@@ -1345,6 +1402,14 @@ def parent_add_child(request):
     if request.session.get('account_role') != 'parent':
         return redirect('/login?role=parent')
     parent = get_object_or_404(Parent, id=request.session['account_id'])
+    current_year = timezone.localdate().year
+    oldest_birth_year = current_year - 12
+    youngest_birth_year = current_year - 5
+    form_context = {
+        'parent': parent,
+        'date_of_birth_min': f'{oldest_birth_year}-01-01',
+        'date_of_birth_max': f'{youngest_birth_year}-12-31',
+    }
 
     if request.method == 'POST':
         username = normalize_child_username(request.POST.get('username'))
@@ -1354,20 +1419,23 @@ def parent_add_child(request):
             messages.error(request, 'That username is already taken. Please choose another one.')
         else:
             date_of_birth_raw = (request.POST.get('date_of_birth') or '').strip()
+            if not date_of_birth_raw:
+                messages.error(request, 'Please enter a date of birth.')
+                return render(request, 'add_child.html', form_context)
             date_of_birth = parse_date(date_of_birth_raw) if date_of_birth_raw else None
-            if date_of_birth_raw and not date_of_birth:
+            if not date_of_birth:
                 messages.error(request, 'Please enter a valid date of birth.')
-                return render(request, 'add_child.html', {'parent': parent})
-            if date_of_birth and date_of_birth > timezone.localdate():
-                messages.error(request, 'Date of birth cannot be in the future.')
-                return render(request, 'add_child.html', {'parent': parent})
+                return render(request, 'add_child.html', form_context)
+            if not oldest_birth_year <= date_of_birth.year <= youngest_birth_year:
+                messages.error(request, 'Child must be between 5 and 12 years old.')
+                return render(request, 'add_child.html', form_context)
 
             legacy_age = request.POST.get('age')
             try:
                 legacy_age = int(legacy_age) if legacy_age not in (None, '') else None
             except (TypeError, ValueError):
                 messages.error(request, 'Please enter a valid age.')
-                return render(request, 'add_child.html', {'parent': parent})
+                return render(request, 'add_child.html', form_context)
 
             first_name = request.POST.get('first_name', '').strip()
             last_name = request.POST.get('last_name', '').strip()
@@ -1378,7 +1446,7 @@ def parent_add_child(request):
                 teacher, teacher_class = resolve_class_code(class_code)
                 if not teacher:
                     messages.error(request, 'That teacher class code was not found.')
-                    return render(request, 'add_child.html', {'parent': parent})
+                    return render(request, 'add_child.html', form_context)
 
             child = Child.objects.create(
                 parent=parent,
@@ -1418,7 +1486,7 @@ def parent_add_child(request):
                 )
             return redirect('/parent/dashboard')
 
-    return render(request, 'add_child.html', {'parent': parent})
+    return render(request, 'add_child.html', form_context)
 
 
 # ───────────────────────── AI story generation ─────────────────────────
@@ -1822,9 +1890,20 @@ def grade3_activities_page(request, lesson_id):
     if response:
         return response
     lesson = get_object_or_404(Lesson, id=lesson_id, grade=3)
+    paused_entry = (child.paused_activities or {}).get(str(lesson.id))
+    resume_score = {'score': 0, 'total': 0}
+    if isinstance(paused_entry, dict) and paused_entry.get('url') == request.get_full_path():
+        try:
+            resume_score = {
+                'score': max(int(paused_entry.get('score', 0)), 0),
+                'total': max(int(paused_entry.get('total', 0)), 0),
+            }
+        except (TypeError, ValueError):
+            pass
     return render(request, 'grade3_activities.html', {
         'lesson': lesson,
         'child': child,
+        'resume_score': resume_score,
     })
 
 
@@ -1842,30 +1921,55 @@ def complete_grade3_activities(request, lesson_id):
         '5': 'grade3_listen_spell',
         '6': 'grade3_word_balloon',
     }
+    existing_record = Progress.objects.filter(child=child, lesson=lesson).first()
+    existing_scores = (
+        existing_record.assessment_scores
+        if existing_record and isinstance(existing_record.assessment_scores, dict)
+        else {}
+    )
     try:
         scores = json.loads(request.body or '{}')
         if not isinstance(scores, dict):
             raise ValueError
         activity_scores = scores.get('activity_scores')
         if activity_scores is None:
-            total_score = int(scores.get('total_score', 0))
-            total_possible = int(scores.get('total_possible', 24))
             assessment_scores = {
-                'grade3_activities': {'score': total_score, 'total': total_possible},
+                key: dict(values or {})
+                for key, values in existing_scores.items()
+                if key.startswith('grade3_') and key != 'grade3_activities'
             }
+            if assessment_scores:
+                total_score = sum(int(item.get('score', 0)) for item in assessment_scores.values())
+                total_possible = sum(int(item.get('total', 0)) for item in assessment_scores.values())
+            else:
+                total_score = int(scores.get('total_score', 0))
+                total_possible = int(scores.get('total_possible', 24))
+                assessment_scores = {
+                    'grade3_activities': {'score': total_score, 'total': total_possible},
+                }
         else:
-            if not isinstance(activity_scores, list) or len(activity_scores) != len(activity_keys):
+            if (
+                not isinstance(activity_scores, list)
+                or not activity_scores
+                or len(activity_scores) > len(activity_keys)
+            ):
                 raise ValueError
-            assessment_scores = {}
+            new_assessment_scores = {}
             for activity in activity_scores:
                 activity_key = activity_keys.get(str(activity.get('number')))
                 score = int(activity.get('score'))
                 possible = int(activity.get('total'))
-                if not activity_key or activity_key in assessment_scores or possible <= 0 or not 0 <= score <= possible:
+                if not activity_key or activity_key in new_assessment_scores or possible <= 0 or not 0 <= score <= possible:
                     raise ValueError
-                assessment_scores[activity_key] = {'score': score, 'total': possible}
-            if len(assessment_scores) != len(activity_keys):
+                new_assessment_scores[activity_key] = {'score': score, 'total': possible}
+            if len(new_assessment_scores) != len(activity_scores):
                 raise ValueError
+            assessment_scores = {
+                key: dict(values or {})
+                for key, values in existing_scores.items()
+                if key.startswith('grade3_') and key != 'grade3_activities'
+            }
+            assessment_scores.update(new_assessment_scores)
             total_score = sum(item['score'] for item in assessment_scores.values())
             total_possible = sum(item['total'] for item in assessment_scores.values())
     except (TypeError, ValueError, json.JSONDecodeError):
@@ -1874,9 +1978,15 @@ def complete_grade3_activities(request, lesson_id):
         child=child,
         lesson=lesson,
         defaults={
-            'comprehension_score': int(scores.get('comprehension_score', 0)),
-            'visual_score': int(scores.get('visual_score', 0)),
-            'spelling_score': int(scores.get('spelling_score', 0)),
+            'comprehension_score': sum(
+                int(assessment_scores.get(key, {}).get('score', 0))
+                for key in ('grade3_comprehension_check', 'grade3_true_false')
+            ),
+            'visual_score': sum(
+                int(assessment_scores.get(key, {}).get('score', 0))
+                for key in ('grade3_visual_match', 'grade3_word_detective')
+            ),
+            'spelling_score': int(assessment_scores.get('grade3_listen_spell', {}).get('score', 0)),
             'total_score': total_score,
             'total_possible': total_possible,
             'stars_earned': 3 if total_score / max(total_possible, 1) >= .9 else 2 if total_score / max(total_possible, 1) >= .7 else 1,
@@ -2024,14 +2134,42 @@ def activity_pause(request, lesson_id):
         }
         if parsed_resume_url.path not in allowed_paths or parsed_resume_url.fragment:
             return JsonResponse({'error': 'Invalid activity to resume.'}, status=400)
-        if parsed_resume_url.path.endswith('/questions'):
+        if parsed_resume_url.path.endswith('/questions') or parsed_resume_url.path.endswith('/activities'):
             query = urllib.parse.parse_qs(parsed_resume_url.query)
             indexes = query.get('activity_index', [])
-            activity_index = int(indexes[0]) if len(indexes) == 1 and indexes[0].isdigit() else -1
-            activity_total = lesson.reading_activities.count() or lesson.questions.count()
-            if activity_index < 0 or activity_index >= activity_total:
-                return JsonResponse({'error': 'Invalid activity to resume.'}, status=400)
-            resume_url = f'{parsed_resume_url.path}?activity_index={activity_index}'
+            if not indexes:
+                if parsed_resume_url.path.endswith('/activities'):
+                    activity_index = 0
+                else:
+                    resume_url = parsed_resume_url.path
+            else:
+                if len(indexes) != 1 or not indexes[0].isdigit():
+                    return JsonResponse({'error': 'Invalid activity to resume.'}, status=400)
+                activity_index = int(indexes[0])
+                if parsed_resume_url.path.endswith('/questions'):
+                    activity_total = lesson.reading_activities.count() or lesson.questions.count()
+                    if activity_index < 0 or activity_index >= activity_total:
+                        return JsonResponse({'error': 'Invalid activity to resume.'}, status=400)
+                elif parsed_resume_url.path.endswith('/activities'):
+                    activity_total = 6 if lesson.grade == 3 else 1
+                    if activity_index < 0 or activity_index >= activity_total:
+                        return JsonResponse({'error': 'Invalid activity to resume.'}, status=400)
+            if parsed_resume_url.path.endswith('/activities'):
+                if set(query) - {'activity_index', 'question_index'}:
+                    return JsonResponse({'error': 'Invalid activity to resume.'}, status=400)
+                question_indexes = query.get('question_index', [])
+                resume_url = f'{parsed_resume_url.path}?activity_index={activity_index}'
+                if question_indexes:
+                    if (
+                        lesson.grade != 3
+                        or len(question_indexes) != 1
+                        or not question_indexes[0].isdigit()
+                        or int(question_indexes[0]) >= 6
+                    ):
+                        return JsonResponse({'error': 'Invalid activity to resume.'}, status=400)
+                    resume_url += f'&question_index={int(question_indexes[0])}'
+            elif indexes:
+                resume_url = f'{parsed_resume_url.path}?activity_index={activity_index}'
         elif parsed_resume_url.query:
             return JsonResponse({'error': 'Invalid activity to resume.'}, status=400)
 
@@ -3018,6 +3156,12 @@ def add_seat_page(request):
 
     parent = get_object_or_404(Parent, id=request.session['account_id'])
     subscription = get_object_or_404(Subscription, parent=parent)
+    target_child_id = request.POST.get('child_id') or request.GET.get('child_id')
+    if target_child_id:
+        get_object_or_404(
+            Child.objects.filter(Q(parent=parent) | Q(parent_email__iexact=parent.email)),
+            id=target_child_id,
+        )
 
     if subscription.plan_type not in ('individual', 'family'):
         messages.error(request, 'Extra seats are not available on this plan.')
@@ -3034,12 +3178,16 @@ def add_seat_page(request):
         else:
             subscription.pending_seat_quantity = quantity
             subscription.save(update_fields=['pending_seat_quantity'])
-            return redirect('/subscription/add-seat/payment')
+            payment_url = '/subscription/add-seat/payment'
+            if target_child_id:
+                payment_url += f'?child_id={target_child_id}'
+            return redirect(payment_url)
 
     return render(request, 'add_seat.html', {
         'subscription': subscription,
         'seat_price': Subscription.SEAT_PRICE,
         'active_learner_cap': plan_active_child_cap(parent),
+        'target_child_id': target_child_id,
     })
 
 
@@ -3056,6 +3204,13 @@ def add_seat_payment_page(request):
 
     parent = get_object_or_404(Parent, id=request.session['account_id'])
     subscription = get_object_or_404(Subscription, parent=parent)
+    target_child_id = request.POST.get('child_id') or request.GET.get('child_id')
+    target_child = None
+    if target_child_id:
+        target_child = get_object_or_404(
+            Child.objects.filter(Q(parent=parent) | Q(parent_email__iexact=parent.email)),
+            id=target_child_id,
+        )
 
     quantity = subscription.pending_seat_quantity
     if quantity < 1:
@@ -3069,6 +3224,7 @@ def add_seat_payment_page(request):
         'seat_price': Subscription.SEAT_PRICE,
         'total_price': total_price,
         'has_payment_on_file': has_payment_on_file,
+        'target_child_id': target_child_id,
     }
 
     if request.method == 'POST':
@@ -3108,6 +3264,8 @@ def add_seat_payment_page(request):
         subscription.extra_active_seats += quantity
         subscription.pending_seat_quantity = 0
         subscription.save()
+        if target_child and not target_child.is_active:
+            target_child.reactivate()
 
         messages.success(
             request,

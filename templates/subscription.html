@@ -68,7 +68,7 @@
   <div>
     <p class="eyebrow">School / district setup</p>
     <h1>Enterprise packages</h1>
-    <p>Bring SGILA to your school, district or province — funded through your government education budget. No cards, no per-family cost.</p>
+    <p>Bring SGILA to your school, district or province — funded by your school, a sponsor, a district or government. No cards, no per-family cost.</p>
   </div>
   <img class="auth-koaly-peek" src="{% static 'img/koaly_cutout.png' %}" alt="" aria-hidden="true">
 </section>
@@ -114,7 +114,7 @@
 <section class="epic-cards subscription-activation-cards">
   <form method="POST" class="epic-card form-card subscription-activation-card">
     {% csrf_token %}
-    <span class="badge badge-done subscription-tier-badge">Enterprise / Government-funded</span>
+    <span class="badge badge-done subscription-tier-badge">School, sponsor, or government-funded</span>
     <h2 class="epic-plan-name subscription-package-heading">Activate your package</h2>
     <p class="epic-billed subscription-activation-description">Have a code? Redeem it here</p>
 
@@ -123,7 +123,7 @@
     </label>
 
     <label class="subscription-field subscription-field-spaced">Package code
-      <input class="uppercase-field" type="text" name="package_code" required placeholder="Code from your district/government contact">
+      <input class="uppercase-field" type="text" name="package_code" required placeholder="Code from your school, sponsor, or district contact">
     </label>
 
     <button class="epic-cta epic-cta-green subscription-action-large" type="submit">Activate school package</button>
