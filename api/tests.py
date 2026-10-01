@@ -1,15 +1,12 @@
 import json
 import re
-<<<<<<< HEAD
 import sys
 from datetime import timedelta
 from io import BytesIO
 from unittest.mock import MagicMock, Mock, patch
 from urllib.error import HTTPError
-=======
 from datetime import timedelta
 from unittest.mock import patch
->>>>>>> 25995827aeabaa6e6948f87b84fab036b427815e
 from pathlib import Path
 
 from django.contrib.auth.hashers import make_password

@@ -10,9 +10,8 @@ from .models import (
     Parent, Teacher, Child, Lesson, StoryPage, ComprehensionQuestion, ReadingActivity,
     VisualActivityItem, PronunciationWord, SpellingActivity, Progress,
     TeacherClass, Message, Subscription, PackageCode, AIStoryJob, GradeHistory,
-<<<<<<< HEAD
     Grade4StoryBlueprint, Grade4VocabularyItem,
-    AccountActionOTP,
+    AccountActionOTP, Feedback, HelpCategory, HelpArticle, SupportTicket,
 )
 
 
@@ -28,9 +27,6 @@ class Grade4VocabularyItemAdmin(admin.ModelAdmin):
     list_display = ('word', 'term', 'part_of_speech', 'active')
     list_filter = ('term', 'part_of_speech', 'active')
     search_fields = ('word', 'meaning', 'example')
-=======
-    AccountActionOTP, Feedback, HelpCategory, HelpArticle, SupportTicket,
-)
 
 
 @admin.register(HelpCategory)
@@ -63,7 +59,6 @@ class FeedbackAdmin(admin.ModelAdmin):
     list_filter = ('user_role', 'issue_category', 'created_at')
     search_fields = ('subject', 'user_email', 'message_body')
     readonly_fields = ('user_email', 'user_role', 'issue_category', 'subject', 'message_body', 'created_at')
->>>>>>> 25995827aeabaa6e6948f87b84fab036b427815e
 
 @admin.register(PackageCode)
 class PackageCodeAdmin(admin.ModelAdmin):
