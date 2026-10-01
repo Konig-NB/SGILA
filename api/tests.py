@@ -5,6 +5,8 @@ from unittest.mock import patch
 from pathlib import Path
 
 from django.contrib.auth.hashers import make_password
+from django.contrib.auth.models import User
+from django.core.cache import cache
 from django.core import mail
 from django.core.management import call_command
 from django.test import Client, TestCase, override_settings
@@ -24,7 +26,10 @@ from api.models import (
     AccountActionOTP,
     Child,
     ComprehensionQuestion,
+    Feedback,
     GradeHistory,
+    HelpArticle,
+    HelpCategory,
     Lesson,
     OTPToken,
     Parent,
@@ -35,11 +40,355 @@ from api.models import (
     SpellingActivity,
     StoryPage,
     Subscription,
+    SupportTicket,
     Teacher,
     TeacherClass,
     VisualActivityItem,
     current_school_year,
 )
+
+
+class HelpCenterApiTests(TestCase):
+    def setUp(self):
+        cache.clear()
+        self.category = HelpCategory.objects.create(
+            name='Getting started',
+            slug='getting-started',
+            order=1,
+        )
+        HelpCategory.objects.create(name='Accounts', slug='accounts', order=2)
+        HelpArticle.objects.create(
+            category=self.category,
+            title='Using the audio button',
+            slug='audio-button',
+            audience=HelpArticle.Audience.LEARNER,
+            content='Press the audio button to hear the story.',
+            is_kid_friendly=True,
+        )
+        HelpArticle.objects.create(
+            category=self.category,
+            title='Contact support',
+            slug='contact-support',
+            audience=HelpArticle.Audience.GENERAL,
+            content='Email the team if you need help with audio.',
+            is_kid_friendly=True,
+        )
+        HelpArticle.objects.create(
+            category=self.category,
+            title='Teacher metrics',
+            slug='teacher-metrics',
+            audience=HelpArticle.Audience.TEACHER,
+            content='View learner progress from your dashboard.',
+        )
+        HelpArticle.objects.create(
+            category=self.category,
+            title='Learner-only draft',
+            slug='learner-draft',
+            audience=HelpArticle.Audience.LEARNER,
+            content='This draft is not yet suitable for young readers.',
+        )
+
+    def test_categories_include_subject_groups_and_articles_filter_and_search(self):
+        categories = self.client.get('/api/help/categories/').json()
+        category_slugs = {item['slug'] for item in categories}
+        self.assertTrue({
+            'getting-started-guides', 'account-access', 'learning-activities',
+            'progress-reports', 'class-connections', 'plans-billing',
+            'audio-troubleshooting', 'email-delivery',
+        }.issubset(category_slugs))
+
+        articles = self.client.get('/api/help/articles/?audience=learner&q=audio').json()
+        self.assertIn('audio-button', {item['slug'] for item in articles})
+
+        learner_articles = self.client.get('/api/help/articles/?audience=learner').json()
+        learner_slugs = {item['slug'] for item in learner_articles}
+        self.assertIn('audio-button', learner_slugs)
+        self.assertIn('learner-stories-and-activities', learner_slugs)
+        self.assertTrue(any(slug.startswith('learner-stories-and-activities-topic-') for slug in learner_slugs))
+
+        detail = self.client.get('/api/help/articles/audio-button/?audience=teacher&q=missing').json()
+        self.assertEqual(detail['content'], 'Press the audio button to hear the story.')
+
+    def test_general_email_guides_are_not_shown_in_role_views(self):
+        for audience in ('learner', 'parent', 'teacher'):
+            with self.subTest(audience=audience):
+                articles = self.client.get(
+                    f'/api/help/articles/?audience={audience}',
+                ).json()
+                self.assertTrue(articles)
+                self.assertTrue(all(article['audience'] == audience for article in articles))
+
+    def test_role_specific_questions_are_searchable_in_their_subject_categories(self):
+        role_queries = (
+            ('parent', 'reactivate', 'account-access'),
+            ('parent', 'seat', 'plans-billing'),
+            ('parent', 'continue a lesson', 'learning-activities'),
+            ('parent', 'personal story', 'learning-activities'),
+            ('parent', 'audio', 'audio-troubleshooting'),
+            ('teacher', 'teacher code', 'class-connections'),
+            ('teacher', 'not appearing', 'class-connections'),
+            ('teacher', 'confirm a learner', 'getting-started-guides'),
+            ('teacher', 'needing support', 'progress-reports'),
+        )
+
+        for audience, query, expected_category in role_queries:
+            with self.subTest(audience=audience, query=query):
+                response = self.client.get(
+                    f'/api/help/articles/?audience={audience}&q={query}',
+                )
+                articles = response.json()
+                self.assertTrue(articles)
+                self.assertIn(
+                    expected_category,
+                    {article['category']['slug'] for article in articles},
+                )
+
+    def test_parent_faq_questions_are_individual_and_subject_categorized(self):
+        response = self.client.get('/api/help/articles/?audience=parent').json()
+        self.assertEqual(len(response), 20)
+        self.assertTrue(all(len(article['content'].split('\n\n')) == 1 for article in response))
+        self.assertGreater(len({article['category']['slug'] for article in response}), 1)
+        question_titles = {article['title'].lower() for article in response}
+        self.assertTrue(any('choose an activity' in title for title in question_titles))
+        self.assertTrue(any('personal story' in title for title in question_titles))
+        self.assertIn('can i add more than one child to my parent account?', question_titles)
+        self.assertIn("how do i update my child's grade for a new school year?", question_titles)
+        self.assertIn('how can i contact sgila support?', question_titles)
+        teacher_connection = next(
+            article for article in response
+            if article['title'] == 'How do I connect my child to a teacher?'
+        )
+        self.assertEqual(teacher_connection['category']['slug'], 'class-connections')
+
+    def test_enterprise_help_topics_are_available_only_to_enterprise_audience(self):
+        enterprise_articles = self.client.get('/api/help/articles/?audience=enterprise').json()
+        self.assertEqual(len(enterprise_articles), 10)
+        self.assertTrue(all(article['audience'] == 'enterprise' for article in enterprise_articles))
+        self.assertEqual(
+            {article['category']['slug'] for article in enterprise_articles},
+            {'enterprise-packages'},
+        )
+        funding_topic = next(
+            article for article in enterprise_articles
+            if article['slug'] == 'enterprise-school-or-sponsor-funding'
+        )
+        self.assertIn('private school can fund its own package', funding_topic['content'].lower())
+        self.assertIn('external sponsor can fund it', funding_topic['content'].lower())
+
+        parent_articles = self.client.get('/api/help/articles/?audience=parent').json()
+        teacher_articles = self.client.get('/api/help/articles/?audience=teacher').json()
+        self.assertNotIn('enterprise', {article['audience'] for article in parent_articles})
+        self.assertNotIn('enterprise', {article['audience'] for article in teacher_articles})
+
+    @override_settings(SITE_URL='https://sgila.example')
+    def test_guest_ticket_requires_email_and_can_be_created(self):
+        endpoint = '/api/help/tickets/'
+        data = {
+            'subject': 'Story will not load',
+            'issue_category': SupportTicket.IssueCategory.STORY_LOADING,
+            'description': 'The story stops at the cover.',
+        }
+        missing_email = self.client.post(endpoint, json.dumps(data), content_type='application/json')
+        self.assertEqual(missing_email.status_code, 400)
+
+        data['email'] = 'reader@example.com'
+        response = self.client.post(endpoint, json.dumps(data), content_type='application/json')
+        self.assertEqual(response.status_code, 201)
+        self.assertTrue(response.json()['email_notifications_sent'])
+        self.assertTrue(response.json()['support_notification_sent'])
+        self.assertTrue(response.json()['confirmation_email_sent'])
+        ticket = SupportTicket.objects.get()
+        self.assertIsNone(ticket.user)
+        self.assertEqual(ticket.email, 'reader@example.com')
+        self.assertEqual(len(mail.outbox), 2)
+        self.assertEqual(mail.outbox[0].to, ['sgila.support@gmail.com'])
+        self.assertEqual(mail.outbox[0].reply_to, ['reader@example.com'])
+        self.assertIn('The story stops at the cover.', mail.outbox[0].body)
+        self.assertEqual(mail.outbox[1].to, ['reader@example.com'])
+        self.assertIn('We received your message', mail.outbox[1].body)
+        self.assertNotIn('We aim to respond within 5 business days.', mail.outbox[1].body)
+        self.assertIn(
+            'Sign-in and password help: https://sgila.example/help/?audience=parent&q=sign+in',
+            mail.outbox[1].body,
+        )
+        self.assertIn('q=teacher+code', mail.outbox[1].body)
+        self.assertIn('q=progress', mail.outbox[1].body)
+
+    def test_authenticated_ticket_uses_account_and_email(self):
+        user = User.objects.create_user(username='support-user', email='member@example.com', password='test-password')
+        self.client.force_login(user)
+        response = self.client.post(
+            '/api/help/tickets/',
+            json.dumps({
+                'subject': 'Question about badges',
+                'issue_category': SupportTicket.IssueCategory.MISSING_BADGES,
+                'description': 'My badge did not appear.',
+            }),
+            content_type='application/json',
+        )
+        self.assertEqual(response.status_code, 201)
+        self.assertTrue(response.json()['email_notifications_sent'])
+        ticket = SupportTicket.objects.get()
+        self.assertEqual(ticket.user, user)
+        self.assertEqual(ticket.email, user.email)
+
+    @override_settings(EMAIL_BACKEND='django.core.mail.backends.console.EmailBackend')
+    def test_console_backend_reports_email_as_not_delivered(self):
+        response = self.client.post(
+            '/api/help/tickets/',
+            json.dumps({
+                'email': 'reader@example.com',
+                'subject': 'Need help',
+                'issue_category': SupportTicket.IssueCategory.OTHER,
+                'description': 'Please help me sign in.',
+            }),
+            content_type='application/json',
+        )
+        self.assertEqual(response.status_code, 201)
+        self.assertFalse(response.json()['email_notifications_sent'])
+        self.assertFalse(response.json()['support_notification_sent'])
+        self.assertFalse(response.json()['confirmation_email_sent'])
+        self.assertEqual(SupportTicket.objects.count(), 1)
+
+    @patch('api.help_center_views.EmailMessage.send', side_effect=[1, RuntimeError('client mailbox rejected')])
+    def test_support_delivery_is_reported_when_confirmation_fails(self, mock_send):
+        response = self.client.post(
+            '/api/help/tickets/',
+            json.dumps({
+                'email': 'reader@example.com',
+                'subject': 'Need help signing in',
+                'issue_category': SupportTicket.IssueCategory.ACCOUNT_SETUP,
+                'description': 'I cannot access my learner account.',
+            }),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 201)
+        self.assertTrue(response.json()['support_notification_sent'])
+        self.assertFalse(response.json()['confirmation_email_sent'])
+        self.assertFalse(response.json()['email_notifications_sent'])
+        self.assertEqual(mock_send.call_count, 2)
+
+    @patch('api.help_center_views.EmailMessage.send', side_effect=[RuntimeError('support mailbox rejected'), 1])
+    def test_confirmation_delivery_is_reported_when_support_fails(self, mock_send):
+        response = self.client.post(
+            '/api/help/tickets/',
+            json.dumps({
+                'email': 'reader@example.com',
+                'subject': 'Need help signing in',
+                'issue_category': SupportTicket.IssueCategory.ACCOUNT_SETUP,
+                'description': 'I cannot access my learner account.',
+            }),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 201)
+        self.assertFalse(response.json()['support_notification_sent'])
+        self.assertTrue(response.json()['confirmation_email_sent'])
+        self.assertFalse(response.json()['email_notifications_sent'])
+        self.assertEqual(mock_send.call_count, 2)
+
+    @patch('api.help_center_views.EmailMessage.send', side_effect=RuntimeError('SMTP authentication rejected'))
+    def test_smtp_failure_saves_ticket_and_reports_email_not_sent(self, mock_send):
+        response = self.client.post(
+            '/api/help/tickets/',
+            json.dumps({
+                'email': 'reader@example.com',
+                'subject': 'Need help signing in',
+                'issue_category': SupportTicket.IssueCategory.ACCOUNT_SETUP,
+                'description': 'I cannot access my learner account.',
+            }),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 201)
+        self.assertFalse(response.json()['email_notifications_sent'])
+        self.assertEqual(SupportTicket.objects.count(), 1)
+        self.assertEqual(mock_send.call_count, 2)
+
+    def test_feedback_post_validates_saves_and_notifies_support(self):
+        response = self.client.post(
+            '/api/help/feedback/',
+            json.dumps({
+                'user_email': 'teacher@example.com',
+                'user_role': 'teacher',
+                'issue_category': 'bug',
+                'subject': 'Audio does not play',
+                'message_body': 'The story audio button does not play the recording.',
+            }),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 201)
+        self.assertTrue(response.json()['support_notification_sent'])
+        feedback = Feedback.objects.get()
+        self.assertEqual(feedback.user_email, 'teacher@example.com')
+        self.assertEqual(feedback.user_role, Feedback.UserRole.TEACHER)
+        self.assertEqual(feedback.issue_category, Feedback.IssueCategory.BUG)
+        self.assertEqual(len(mail.outbox), 1)
+        self.assertEqual(mail.outbox[0].to, ['sgila.support@gmail.com'])
+        self.assertEqual(mail.outbox[0].reply_to, ['teacher@example.com'])
+        self.assertIn('Audio does not play', mail.outbox[0].body)
+
+    def test_feedback_rejects_invalid_role_and_category(self):
+        response = self.client.post(
+            '/api/help/feedback/',
+            json.dumps({
+                'user_email': 'learner@example.com',
+                'user_role': 'learner',
+                'issue_category': 'unrelated',
+                'subject': 'Feedback',
+                'message_body': 'Please review this feedback.',
+            }),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(Feedback.objects.count(), 0)
+
+    @patch('api.help_center_views.EmailMessage.send', side_effect=RuntimeError('SMTP unavailable'))
+    def test_feedback_is_saved_when_notification_email_fails(self, mock_send):
+        response = self.client.post(
+            '/api/help/feedback/',
+            json.dumps({
+                'user_email': 'parent@example.com',
+                'user_role': 'parent',
+                'issue_category': 'suggestion',
+                'subject': 'Add more stories',
+                'message_body': 'Please add more Grade 2 stories.',
+            }),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 201)
+        self.assertFalse(response.json()['support_notification_sent'])
+        self.assertEqual(Feedback.objects.count(), 1)
+        mock_send.assert_called_once()
+
+    def test_public_help_page_and_homepage_links(self):
+        help_page = self.client.get('/help/')
+        self.assertEqual(help_page.status_code, 200)
+        self.assertContains(help_page, 'Help and Feedback')
+        self.assertContains(help_page, 'Back to Homepage')
+        self.assertContains(help_page, 'Report a bug or share a suggestion')
+        self.assertContains(help_page, 'Contact the Sgila team')
+        self.assertNotContains(help_page, 'What do you need help with?')
+        self.assertContains(help_page, 'Send feedback')
+        self.assertContains(help_page, "Please don't include sensitive information in your message.")
+        self.assertContains(help_page, 'support-ticket-form')
+        self.assertContains(help_page, 'feedback-form')
+        self.assertNotContains(help_page, '<option value="learner"')
+        self.assertNotContains(help_page, 'What do you need help with?')
+        self.assertContains(help_page, 'help-contact-section')
+        self.assertContains(help_page, 'help-feedback-section')
+
+        homepage = self.client.get('/')
+        self.assertEqual(homepage.status_code, 200)
+        self.assertContains(homepage, 'Help and Feedback')
+        self.assertNotContains(homepage, '/help/#contact')
+        self.assertNotContains(homepage, '/help/#feedback')
+        self.assertNotContains(homepage, 'For families')
+        self.assertNotContains(homepage, 'For schools')
 
 
 class SgilaFlowTests(TestCase):
@@ -238,6 +587,7 @@ class SgilaFlowTests(TestCase):
             "username": "lethum",
             "first_name": "Lethu",
             "last_name": "Mokoena",
+            "date_of_birth": f"{timezone.localdate().year - 7}-06-01",
             "age": 7,
             "grade": 1,
             "school_name": "",
@@ -252,6 +602,71 @@ class SgilaFlowTests(TestCase):
         self.assertEqual(child.teacher, teacher)
         self.assertEqual(child.teacher_class, teacher_class)
         self.assertEqual(child.school_name, teacher.school_name)
+
+    def test_parent_add_child_enforces_five_to_twelve_birth_year_window(self):
+        parent = Parent.objects.create(
+            full_name="Nomsa Dlamini",
+            email="nomsa@example.com",
+            password="hash",
+            accepted_popia=True,
+        )
+        session = self.client.session
+        session['account_role'] = 'parent'
+        session['account_id'] = parent.id
+        session['account_name'] = parent.full_name
+        session.save()
+        current_year = timezone.localdate().year
+
+        for username, birth_year in (
+            ('youngest', current_year - 5),
+            ('oldest', current_year - 12),
+        ):
+            with self.subTest(username=username):
+                response = self.client.post('/parent/add-child', {
+                    'username': username,
+                    'first_name': 'Test',
+                    'last_name': 'Learner',
+                    'date_of_birth': f'{birth_year}-06-01',
+                    'grade': 1,
+                    'password': 'password123',
+                })
+                self.assertEqual(response.status_code, 302)
+                self.assertTrue(Child.objects.filter(username__iexact=username).exists())
+
+        for username, birth_year in (
+            ('too-young', current_year - 4),
+            ('too-old', current_year - 13),
+        ):
+            with self.subTest(username=username):
+                response = self.client.post('/parent/add-child', {
+                    'username': username,
+                    'first_name': 'Test',
+                    'last_name': 'Learner',
+                    'date_of_birth': f'{birth_year}-06-01',
+                    'grade': 1,
+                    'password': 'password123',
+                })
+                self.assertEqual(response.status_code, 200)
+                self.assertFalse(Child.objects.filter(username__iexact=username).exists())
+
+    def test_parent_add_child_form_uses_current_five_to_twelve_year_bounds(self):
+        parent = Parent.objects.create(
+            full_name="Nomsa Dlamini",
+            email="nomsa@example.com",
+            password="hash",
+            accepted_popia=True,
+        )
+        session = self.client.session
+        session['account_role'] = 'parent'
+        session['account_id'] = parent.id
+        session['account_name'] = parent.full_name
+        session.save()
+
+        response = self.client.get('/parent/add-child')
+
+        current_year = timezone.localdate().year
+        self.assertContains(response, f'min="{current_year - 12}-01-01"')
+        self.assertContains(response, f'max="{current_year - 5}-12-31"')
 
     def test_parent_add_child_page_has_username_and_photo_upload(self):
         parent = Parent.objects.create(
@@ -1405,6 +1820,36 @@ class ChildReassignmentCooldownTests(TestCase):
         self.assertTrue(can_activate_child(self.parent, child=self.second_child))
         self.assertIsNone(child_reassignment_cooldown_until(self.parent, child=self.second_child))
 
+    def test_add_seat_purchase_activates_the_learner_that_needed_it(self):
+        self.first_child.deactivate(Child.DEACTIVATED_MANUAL)
+        self.subscription.card_last4 = '4242'
+        self.subscription.save(update_fields=['card_last4'])
+        session = self.client.session
+        session['account_role'] = 'parent'
+        session['account_id'] = self.parent.id
+        session.save()
+
+        response = self.client.post(
+            f'/subscription/add-seat?child_id={self.second_child.id}',
+            {'quantity': 1},
+        )
+
+        self.assertRedirects(
+            response,
+            f'/subscription/add-seat/payment?child_id={self.second_child.id}',
+        )
+        response = self.client.post(
+            f'/subscription/add-seat/payment?child_id={self.second_child.id}',
+            {'action': 'use_on_file', 'child_id': self.second_child.id},
+        )
+
+        self.assertRedirects(response, '/parent/dashboard')
+        self.second_child.refresh_from_db()
+        self.subscription.refresh_from_db()
+        self.assertTrue(self.second_child.is_active)
+        self.assertEqual(self.subscription.extra_active_seats, 1)
+        self.assertFalse(self.first_child.is_active)
+
     def test_countdown_is_when_enough_cooling_seats_expire(self):
         from api.account_access import can_activate_child, child_reassignment_cooldown_until
 
@@ -1460,6 +1905,7 @@ class ChildReassignmentCooldownTests(TestCase):
         self.assertContains(response, 'Seat cooling down')
         self.assertContains(response, expected_date)
         self.assertContains(response, '/subscription/add-seat')
+        self.assertContains(response, f'?child_id={self.second_child.id}')
 
         same_child_response = self.client.get(f'/dashboard/{self.first_child.id}')
 

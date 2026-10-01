@@ -563,6 +563,109 @@ class SequencingActivity(models.Model):
         return f"{self.lesson.title} — sequencing"
 
 
+class HelpCategory(models.Model):
+    name = models.CharField(max_length=100)
+    slug = models.SlugField(max_length=120, unique=True)
+    description = models.CharField(max_length=240, blank=True)
+    icon_name = models.CharField(max_length=60, blank=True)
+    order = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        ordering = ('order', 'name')
+        verbose_name_plural = 'help categories'
+
+    def __str__(self):
+        return self.name
+
+
+class HelpArticle(models.Model):
+    class Audience(models.TextChoices):
+        TEACHER = 'teacher', 'Teacher'
+        PARENT = 'parent', 'Parent'
+        LEARNER = 'learner', 'Learner'
+        GENERAL = 'general', 'General'
+        ENTERPRISE = 'enterprise', 'Enterprise'
+
+    category = models.ForeignKey(
+        HelpCategory,
+        on_delete=models.PROTECT,
+        related_name='articles',
+    )
+    title = models.CharField(max_length=200)
+    slug = models.SlugField(max_length=220, unique=True)
+    audience = models.CharField(max_length=10, choices=Audience.choices, default=Audience.GENERAL)
+    content = models.TextField()
+    video_tutorial_url = models.URLField(blank=True)
+    is_kid_friendly = models.BooleanField(default=False)
+
+    class Meta:
+        ordering = ('category__order', 'title')
+        indexes = [
+            models.Index(fields=('audience', 'category'), name='help_article_aud_cat_idx'),
+        ]
+
+    def __str__(self):
+        return self.title
+
+
+class SupportTicket(models.Model):
+    class IssueCategory(models.TextChoices):
+        STORY_LOADING = 'story_loading', 'Story loading'
+        AUDIO_MIC = 'audio_mic', 'Audio or microphone'
+        MISSING_BADGES = 'missing_badges', 'Missing badges'
+        ACCOUNT_SETUP = 'account_setup', 'Account setup'
+        OTHER = 'other', 'Other'
+
+    class Status(models.TextChoices):
+        OPEN = 'open', 'Open'
+        IN_PROGRESS = 'in_progress', 'In progress'
+        RESOLVED = 'resolved', 'Resolved'
+
+    user = models.ForeignKey(
+        'auth.User',
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name='support_tickets',
+    )
+    email = models.EmailField(max_length=254)
+    subject = models.CharField(max_length=200)
+    issue_category = models.CharField(max_length=20, choices=IssueCategory.choices, default=IssueCategory.OTHER)
+    description = models.TextField()
+    status = models.CharField(max_length=20, choices=Status.choices, default=Status.OPEN)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ('-created_at',)
+
+    def __str__(self):
+        return f'{self.get_issue_category_display()}: {self.subject}'
+
+
+class Feedback(models.Model):
+    class UserRole(models.TextChoices):
+        PARENT = 'parent', 'Parent'
+        TEACHER = 'teacher', 'Teacher'
+
+    class IssueCategory(models.TextChoices):
+        BUG = 'bug', 'Bug report'
+        SUGGESTION = 'suggestion', 'Suggestion'
+        OTHER = 'other', 'Other'
+
+    user_email = models.EmailField(max_length=254)
+    user_role = models.CharField(max_length=10, choices=UserRole.choices)
+    issue_category = models.CharField(max_length=10, choices=IssueCategory.choices)
+    subject = models.CharField(max_length=200)
+    message_body = models.TextField()
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ('-created_at',)
+
+    def __str__(self):
+        return f'{self.get_issue_category_display()}: {self.subject}'
+
+
 class InferenceQuestion(models.Model):
     """Read-between-the-lines multiple-choice question."""
     lesson = models.ForeignKey(Lesson, on_delete=models.CASCADE, related_name='inference_questions')
