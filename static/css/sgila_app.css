@@ -719,6 +719,8 @@ body:not(.diagram-body) .learner-modal-card h2 {
   font-size: clamp(1.35rem, 4vw, 1.8rem);
 }
 
+body:not(.diagram-body) #activity-picker-title { color: #000; }
+
 body:not(.diagram-body) .learner-modal-card p { color: #56617a; font-weight: 700; }
 body:not(.diagram-body) .learner-modal-options { display: grid; gap: 12px; margin: 22px 0 16px; }
 body:not(.diagram-body) .learner-modal-options .btn { width: 100%; min-height: 52px; font-size: 1.05rem; }
@@ -3172,6 +3174,18 @@ body:not(.diagram-body) .btn-primary {
   background: #ffd22e;
 }
 
+body:not(.diagram-body) .response-submit {
+  color: #000;
+}
+
+[data-theme="dark"] body:not(.diagram-body) .btn-primary.response-submit {
+  color: #000;
+}
+
+[data-theme="dark"] body:not(.diagram-body) #submit-btn-teacher {
+  color: #000;
+}
+
 [data-theme="dark"] body:not(.diagram-body) .btn-primary,
 [data-theme="dark"] body:not(.diagram-body) .yellow-btn,
 [data-theme="dark"] body:not(.diagram-body) .phone-tabs .learner-tab,
@@ -3185,6 +3199,10 @@ body:not(.diagram-body) .btn-primary {
 
 body:not(.diagram-body) .btn-mint {
   background: #5bdad4;
+}
+
+body:not(.diagram-body) .audio-bar .play-voiceover {
+  color: #000;
 }
 
 body:not(.diagram-body) .btn-light {
@@ -6772,6 +6790,14 @@ body:not(.diagram-body) .lr-btn {
   box-shadow: 0 30px 70px rgba(0, 0, 0, .28);
 }
 
+[data-theme="dark"] body:not(.diagram-body) .pd-greeting-copy p {
+  color: #ffffff;
+}
+
+[data-theme="dark"] body:not(.diagram-body) .pd-hero .pd-add-child {
+  color: #000000;
+}
+
 [data-theme="dark"] body:not(.diagram-body) .pd-section-hdr {
   color: var(--ink) !important;
 }
@@ -7493,6 +7519,11 @@ body:not(.diagram-body) .role-teacher .tabs a.active {
   background: #5bdad4;
   color: var(--auto-14213d-t);
   border-color: #5bdad4;
+}
+
+[data-theme="dark"] body:not(.diagram-body) .auth-layout .btn-primary,
+[data-theme="dark"] body:not(.diagram-body) .auth-layout .tabs a.active {
+  color: #14213d;
 }
 
 /* Role-specific form card colors */
@@ -11229,6 +11260,60 @@ body:not(.diagram-body) .story-diary-signature {
   --auto-4338ca-t: #9591ca;
   --auto-bbf7d0-bd: #2c7044;
   --auto-b8860b-t: #e1ce9e;
+}
+
+[data-theme="dark"] {
+  --muted: #ffffff;
+  --text-muted: #ffffff;
+  --auto-8d7d4d-t: #ffffff;
+  --auto-5d7b66-t: #ffffff;
+  --auto-5b6f91-t: #ffffff;
+  --auto-665d8a-t: #ffffff;
+  --auto-5e6884-t: #ffffff;
+  --auto-69748f-t: #ffffff;
+  --auto-64708d-t: #ffffff;
+  --auto-5b6682-t: #ffffff;
+  --auto-6a748e-t: #ffffff;
+  --auto-5d6884-t: #ffffff;
+  --auto-4c5875-t: #ffffff;
+  --auto-59647f-t: #ffffff;
+  --auto-667085-t: #ffffff;
+  --auto-3f4a5c-t: #ffffff;
+  --auto-4b5563-t: #ffffff;
+  --auto-5d6678-t: #ffffff;
+  --auto-687287-t: #ffffff;
+  --auto-5f6878-t: #ffffff;
+  --auto-4e5d73-t: #ffffff;
+  --auto-506d7a-t: #ffffff;
+  --auto-777f91-t: #ffffff;
+  --auto-7a8493-t: #ffffff;
+  --auto-526071-t: #ffffff;
+  --auto-45516a-t: #ffffff;
+  --auto-6b7486-t: #ffffff;
+  --auto-374151-t: #ffffff;
+  --auto-555555-t: #ffffff;
+  --auto-666666-t: #ffffff;
+  --auto-64748b-t: #ffffff;
+  --auto-6b7280-t: #ffffff;
+  --auto-5a5f6f-t: #ffffff;
+}
+
+[data-theme="dark"] body:not(.diagram-body) :is(
+  .portal-learner-copy small,
+  .chat-empty,
+  .chat-bubble-time,
+  .conv-other-label,
+  .conv-preview--empty,
+  .conv-time,
+  .terms-footer-note,
+  .password-requirements li:not(.met),
+  .gc-banner-head p,
+  .gc-confirm-current,
+  .gc-confirm-label,
+  .pronunciation-translation,
+  .drag-match-slot
+) {
+  color: #ffffff;
 }
 
 [data-theme="dark"] body {
