@@ -5,7 +5,11 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>{% block title %}SGILA{% endblock %}</title>
   {% load static %}
-  <link rel="stylesheet" href="{% static 'css/sgila_app.css' %}?v=dark-theme-dashboard-20260927-8">
+<<<<<<< HEAD
+  <link rel="stylesheet" href="{% static 'css/sgila_app.css' %}?v=dark-muted-text-white-20261001-5">
+=======
+  <link rel="stylesheet" href="{% static 'css/sgila_app.css' %}?v=help-master-merge-20260930-01">
+>>>>>>> a19144c6ec4a1c9802672e37ec63775fa48666c1
   <script>
     // Applied before paint so the page never flashes the wrong theme on load.
     (function () {
@@ -26,8 +30,7 @@
     {% if request.path == '/' and not request.session.account_role %}
     <div class="home-nav-links" aria-label="Homepage sections">
       <a href="#stories">Stories</a>
-      <a href="#family-entry">For families</a>
-      <a href="#school-entry">For schools</a>
+      <a href="/help/">Help and Feedback</a>
     </div>
     {% endif %}
     <div class="nav-links">
@@ -62,7 +65,23 @@
     {% if messages %}
       <div class="alerts">
         {% for msg in messages %}
-          {% if msg.message != 'Please sign in as a parent first.' %}
+          {% if 'cooldown-popup' in msg.tags %}
+            <dialog class="account-dialog cooldown-notice-dialog" role="alertdialog" aria-labelledby="cooldown-notice-title-{{ forloop.counter }}" aria-describedby="cooldown-notice-message-{{ forloop.counter }}">
+              <div class="account-dialog-form">
+                <div class="account-dialog-heading">
+                  <span class="account-dialog-icon" aria-hidden="true">!</span>
+                  <div>
+                    <p class="eyebrow">Seat update</p>
+                    <h2 id="cooldown-notice-title-{{ forloop.counter }}">Seat temporarily reserved</h2>
+                  </div>
+                </div>
+                <p id="cooldown-notice-message-{{ forloop.counter }}">{{ msg }}</p>
+                <div class="account-dialog-actions">
+                  <button type="button" class="btn btn-light" data-close-cooldown-notice>Got it</button>
+                </div>
+              </div>
+            </dialog>
+          {% elif msg.message != 'Please sign in as a parent first.' %}
             <div class="alert alert-{{ msg.tags }}">{{ msg }}</div>
           {% endif %}
         {% endfor %}
@@ -70,6 +89,22 @@
     {% endif %}
     {% block content %}{% endblock %}
   </main>
+
+  <script>
+  (function () {
+    document.querySelectorAll('.cooldown-notice-dialog').forEach(function (dialog) {
+      const closeButton = dialog.querySelector('[data-close-cooldown-notice]');
+      if (closeButton) {
+        closeButton.addEventListener('click', function () {
+          if (typeof dialog.close === 'function') dialog.close();
+          else dialog.removeAttribute('open');
+        });
+      }
+      if (typeof dialog.showModal === 'function') dialog.showModal();
+      else dialog.setAttribute('open', '');
+    });
+  })();
+  </script>
 
   {% if request.session.account_role == 'parent' or request.session.account_role == 'teacher' %}
   <script>
@@ -111,7 +146,7 @@
   </div>
   <script>
   (function () {
-    var activityPath = /^\/lessons\/(\d+)\/(activities|questions|visual-activity|pronunciation|spelling|vocabulary|sequencing|inference|prediction|feelings|cause-effect|theme|written-response)$/;
+    var activityPath = /^\/lessons\/(\d+)\/(questions|activities|visual-activity|pronunciation|spelling|vocabulary|sequencing|inference|prediction|feelings|cause-effect|theme|written-response)$/;
     var current = window.location.pathname.match(activityPath);
     if (!current) return;
 
@@ -134,6 +169,13 @@
 
     async function refreshScore() {
       scoreLabel.textContent = 'Loading your score...';
+      if (current[2] === 'activities' && typeof window.SgilaActivityScore === 'function') {
+        var liveScore = window.SgilaActivityScore();
+        if (liveScore && liveScore.total > 0) {
+          scoreLabel.textContent = 'Current score: ' + liveScore.score + ' / ' + liveScore.total;
+          return;
+        }
+      }
       try {
         var response = await fetch('/lessons/' + current[1] + '/activity-pause', {
           credentials: 'same-origin'
@@ -161,8 +203,16 @@
       pauseButton.disabled = true;
       pauseButton.textContent = 'Saving...';
       var resumeUrl = window.location.pathname;
+      var searchParams = new URLSearchParams(window.location.search);
       if (current[2] === 'questions' && typeof window.SgilaCurrentActivityIndex === 'function') {
         resumeUrl += '?activity_index=' + window.SgilaCurrentActivityIndex();
+      } else if (searchParams.has('activity_index')) {
+        resumeUrl += '?activity_index=' + searchParams.get('activity_index');
+        if (current[2] === 'activities' && searchParams.has('question_index')) {
+          resumeUrl += '&question_index=' + searchParams.get('question_index');
+        }
+      } else if (current[2] === 'activities') {
+        resumeUrl += '?activity_index=0';
       }
       var score = typeof window.SgilaActivityScore === 'function'
         ? window.SgilaActivityScore()

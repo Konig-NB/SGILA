@@ -31,6 +31,7 @@
         </p>
         <form method="POST">
           {% csrf_token %}
+          {% if target_child_id %}<input type="hidden" name="child_id" value="{{ target_child_id }}">{% endif %}
           <input type="hidden" name="action" value="use_on_file">
           <button class="btn btn-primary btn-full" type="submit">Confirm and add {{ quantity }} seat{{ quantity|pluralize }}</button>
         </form>
@@ -40,6 +41,7 @@
 
     <form method="POST" id="payment-form" class="{% if has_payment_on_file %}is-hidden{% endif %}">
       {% csrf_token %}
+      {% if target_child_id %}<input type="hidden" name="child_id" value="{{ target_child_id }}">{% endif %}
       <input type="hidden" name="action" value="new_method">
       <input type="hidden" name="payment_method" id="payment-method-input" value="card">
 
@@ -92,7 +94,7 @@
     </form>
 
     <p class="form-note subscription-back-link">
-      <a href="/subscription/add-seat">&larr; Change quantity</a>
+      <a href="/subscription/add-seat{% if target_child_id %}?child_id={{ target_child_id }}{% endif %}">&larr; Change quantity</a>
     </p>
   </div>
 </section>

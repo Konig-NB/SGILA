@@ -31,7 +31,10 @@
 
   <main id="question-area" class="comprehension-panel">
     <div class="question-meta">
-      <span id="activity-number" class="activity-number">Activity 1</span>
+      <div class="question-meta-copy">
+        <span id="activity-number" class="activity-number">Activity 1</span>
+        <span id="question-number" class="question-number">Question 1/1</span>
+      </div>
       <span id="skill-label" class="activity-stage">Remember the story</span>
     </div>
     <p id="activity-instruction" class="activity-instruction"></p>
@@ -192,7 +195,7 @@ function updateProgress() {
     : (total ? 'Activities complete' : 'No activities yet');
   if (group && group.indexes.length > 1) {
     const questionPosition = group.indexes.indexOf(current) + 1;
-    document.getElementById('completion-copy').textContent = `Question ${questionPosition} of ${group.indexes.length}`;
+    document.getElementById('completion-copy').textContent = `Question ${questionPosition}/${group.indexes.length}`;
   } else {
     const completeGroups = activityGroups.filter((item) => item.indexes.every((index) => index < completedCount)).length;
     document.getElementById('completion-copy').textContent = `${completeGroups} of ${activityGroups.length} activities complete`;
@@ -946,8 +949,11 @@ function renderMatching(activity) {
   meanings.className = 'matching-meaning-bank';
   const assignments = {};
   const promptByChoice = {};
+  const promptColors = ['blue', 'orange', 'yellow', 'purple'];
+  const colorByPrompt = {};
   let selectedPrompt = '';
-  let draggedPrompt = '';
+  const matchedPairs = document.createElement('div');
+  matchedPairs.className = 'matching-pairs';
 
   const promptText = (promptKey) => (
     (config.prompts || []).find((prompt) => prompt.key === promptKey)?.text || promptKey
@@ -955,17 +961,68 @@ function renderMatching(activity) {
 
   const updateBoard = () => {
     words.querySelectorAll('button').forEach((word) => {
-      word.dataset.choice = assignments[word.dataset.prompt] || '';
+      const promptKey = word.dataset.prompt;
+      const choiceKey = assignments[promptKey] || '';
+      word.dataset.choice = choiceKey;
       word.classList.toggle('is-selected', word.dataset.prompt === selectedPrompt);
-      word.classList.toggle('is-matched', Boolean(assignments[word.dataset.prompt]));
+      word.classList.toggle('is-matched', Boolean(choiceKey));
+      word.hidden = Boolean(choiceKey);
     });
     meanings.querySelectorAll('button').forEach((meaning) => {
       const promptKey = promptByChoice[meaning.dataset.choice] || '';
       meaning.classList.toggle('is-matched', Boolean(promptKey));
       meaning.classList.toggle('is-selected', meaning.dataset.choice === assignments[selectedPrompt]);
+      meaning.hidden = Boolean(promptKey);
+      meaning.style.borderColor = promptKey ? colorByPrompt[promptKey] : '';
+      meaning.style.backgroundColor = promptKey
+        ? `color-mix(in srgb, ${colorByPrompt[promptKey]} 12%, var(--surface))`
+        : '';
       meaning.setAttribute('aria-label', promptKey
         ? `${meaning.textContent}, matched with ${promptText(promptKey)}`
         : meaning.textContent);
+    });
+
+    matchedPairs.replaceChildren();
+    Object.entries(assignments).forEach(([promptKey, choiceKey]) => {
+      const color = colorByPrompt[promptKey];
+      const pair = document.createElement('div');
+      pair.className = 'matching-pair';
+      pair.dataset.prompt = promptKey;
+      pair.dataset.choice = choiceKey;
+
+      const word = document.createElement('button');
+      word.type = 'button';
+      word.className = 'matching-pair-card matching-pair-word';
+      word.style.borderColor = color;
+      word.style.backgroundColor = `color-mix(in srgb, ${color} 12%, var(--surface))`;
+      word.setAttribute('aria-label', `Matched word ${promptText(promptKey)}. Select to change this match.`);
+      const dot = document.createElement('span');
+      dot.className = 'matching-dot';
+      dot.style.backgroundColor = color;
+      const wordLabel = document.createElement('span');
+      wordLabel.textContent = promptText(promptKey);
+      word.append(dot, wordLabel);
+
+      const meaning = document.createElement('button');
+      meaning.type = 'button';
+      meaning.className = 'matching-pair-card';
+      meaning.style.borderColor = color;
+      meaning.style.backgroundColor = `color-mix(in srgb, ${color} 12%, var(--surface))`;
+      const choiceText = (config.choices || []).find((item) => item.key === choiceKey)?.text || choiceKey;
+      meaning.setAttribute('aria-label', `Matched meaning ${choiceText}. Select to change this match.`);
+      meaning.textContent = choiceText;
+
+      const clearMatch = () => {
+        delete assignments[promptKey];
+        delete promptByChoice[choiceKey];
+        selectedPrompt = promptKey;
+        updateBoard();
+        submit.disabled = Object.keys(assignments).length !== (config.prompts || []).length;
+      };
+      word.addEventListener('click', clearMatch);
+      meaning.addEventListener('click', clearMatch);
+      pair.append(word, meaning);
+      matchedPairs.appendChild(pair);
     });
   };
 
@@ -983,19 +1040,23 @@ function renderMatching(activity) {
   };
 
   (config.prompts || []).forEach((prompt) => {
+    const color = promptColors[Object.keys(colorByPrompt).length % promptColors.length];
+    colorByPrompt[prompt.key] = color;
     const word = document.createElement('button');
     word.type = 'button';
     word.className = 'matching-word';
     word.dataset.prompt = prompt.key;
     word.draggable = true;
-    word.textContent = prompt.text;
+    word.style.borderColor = color;
+    word.setAttribute('aria-label', `Word: ${prompt.text}`);
+    const dot = document.createElement('span');
+    dot.className = 'matching-dot';
+    dot.style.backgroundColor = color;
+    const label = document.createElement('span');
+    label.textContent = prompt.text;
+    word.append(dot, label);
     word.addEventListener('click', () => {
       selectedPrompt = prompt.key;
-      updateBoard();
-    });
-    word.addEventListener('pointerdown', () => {
-      selectedPrompt = prompt.key;
-      draggedPrompt = prompt.key;
       updateBoard();
     });
     word.addEventListener('dragstart', (event) => {
@@ -1014,9 +1075,6 @@ function renderMatching(activity) {
     meaning.textContent = choice.text;
     meaning.addEventListener('click', () => assignChoice(selectedPrompt, choice.key));
     meaning.addEventListener('pointerup', () => assignChoice(selectedPrompt, choice.key));
-    meaning.addEventListener('pointerenter', () => {
-      if (draggedPrompt) assignChoice(draggedPrompt, choice.key);
-    });
     meaning.addEventListener('dragover', (event) => event.preventDefault());
     meaning.addEventListener('drop', (event) => {
       event.preventDefault();
@@ -1034,7 +1092,7 @@ function renderMatching(activity) {
   meaningsTitle.textContent = 'Meanings';
   meanings.prepend(meaningsTitle);
   board.append(words, meanings);
-  responseArea.append(board);
+  responseArea.append(board, matchedPairs);
 
   const submit = makeSubmitButton('Check matches');
   submit.disabled = true;
@@ -1300,6 +1358,9 @@ function renderActivity() {
   if (current >= activities.length) {
     saveScore();
     updateProgress();
+    const finalLink = document.querySelector('#results-area a');
+    if (finalLink) finalLink.href = `/lessons/${lessonId}/results`;
+    if (finalLink) finalLink.textContent = 'View my score';
     document.getElementById('question-area').classList.add('hidden');
     document.getElementById('results-area').classList.remove('hidden');
     document.getElementById('results-copy').textContent = `You completed all ${activityGroups.length} story activities.`;
@@ -1309,15 +1370,15 @@ function renderActivity() {
 
   const activity = activities[current];
   const group = activityGroups.find((item) => item.indexes.includes(current));
-  const questionNumber = group && group.indexes.length > 1 ? group.indexes.indexOf(current) + 1 : null;
+  const totalInGroup = group ? group.indexes.length : 1;
+  const questionNumber = group ? group.indexes.indexOf(current) + 1 : 1;
   responseArea.innerHTML = '';
   responseArea.dataset.activityType = activity.activity_type;
   messageArea.className = 'message-area hidden';
   messageArea.innerHTML = '';
   nextButton.classList.add('hidden');
-  document.getElementById('activity-number').textContent = questionNumber
-    ? `Activity ${group.number} - Question ${questionNumber}`
-    : `Activity ${group ? group.number : current + 1}`;
+  document.getElementById('activity-number').textContent = `Activity ${group ? group.number : current + 1}`;
+  document.getElementById('question-number').textContent = `Question ${questionNumber}/${totalInGroup}`;
   document.getElementById('skill-label').textContent = activityTitle(activity, group);
   const config = activityConfig(activity);
   const isGradeOnePhonics = config.presentation === 'grade1_phonics';
@@ -1410,7 +1471,17 @@ function markMatchingAnswers(data) {
     return;
   }
 
-  responseArea.querySelectorAll('.matching-word').forEach((word) => {
+  responseArea.querySelectorAll('.matching-pair[data-prompt]').forEach((pair) => {
+    const correctValue = String(expectedAnswers[pair.dataset.prompt] || '');
+    const isCorrect = pair.dataset.choice === correctValue;
+    pair.classList.add(isCorrect ? 'match-correct' : 'match-wrong');
+    const badge = document.createElement('span');
+    badge.className = 'matching-result-badge';
+    badge.textContent = isCorrect ? 'Correct' : 'Incorrect';
+    pair.appendChild(badge);
+  });
+
+  responseArea.querySelectorAll('.matching-word:not([hidden])').forEach((word) => {
     const correctValue = String(expectedAnswers[word.dataset.prompt] || '');
     const isCorrect = word.dataset.choice === correctValue;
     word.classList.add(isCorrect ? 'match-correct' : 'match-wrong');
@@ -1583,6 +1654,10 @@ async function loadActivities() {
 }
 
 nextButton.addEventListener('click', () => {
+  if (current >= activities.length - 1) {
+    window.location.assign(`/lessons/${lessonId}/results`);
+    return;
+  }
   current++;
   renderActivity();
 });
