@@ -203,9 +203,8 @@ function section(number, label, instruction) {
   return element;
 }
 
-let totalScore = 0;
-let totalPossible = 0;
-window.SgilaActivityScore = () => ({ score: totalScore, total: totalPossible });
+let totalScore = {{ resume_score.score|default:0 }};
+let totalPossible = {{ resume_score.total|default:0 }};
 const completedActivities = new Set();
 const activityScores = new Map();
 const questionProgress = new Map();
@@ -215,13 +214,53 @@ const progressCopy = document.getElementById('grade3-progress-copy');
 const completionCopy = document.getElementById('grade3-completion-copy');
 const progressFill = document.getElementById('grade3-progress-fill');
 const activityMap = document.getElementById('grade3-activity-map');
+const requestedParams = new URLSearchParams(window.location.search);
+const requestedActivity = Number(requestedParams.get('activity_index') || 0);
+let requestedQuestion = Number(requestedParams.get('question_index') || 0);
+if (!Number.isInteger(requestedQuestion) || requestedQuestion < 0) requestedQuestion = 0;
 
-function saveActivityResults() {
+function updateQuestionResumeUrl(activity, index) {
+  const url = new URL(window.location.href);
+  url.searchParams.set('activity_index', String(Number(activity.dataset.activityNumber) - 1));
+  if (index > 0) url.searchParams.set('question_index', String(index));
+  else url.searchParams.delete('question_index');
+  window.history.replaceState({}, '', url);
+}
+
+function currentScore() {
+  let score = totalScore;
+  let total = totalPossible;
+  questionProgress.forEach((progress, activity) => {
+    if (!completedActivities.has(activity)) {
+      score += progress.score;
+      total += progress.answered;
+    }
+  });
+  return { score, total };
+}
+
+window.SgilaActivityScore = currentScore;
+
+function recordPartialAnswer(activity, isCorrect) {
+  const result = questionProgress.get(activity) || { answered: 0, score: 0 };
+  result.answered += 1;
+  result.score += Number(isCorrect);
+  questionProgress.set(activity, result);
+}
+
+function saveActivityResults(payload) {
   const lessonId = document.querySelector('.grade3-activities').dataset.lessonId;
   return fetch(`/lessons/${lessonId}/activities/complete`, {
     method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRFToken': '{{ csrf_token }}' },
-    body: JSON.stringify(completionPayload),
+    body: JSON.stringify(payload),
   });
+}
+
+function queueActivityResults(payload) {
+  completionRequest = (completionRequest || Promise.resolve())
+    .catch(() => null)
+    .then(() => saveActivityResults(payload));
+  return completionRequest;
 }
 
 function updateProgress() {
@@ -232,7 +271,8 @@ function updateProgress() {
     : 5;
   const questionPosition = currentSection ? Number(currentSection.dataset.questionIndex || 0) + 1 : 1;
   progressCopy.textContent = `Activity ${activeActivity + 1} of ${total}`;
-  completionCopy.textContent = `Question ${questionPosition} of ${questionCount}`;
+  const score = currentScore();
+  completionCopy.textContent = `Question ${questionPosition} of ${questionCount} | Score ${score.score} / ${score.total}`;
   progressFill.style.setProperty('--progress', `${(completedActivities.size / total) * 100}%`);
   activityMap.innerHTML = '';
   activitySections.forEach((activity, index) => {
@@ -267,25 +307,31 @@ function finishActivity(activity, score, possible, message, speakSummary = true)
   activity.append(feedback);
   feedback.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
   if (speakSummary) speakFeedback(feedbackCopy.speechText, feedback);
-  if (completedActivities.size === 6) {
+  const allActivitiesCompleted = completedActivities.size === 6;
+  const completedFinalActivity = activity.dataset.activityNumber === '6';
+  completionPayload = {
+    total_score: totalScore,
+    total_possible: totalPossible,
+    activity_scores: [...activityScores.entries()].map(([number, item]) => ({
+      number,
+      score: item.score,
+      total: item.possible,
+    })),
+  };
+  if (allActivitiesCompleted) {
+    completionPayload.comprehension_score = activityScores.get('1').score + activityScores.get('3').score;
+    completionPayload.visual_score = activityScores.get('2').score + activityScores.get('4').score;
+    completionPayload.spelling_score = activityScores.get('5').score;
+  }
+  completionRequest = queueActivityResults(completionPayload);
+  if (allActivitiesCompleted || completedFinalActivity) {
     const finalButton = document.getElementById('final-score-button');
-    completionPayload = {
-      total_score: totalScore,
-      total_possible: totalPossible,
-      comprehension_score: activityScores.get('1').score + activityScores.get('3').score,
-      visual_score: activityScores.get('2').score + activityScores.get('4').score,
-      spelling_score: activityScores.get('5').score,
-      activity_scores: [...activityScores.entries()].map(([number, item]) => ({
-        number,
-        score: item.score,
-        total: item.possible,
-      })),
-    };
-    completionRequest = saveActivityResults();
     finalButton.hidden = false;
     finalButton.disabled = false;
     finalButton.textContent = 'Finish activities and view score';
-    finalScorePanel.innerHTML = '<h2>Activities complete</h2><p>You finished all six activities. Choose below to view your score.</p>';
+    finalScorePanel.innerHTML = allActivitiesCompleted
+      ? '<h2>Activities complete</h2><p>You finished all six activities. Choose below to view your score.</p>'
+      : '<h2>Activity complete</h2><p>Your score is ready. Choose below to view it.</p>';
     finalScorePanel.hidden = false;
     finalButton.scrollIntoView({ behavior: 'smooth', block: 'center' });
   }
@@ -310,10 +356,8 @@ function recordQuestionAnswer(activity, question, isCorrect, correctAnswer, tota
   const pagerNext = question.closest('.grade3-activity-section')?.querySelector('.question-page-navigation button:last-child');
   if (pagerNext && !pagerNext.hidden) pagerNext.disabled = false;
 
-  const result = questionProgress.get(activity) || { answered: 0, score: 0 };
-  result.answered += 1;
-  result.score += Number(isCorrect);
-  questionProgress.set(activity, result);
+  recordPartialAnswer(activity, isCorrect);
+  const result = questionProgress.get(activity);
 
   const feedback = document.createElement('p');
   feedback.className = `answer-review ${isCorrect ? 'correct' : 'wrong'}`;
@@ -487,11 +531,12 @@ data.act4_word_detective.text_segments.forEach((text, index) => {
     question.append(feedback);
     speakFeedback(feedback.textContent, feedback);
     detectiveResults.set(blankData.id, correct);
+    recordPartialAnswer(detective, correct);
     if (detectiveResults.size === Object.keys(blanks).length) {
       const score = [...detectiveResults.values()].filter(Boolean).length;
       bank.querySelectorAll('.word-pill').forEach((button) => { button.disabled = true; button.draggable = false; });
       finishActivity(detective, score, Object.keys(blanks).length, 'You checked every missing word. Nice work!');
-    }
+    } else updateProgress();
   });
   question.append(check);
   sentence.append(question);
@@ -532,6 +577,7 @@ spellingList.querySelectorAll('.listen-spell-row').forEach((row) => {
     const pagerNext = spelling.querySelector('.question-page-navigation button:last-child');
     if (pagerNext && !pagerNext.hidden) pagerNext.disabled = false;
     spellingResults.set(row, correct);
+    recordPartialAnswer(spelling, correct);
     const feedback = document.createElement('small');
     feedback.className = `answer-review ${correct ? 'correct' : 'wrong'}`;
     feedback.setAttribute('role', 'status');
@@ -645,12 +691,14 @@ nextBalloon.type = 'button';
 nextBalloon.className = 'btn btn-primary';
 nextBalloon.textContent = 'Next question';
 nextBalloon.disabled = true;
-function showBalloonQuestion(index) {
+function showBalloonQuestion(index, updateUrl = true) {
   const activeIndex = Math.max(0, Math.min(index, balloonCards.length - 1));
   balloons.dataset.questionIndex = activeIndex;
+  if (updateUrl) updateQuestionResumeUrl(balloons, activeIndex);
   balloonCards.forEach((card, cardIndex) => { card.hidden = cardIndex !== activeIndex; });
   balloonCount.textContent = `Question ${activeIndex + 1} of ${balloonCards.length}`;
-  completionCopy.textContent = `Question ${activeIndex + 1} of ${balloonCards.length}`;
+  const score = currentScore();
+  completionCopy.textContent = `Question ${activeIndex + 1} of ${balloonCards.length} | Score ${score.score} / ${score.total}`;
   previousBalloon.disabled = activeIndex === 0;
   nextBalloon.hidden = activeIndex === balloonCards.length - 1;
   nextBalloon.disabled = balloonCards[activeIndex].dataset.answered !== 'true';
@@ -717,14 +765,16 @@ balloonCards.forEach((card, questionIndex) => {
   });
   card.append(check);
 });
-showBalloonQuestion(0);
+showBalloonQuestion(requestedActivity === 5 ? requestedQuestion : 0, false);
 
 const activitySections = [...app.querySelectorAll('.grade3-activity-section')];
 function setupQuestionPages(activity, selector) {
   const questions = [...activity.querySelectorAll(selector)];
   if (questions.length < 2) return;
 
-  let currentQuestion = 0;
+  let currentQuestion = requestedActivity === Number(activity.dataset.activityNumber) - 1
+    ? Math.min(requestedQuestion, questions.length - 1)
+    : 0;
   const pager = document.createElement('div');
   pager.className = 'question-page-navigation';
   const previousQuestion = document.createElement('button');
@@ -739,9 +789,10 @@ function setupQuestionPages(activity, selector) {
   nextQuestion.textContent = 'Next question';
   pager.append(previousQuestion, questionCount, nextQuestion);
 
-  function showQuestion(index) {
+  function showQuestion(index, updateUrl = true) {
     currentQuestion = Math.max(0, Math.min(index, questions.length - 1));
     activity.dataset.questionIndex = currentQuestion;
+    if (updateUrl) updateQuestionResumeUrl(activity, currentQuestion);
     questions.forEach((question, questionIndex) => {
       question.hidden = questionIndex !== currentQuestion;
     });
@@ -756,7 +807,7 @@ function setupQuestionPages(activity, selector) {
     if (questions[currentQuestion].dataset.answered === 'true') showQuestion(currentQuestion + 1);
   });
   activity.append(pager);
-  showQuestion(0);
+  showQuestion(currentQuestion, false);
 }
 
 setupQuestionPages(activitySections[0], '.grade3-question-card');
@@ -769,7 +820,7 @@ async function openFinalScoreDashboard() {
   finalScoreButton.disabled = true;
   finalScoreButton.textContent = 'Saving final score...';
   try {
-    const response = await (completionRequest || saveActivityResults());
+    const response = await completionRequest;
     if (!response || !response.ok) throw new Error('Could not save final score.');
     const lessonId = document.querySelector('.grade3-activities')?.dataset.lessonId;
     if (lessonId) {
@@ -790,8 +841,12 @@ navigation.append(previous, next);
 app.append(finalScoreButton);
 app.append(finalScorePanel);
 let activeActivity = 0;
-function showActivity(index) {
+function showActivity(index, preserveQuestion = false) {
   activeActivity = Math.max(0, Math.min(index, activitySections.length - 1));
+  const url = new URL(window.location.href);
+  url.searchParams.set('activity_index', String(activeActivity));
+  if (!preserveQuestion) url.searchParams.delete('question_index');
+  window.history.replaceState({}, '', url);
   activitySections.forEach((activity, activityIndex) => activity.classList.toggle('activity-current', activityIndex === activeActivity));
   previous.disabled = activeActivity === 0;
   next.disabled = activeActivity === activitySections.length - 1;
@@ -801,10 +856,10 @@ function showActivity(index) {
 }
 previous.addEventListener('click', () => showActivity(activeActivity - 1));
 next.addEventListener('click', () => showActivity(activeActivity + 1));
-showActivity(0);
-const requestedActivity = Number(new URLSearchParams(window.location.search).get('activity_index'));
 if (Number.isInteger(requestedActivity) && requestedActivity >= 0 && requestedActivity < activitySections.length) {
-  showActivity(requestedActivity);
+  showActivity(requestedActivity, true);
+} else {
+  showActivity(0);
 }
 }
 

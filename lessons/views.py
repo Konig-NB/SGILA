@@ -212,19 +212,76 @@ def activity_choices_for(lesson):
     """Return the learner-facing activity menu for a lesson."""
     base = f'/lessons/{lesson.id}'
     choices = [{'label': 'Read the Story', 'url': f'{base}/story'}]
-    if lesson.grade == 3 and lesson.reading_activities.exists():
-        grade3_headings = [
-            'Story Questions: Find Details',
-            'Story Sequencer: Order Events',
-            'Fact Check: True or False',
-            'Word Detective: Discover Meanings',
-            'Listen and Spell: Build Words',
-        ]
-        choices.extend(
-            {'label': heading, 'url': f'{base}/activities'}
-            for heading in grade3_headings
-        )
+    if lesson.grade == 1 and lesson.reading_activities.exists():
+        ordered_activities = list(lesson.reading_activities.order_by('group_number', 'order', 'id'))
+        groups = {}
+        for index, activity in enumerate(ordered_activities):
+            inferred_group = activity.group_number or (
+                1 if activity.activity_type == 'cloze'
+                else 2 if activity.skill == 'literal_comprehension'
+                else 3 if activity.skill == 'vocabulary_in_context'
+                else activity.order
+            )
+            group_number = inferred_group
+            group_label = {
+                1: 'Spelling - Fill in the Blank',
+                2: 'Comprehension - Multiple Choice',
+                3: 'Vocabulary - Multiple Choice',
+            }.get(group_number, learner_activity_label(activity))
+            groups.setdefault(group_number, {
+                'label': group_label,
+                'url': f'{base}/questions?activity_index={index}',
+            })
+        choices.extend(groups.values())
+    elif lesson.grade == 2 and lesson.reading_activities.exists():
+        choices = [{'label': 'Read the Story', 'url': f'{base}/story'}]
+        ordered_activities = list(lesson.reading_activities.order_by('group_number', 'order', 'id'))
+        groups = {}
+        for index, activity in enumerate(ordered_activities):
+            group_number = activity.group_number or activity.order
+            group_label = {
+                1: 'Comprehension Questions',
+                2: 'Match It!',
+                3: 'Visual Matching',
+                4: 'Spelling',
+                5: 'Fix the Mistake',
+            }.get(group_number, learner_activity_label(activity))
+            groups.setdefault(group_number, {
+                'label': group_label,
+                'url': f'{base}/questions?activity_index={index}',
+            })
+        choices.extend(groups.values())
+    elif lesson.grade == 3:
+        choices = [{'label': 'Read the Story', 'url': f'{base}/story'}]
+        choices.extend([
+            {'label': 'Comprehension Questions - Remember the story', 'url': f'{base}/activities?activity_index=0'},
+            {'label': 'Sequencing - Put events in order', 'url': f'{base}/activities?activity_index=1'},
+            {'label': 'True or False - Think carefully', 'url': f'{base}/activities?activity_index=2'},
+            {'label': 'Word Detective - Find the missing words', 'url': f'{base}/activities?activity_index=3'},
+            {'label': 'Spelling Questions - Build the story words', 'url': f'{base}/activities?activity_index=4'},
+            {'label': 'Word Balloon Pop', 'url': f'{base}/activities?activity_index=5'},
+        ])
+    elif lesson.grade == 4 and (
+        lesson.vocabulary_questions.exists()
+        or lesson.sequencing_activities.exists()
+        or lesson.inference_questions.exists()
+        or lesson.prediction_questions.exists()
+        or lesson.feelings_questions.exists()
+        or lesson.cause_effect_pairs.exists()
+        or lesson.theme_questions.exists()
+    ):
+        choices = [{'label': 'Read the Story', 'url': f'{base}/story'}]
+        choices.extend([
+            {'label': 'Vocabulary: Explore New Words', 'url': f'{base}/vocabulary'},
+            {'label': 'Sequencing: Order Events', 'url': f'{base}/sequencing'},
+            {'label': 'Inference: Read Between the Lines', 'url': f'{base}/inference'},
+            {'label': 'Prediction: Think Ahead', 'url': f'{base}/prediction'},
+            {'label': 'Feelings: Understand Characters', 'url': f'{base}/feelings'},
+            {'label': 'Cause and Effect: Follow the Story', 'url': f'{base}/cause-effect'},
+            {'label': 'Main Lesson: Find the Big Idea', 'url': f'{base}/theme'},
+        ])
     elif lesson.grade == 4 and lesson.reading_activities.exists():
+        choices = [{'label': 'Read the Story', 'url': f'{base}/story'}]
         groups = {}
         for activity in lesson.reading_activities.order_by('order', 'id'):
             group_number = activity.group_number or activity.order
@@ -1833,9 +1890,20 @@ def grade3_activities_page(request, lesson_id):
     if response:
         return response
     lesson = get_object_or_404(Lesson, id=lesson_id, grade=3)
+    paused_entry = (child.paused_activities or {}).get(str(lesson.id))
+    resume_score = {'score': 0, 'total': 0}
+    if isinstance(paused_entry, dict) and paused_entry.get('url') == request.get_full_path():
+        try:
+            resume_score = {
+                'score': max(int(paused_entry.get('score', 0)), 0),
+                'total': max(int(paused_entry.get('total', 0)), 0),
+            }
+        except (TypeError, ValueError):
+            pass
     return render(request, 'grade3_activities.html', {
         'lesson': lesson,
         'child': child,
+        'resume_score': resume_score,
     })
 
 
@@ -1853,30 +1921,55 @@ def complete_grade3_activities(request, lesson_id):
         '5': 'grade3_listen_spell',
         '6': 'grade3_word_balloon',
     }
+    existing_record = Progress.objects.filter(child=child, lesson=lesson).first()
+    existing_scores = (
+        existing_record.assessment_scores
+        if existing_record and isinstance(existing_record.assessment_scores, dict)
+        else {}
+    )
     try:
         scores = json.loads(request.body or '{}')
         if not isinstance(scores, dict):
             raise ValueError
         activity_scores = scores.get('activity_scores')
         if activity_scores is None:
-            total_score = int(scores.get('total_score', 0))
-            total_possible = int(scores.get('total_possible', 24))
             assessment_scores = {
-                'grade3_activities': {'score': total_score, 'total': total_possible},
+                key: dict(values or {})
+                for key, values in existing_scores.items()
+                if key.startswith('grade3_') and key != 'grade3_activities'
             }
+            if assessment_scores:
+                total_score = sum(int(item.get('score', 0)) for item in assessment_scores.values())
+                total_possible = sum(int(item.get('total', 0)) for item in assessment_scores.values())
+            else:
+                total_score = int(scores.get('total_score', 0))
+                total_possible = int(scores.get('total_possible', 24))
+                assessment_scores = {
+                    'grade3_activities': {'score': total_score, 'total': total_possible},
+                }
         else:
-            if not isinstance(activity_scores, list) or len(activity_scores) != len(activity_keys):
+            if (
+                not isinstance(activity_scores, list)
+                or not activity_scores
+                or len(activity_scores) > len(activity_keys)
+            ):
                 raise ValueError
-            assessment_scores = {}
+            new_assessment_scores = {}
             for activity in activity_scores:
                 activity_key = activity_keys.get(str(activity.get('number')))
                 score = int(activity.get('score'))
                 possible = int(activity.get('total'))
-                if not activity_key or activity_key in assessment_scores or possible <= 0 or not 0 <= score <= possible:
+                if not activity_key or activity_key in new_assessment_scores or possible <= 0 or not 0 <= score <= possible:
                     raise ValueError
-                assessment_scores[activity_key] = {'score': score, 'total': possible}
-            if len(assessment_scores) != len(activity_keys):
+                new_assessment_scores[activity_key] = {'score': score, 'total': possible}
+            if len(new_assessment_scores) != len(activity_scores):
                 raise ValueError
+            assessment_scores = {
+                key: dict(values or {})
+                for key, values in existing_scores.items()
+                if key.startswith('grade3_') and key != 'grade3_activities'
+            }
+            assessment_scores.update(new_assessment_scores)
             total_score = sum(item['score'] for item in assessment_scores.values())
             total_possible = sum(item['total'] for item in assessment_scores.values())
     except (TypeError, ValueError, json.JSONDecodeError):
@@ -1885,9 +1978,15 @@ def complete_grade3_activities(request, lesson_id):
         child=child,
         lesson=lesson,
         defaults={
-            'comprehension_score': int(scores.get('comprehension_score', 0)),
-            'visual_score': int(scores.get('visual_score', 0)),
-            'spelling_score': int(scores.get('spelling_score', 0)),
+            'comprehension_score': sum(
+                int(assessment_scores.get(key, {}).get('score', 0))
+                for key in ('grade3_comprehension_check', 'grade3_true_false')
+            ),
+            'visual_score': sum(
+                int(assessment_scores.get(key, {}).get('score', 0))
+                for key in ('grade3_visual_match', 'grade3_word_detective')
+            ),
+            'spelling_score': int(assessment_scores.get('grade3_listen_spell', {}).get('score', 0)),
             'total_score': total_score,
             'total_possible': total_possible,
             'stars_earned': 3 if total_score / max(total_possible, 1) >= .9 else 2 if total_score / max(total_possible, 1) >= .7 else 1,
@@ -2035,14 +2134,42 @@ def activity_pause(request, lesson_id):
         }
         if parsed_resume_url.path not in allowed_paths or parsed_resume_url.fragment:
             return JsonResponse({'error': 'Invalid activity to resume.'}, status=400)
-        if parsed_resume_url.path.endswith('/questions'):
+        if parsed_resume_url.path.endswith('/questions') or parsed_resume_url.path.endswith('/activities'):
             query = urllib.parse.parse_qs(parsed_resume_url.query)
             indexes = query.get('activity_index', [])
-            activity_index = int(indexes[0]) if len(indexes) == 1 and indexes[0].isdigit() else -1
-            activity_total = lesson.reading_activities.count() or lesson.questions.count()
-            if activity_index < 0 or activity_index >= activity_total:
-                return JsonResponse({'error': 'Invalid activity to resume.'}, status=400)
-            resume_url = f'{parsed_resume_url.path}?activity_index={activity_index}'
+            if not indexes:
+                if parsed_resume_url.path.endswith('/activities'):
+                    activity_index = 0
+                else:
+                    resume_url = parsed_resume_url.path
+            else:
+                if len(indexes) != 1 or not indexes[0].isdigit():
+                    return JsonResponse({'error': 'Invalid activity to resume.'}, status=400)
+                activity_index = int(indexes[0])
+                if parsed_resume_url.path.endswith('/questions'):
+                    activity_total = lesson.reading_activities.count() or lesson.questions.count()
+                    if activity_index < 0 or activity_index >= activity_total:
+                        return JsonResponse({'error': 'Invalid activity to resume.'}, status=400)
+                elif parsed_resume_url.path.endswith('/activities'):
+                    activity_total = 6 if lesson.grade == 3 else 1
+                    if activity_index < 0 or activity_index >= activity_total:
+                        return JsonResponse({'error': 'Invalid activity to resume.'}, status=400)
+            if parsed_resume_url.path.endswith('/activities'):
+                if set(query) - {'activity_index', 'question_index'}:
+                    return JsonResponse({'error': 'Invalid activity to resume.'}, status=400)
+                question_indexes = query.get('question_index', [])
+                resume_url = f'{parsed_resume_url.path}?activity_index={activity_index}'
+                if question_indexes:
+                    if (
+                        lesson.grade != 3
+                        or len(question_indexes) != 1
+                        or not question_indexes[0].isdigit()
+                        or int(question_indexes[0]) >= 6
+                    ):
+                        return JsonResponse({'error': 'Invalid activity to resume.'}, status=400)
+                    resume_url += f'&question_index={int(question_indexes[0])}'
+            elif indexes:
+                resume_url = f'{parsed_resume_url.path}?activity_index={activity_index}'
         elif parsed_resume_url.query:
             return JsonResponse({'error': 'Invalid activity to resume.'}, status=400)
 

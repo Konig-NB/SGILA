@@ -1355,6 +1355,9 @@ function renderActivity() {
   if (current >= activities.length) {
     saveScore();
     updateProgress();
+    const finalLink = document.querySelector('#results-area a');
+    if (finalLink) finalLink.href = `/lessons/${lessonId}/results`;
+    if (finalLink) finalLink.textContent = 'View my score';
     document.getElementById('question-area').classList.add('hidden');
     document.getElementById('results-area').classList.remove('hidden');
     document.getElementById('results-copy').textContent = `You completed all ${activityGroups.length} story activities.`;
@@ -1648,6 +1651,10 @@ async function loadActivities() {
 }
 
 nextButton.addEventListener('click', () => {
+  if (current >= activities.length - 1) {
+    window.location.assign(`/lessons/${lessonId}/results`);
+    return;
+  }
   current++;
   renderActivity();
 });
