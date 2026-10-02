@@ -4,8 +4,10 @@ Frontend views for the SGILA web app.
 The API module exposes JSON endpoints. These views render the role-aware
 application screens described in the supplied wireframes and data-flow docs.
 """
+import base64
 import hashlib
 import json
+import logging
 import random
 import re
 import secrets
@@ -77,6 +79,29 @@ from api.account_access import (
     subscription_allows_children,
 )
 from api.reporting import aggregate_rows, rows_for_record, rows_from_scores
+from api.grade4_story_framework import (
+    are_story_thresholds_enabled,
+    generate_story_text,
+    grade4_prompt_context,
+    retrieve_grade4_context,
+    save_grade4_activities,
+    validate_and_repair_grade4_story,
+)
+from api.grade1_story_framework import (
+    grade1_generation_preferences,
+    grade1_prompt_context,
+    grade1_vocabulary_page_indices,
+    save_grade1_activities,
+    story_generation_metadata as grade1_story_generation_metadata,
+    validate_grade1_story,
+)
+from api.story_eligibility import (
+    AI_STORY_PASS_THRESHOLD,
+    check_ai_story_eligibility,
+    lesson_passed,
+)
+
+logger = logging.getLogger(__name__)
 
 
 def password_matches(raw, stored):
@@ -383,6 +408,11 @@ def paused_activity_url(child, lesson):
 def activity_score_summary(request, lesson):
     """Summarise the in-progress attempt stored in the learner session."""
     prefix = f'lesson_{lesson.id}_'
+    reading_skill_scores = request.session.get(prefix + 'reading_skill_scores', {})
+    if lesson.reading_activities.exists() and isinstance(reading_skill_scores, dict) and reading_skill_scores:
+        score = sum(int(item.get('score') or 0) for item in reading_skill_scores.values() if isinstance(item, dict))
+        possible = sum(int(item.get('total') or 0) for item in reading_skill_scores.values() if isinstance(item, dict))
+        return score, possible
     if lesson.grade == 4:
         fields = [
             ('comprehension_score', 'comprehension_total', lesson.questions.count()),
@@ -1500,41 +1530,88 @@ def parent_add_child(request):
 # called right after a learner finishes a lesson at pass-threshold or above,
 # so a new story is often already waiting by the time they go looking for it.
 
-AI_STORY_PASS_THRESHOLD = 95
-
-
-def lesson_passed(child, lesson):
-    """A lesson only counts as 'mastered' at 95%+, so comprehension has genuinely happened."""
-    record = Progress.objects.filter(child=child, lesson=lesson).first()
-    return bool(record and record.percentage >= AI_STORY_PASS_THRESHOLD)
-
-
 class GeminiStoryGenerationError(Exception):
     """A learner-safe error raised when Gemini/Pollinations cannot create a story."""
 
 
-def generate_gemini_story(grade, recent_titles):
-    """Ask Gemini for a structured, CAPS-aligned practice story for one grade."""
-    api_key = settings.GEMINI_API_KEY
+def story_text_provider_configured(grade):
+    if grade in (1, 4):
+        return bool(settings.GROQ_API_KEY or settings.GEMINI_API_KEY)
+    return bool(settings.GEMINI_API_KEY)
+
+
+def generate_gemini_story(grade, recent_titles, learner_token=None, _provider=None):
+    """Generate a constrained story using the grade-specific provider and validation rules."""
+    is_grade4 = grade == 4
+    provider = _provider or ('groq' if grade in (1, 4) and settings.GROQ_API_KEY else 'gemini')
+    api_key = settings.GROQ_API_KEY if provider == 'groq' else settings.GEMINI_API_KEY
     if not api_key:
-        raise GeminiStoryGenerationError('AI stories are not configured yet. Ask an adult to add the GEMINI_API_KEY setting.')
-    theme = random.choice([
-        'a school library discovery', 'a soccer practice', 'a family cooking day',
-        'a visit to a science centre', 'a beach clean-up', 'a neighbourhood music day',
-        'a bus trip to a museum', 'a lost-and-found kindness story', 'a rainy-day invention',
-        'a young reader helping at a community event',
-    ])
-    word_count = '25-45' if grade == 1 else ('30-55' if grade == 2 else ('35-65' if grade == 3 else '70-100'))
-    prompt = f'''Create one original English Home Language reading-practice story for a South African Grade {grade} learner.
+        key_name = 'GROQ_API_KEY' if provider == 'groq' else 'GEMINI_API_KEY'
+        raise GeminiStoryGenerationError(f'AI stories are not configured yet. Ask an adult to add the {key_name} setting.')
+    activity_types = []
+    grade1_context = None
+    if grade == 4:
+        try:
+            blueprint, vocabulary, activity_types = retrieve_grade4_context(recent_titles)
+        except ValueError as error:
+            raise GeminiStoryGenerationError(str(error)) from error
+        prompt = grade4_prompt_context(
+            blueprint, vocabulary, recent_titles,
+            learner_token or uuid4().hex[:10],
+        )
+    elif grade == 1:
+        theme, recent_themes, recent_characters, activity_variant = grade1_generation_preferences()
+        prompt, retrieved, assessment_reference = grade1_prompt_context(
+            theme, recent_titles, recent_themes, recent_characters,
+        )
+        def validate_grade1_response(story):
+            if not isinstance(story, dict):
+                raise ValueError('The story provider returned an invalid Grade 1 response.')
+            story['_activity_variant'] = activity_variant
+            return validate_grade1_story(story)
+
+        try:
+            story = generate_story_text(prompt, validator=validate_grade1_response)
+        except RuntimeError as error:
+            raise GeminiStoryGenerationError(str(error)) from error
+        story['_generation_metadata'] = grade1_story_generation_metadata(
+            theme, retrieved, assessment_reference, story,
+        )
+        return story
+    else:
+        theme = random.choice([
+            'a school library discovery', 'a soccer practice', 'a family cooking day',
+            'a visit to a science centre', 'a beach clean-up', 'a neighbourhood music day',
+            'a bus trip to a museum', 'a lost-and-found kindness story', 'a rainy-day invention',
+            'a young reader helping at a community event',
+        ])
+        word_count = '25-45' if grade == 1 else ('30-55' if grade == 2 else '35-65')
+        prompt = f'''Create one original English Home Language reading-practice story for a South African Grade {grade} learner.
 Use this fresh theme: {theme}.
 Avoid these recently used story titles and topics: {', '.join(recent_titles[-10:]) or 'none'}.
 Return ONLY valid JSON with this exact shape:
 {{"title":"short story title","character_description":"","pages":[{{"text":"","highlighted_words":["word"],"illustration_prompt":""}}],"questions":[{{"question":"","options":["","","",""],"answer":""}}],"visual_words":["","",""],"spelling":{{"display_text":"word with one missing vowel","answer":"complete word"}}}}
 Rules: exactly 2 pages; each page has {word_count} age-appropriate words; each illustration_prompt describes that page only; use an everyday South African setting; age-appropriate vocabulary; no unsafe, frightening, commercial, or copyrighted characters; 3 comprehension questions; exactly 4 options per question; the answer must exactly match one option; and all content must be CAPS-aligned Grade {grade} reading practice. visual_words must contain exactly three different, single-word, concrete nouns from the story (for example "train", "book", "apple") that can be shown alone in a picture. Never use actions, people, places, descriptions, or compound words there.
 character_description must be one concrete sentence describing the main character's appearance only — approximate age, hairstyle, one clothing colour/item, and skin tone — written so it can be pasted unchanged into an image-generation prompt every time that character appears, keeping them visually identical across illustrations.'''
-    model = settings.GEMINI_MODEL
-    payload = json.dumps({'contents': [{'parts': [{'text': prompt}]}], 'generationConfig': {'responseMimeType': 'application/json', 'temperature': 0.7}}).encode('utf-8')
-    api_request = UrlRequest(f'https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent', data=payload, headers={'Content-Type': 'application/json', 'x-goog-api-key': api_key}, method='POST')
+    if provider == 'groq':
+        model = settings.GROQ_MODEL
+        payload = json.dumps({
+            'model': model,
+            'messages': [
+                {'role': 'system', 'content': 'Follow the curriculum and output contract exactly. Return only one JSON object.'},
+                {'role': 'user', 'content': prompt},
+            ],
+            'response_format': {'type': 'json_object'},
+            'temperature': 0.7,
+        }).encode('utf-8')
+        endpoint = 'https://api.groq.com/openai/v1/chat/completions'
+        headers = {'Content-Type': 'application/json', 'Authorization': f'Bearer {api_key}'}
+    else:
+        model = settings.GEMINI_MODEL
+        payload = json.dumps({'contents': [{'parts': [{'text': prompt}]}], 'generationConfig': {'responseMimeType': 'application/json', 'temperature': 0.7}}).encode('utf-8')
+        endpoint = f'https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent'
+        headers = {'Content-Type': 'application/json', 'x-goog-api-key': api_key}
+    api_request = UrlRequest(endpoint, data=payload, headers=headers, method='POST')
     try:
         with urlopen(api_request, timeout=45) as response:
             result = json.loads(response.read().decode('utf-8'))
@@ -1544,36 +1621,72 @@ character_description must be one concrete sentence describing the main characte
             provider_message = detail.get('message', '')
         except (UnicodeDecodeError, json.JSONDecodeError):
             provider_message = ''
+        provider_name = 'Groq' if provider == 'groq' else 'Gemini'
         if error.code in (401, 403):
-            message = 'Gemini rejected the API key. Check that the key is active in Google AI Studio and restart SGILA.'
+            message = f'{provider_name} rejected the API key. Check its value and permissions, then restart SGILA.'
         elif error.code == 404:
-            message = f'Gemini model "{model}" is not available for this API key. Check GEMINI_MODEL in .env.'
+            setting_name = 'GROQ_MODEL' if is_grade4 or provider == 'groq' else 'GEMINI_MODEL'
+            message = f'{provider_name} model "{model}" is not available for this API key. Check {setting_name} in .env.'
         elif error.code == 429:
-            message = 'Gemini has reached its request limit. Wait a moment, then try again.'
+            message = f'{provider_name} has reached its request limit. Wait a moment, then try again.'
         elif error.code == 400:
-            message = 'Gemini could not accept the story request. Check the selected Gemini model and try again.'
+            message = f'{provider_name} could not accept the story request. Check the selected model and try again.'
         else:
-            message = f'Gemini returned an error ({error.code}). Please try again later.'
+            message = f'{provider_name} returned an error ({error.code}). Please try again later.'
         if provider_message:
             message = f'{message} Details: {provider_message[:180]}'
+        if provider == 'groq' and settings.GEMINI_API_KEY:
+            logger.warning('Groq story request failed with HTTP %s; trying Gemini.', error.code)
+            return generate_gemini_story(grade, recent_titles, learner_token, _provider='gemini')
         raise GeminiStoryGenerationError(message) from error
     except URLError as error:
-        raise GeminiStoryGenerationError('SGILA could not reach Gemini. Check the internet connection and try again.') from error
+        if provider == 'groq' and settings.GEMINI_API_KEY:
+            logger.warning('Could not reach Groq for story generation; trying Gemini.')
+            return generate_gemini_story(grade, recent_titles, learner_token, _provider='gemini')
+        provider_name = 'Groq' if provider == 'groq' else 'Gemini'
+        raise GeminiStoryGenerationError(f'SGILA could not reach {provider_name}. Check the internet connection and try again.') from error
     try:
-        text = ''.join(part.get('text', '') for part in result['candidates'][0]['content']['parts'])
+        if provider == 'groq':
+            text = result['choices'][0]['message']['content']
+        else:
+            text = ''.join(part.get('text', '') for part in result['candidates'][0]['content']['parts'])
         story = json.loads(text)
-        visual_words = story.get('visual_words', [])
-        if len(story['pages']) != 2 or len(story['questions']) != 3 or len(visual_words) != 3:
-            raise ValueError('Unexpected story shape')
-        if not str(story.get('character_description', '')).strip():
-            raise ValueError('Missing character_description')
-        for question in story['questions']:
-            if len(question['options']) != 4 or question['answer'] not in question['options']:
-                raise ValueError('Invalid question options')
-        if any(not re.fullmatch(r'[A-Za-z]+', str(word).strip()) for word in visual_words):
-            raise ValueError('Invalid visual word')
+        if grade == 4:
+            story = validate_and_repair_grade4_story(story, vocabulary, activity_types)
+            story_text = ' '.join(str(page.get('text', '')) for page in story['pages'])
+            word_count = len(re.findall(r"\b[\w'-]+\b", story_text))
+            story['_generation_metadata'] = {
+                'blueprint_id': blueprint.pk,
+                'blueprint_name': blueprint.name,
+                'vocabulary_ids': [item.pk for item in vocabulary],
+                'activity_types': activity_types,
+                'validated_word_count': word_count,
+                'comprehension_question_count': len(story['questions']),
+            }
+        elif grade == 1:
+            theme, retrieved, assessment_reference, activity_variant = grade1_context
+            story['_activity_variant'] = activity_variant
+            story = validate_grade1_story(story)
+            story['_generation_metadata'] = grade1_story_generation_metadata(
+                theme, retrieved, assessment_reference, story,
+            )
+        else:
+            visual_words = story.get('visual_words', [])
+            if len(story['pages']) != 2 or len(story['questions']) != 3 or len(visual_words) != 3:
+                raise ValueError('Unexpected story shape')
+            if not str(story.get('character_description', '')).strip():
+                raise ValueError('Missing character_description')
+            for question in story['questions']:
+                if len(question['options']) != 4 or question['answer'] not in question['options']:
+                    raise ValueError('Invalid question options')
+            if any(not re.fullmatch(r'[A-Za-z]+', str(word).strip()) for word in visual_words):
+                raise ValueError('Invalid visual word')
     except (KeyError, IndexError, TypeError, ValueError, json.JSONDecodeError) as error:
-        raise GeminiStoryGenerationError('Gemini returned a story in an unexpected format. Please try again.') from error
+        if provider == 'groq' and settings.GEMINI_API_KEY:
+            logger.warning('Groq returned an invalid story response; trying Gemini.')
+            return generate_gemini_story(grade, recent_titles, learner_token, _provider='gemini')
+        provider_name = 'Groq' if provider == 'groq' else 'Gemini'
+        raise GeminiStoryGenerationError(f'{provider_name} returned a story in an unexpected format. Please try again.') from error
     return story
 
 
@@ -1583,8 +1696,13 @@ character_description must be one concrete sentence describing the main characte
 # mode — text (seed + wording) is the only consistency lever.
 STORY_STYLE_BRIEF = (
     "children's picture-book illustration, soft warm gouache-and-watercolour style, rounded "
-    "friendly shapes, bright gentle colour palette, everyday South African setting, "
-    "no text, no letters, no logos, no watermarks"
+    "friendly shapes, bright gentle colour palette, child-friendly everyday South African setting"
+)
+
+IMAGE_CONTENT_RESTRICTIONS = (
+    "Show only a safe, age-appropriate, non-frightening scene. Absolutely no words, text, "
+    "writing, letters, numbers, labels, signs, logos, signatures, watermarks, captions, "
+    "or readable marks anywhere in the image."
 )
 
 
@@ -1592,7 +1710,8 @@ def _build_pollinations_url(prompt_text, seed, width=1024, height=1024):
     encoded_prompt = urllib.parse.quote(prompt_text[:1500])
     url = (
         f'https://image.pollinations.ai/prompt/{encoded_prompt}'
-        f'?width={width}&height={height}&seed={seed}&model={settings.POLLINATIONS_MODEL}&nologo=true'
+        f'?width={width}&height={height}&seed={seed}&model={settings.POLLINATIONS_MODEL}'
+        '&nologo=true&safe=true&private=true'
     )
     if settings.POLLINATIONS_API_KEY:
         url += f'&token={settings.POLLINATIONS_API_KEY}'
@@ -1620,7 +1739,11 @@ def _fetch_pollinations_image(url, max_attempts=3):
         image_request = UrlRequest(url, headers={'User-Agent': 'SGILA-App/1.0'}, method='GET')
         try:
             with urlopen(image_request, timeout=60) as response:
-                return response.read(), response.headers.get('Content-Type', '')
+                image_bytes = response.read()
+                content_type = response.headers.get('Content-Type', '')
+                if not content_type.lower().startswith('image/'):
+                    raise ValueError('Pollinations returned a non-image response.')
+                return image_bytes, content_type
         except HTTPError as error:
             last_error = error
             if error.code in (429, 502, 503) and attempt < max_attempts:
@@ -1638,36 +1761,107 @@ def _fetch_pollinations_image(url, max_attempts=3):
                 time.sleep(attempt * 2)
                 continue
             break
+    if isinstance(last_error, HTTPError):
+        failure = f'HTTP {last_error.code}'
+    elif isinstance(last_error, URLError):
+        failure = 'network connection failed'
+    else:
+        failure = 'the response was not a usable image'
     raise GeminiStoryGenerationError(
-        'Could not create the story illustrations right now (Pollinations is busy). Please try again shortly.'
+        f'Pollinations image generation failed ({failure}).'
     ) from last_error
 
 
-def generate_illustration(prompt, character_description, seed):
-    """Generate and store one safe, story-specific illustration via Pollinations (free, unlimited).
+def _fetch_cloudflare_image(prompt, seed):
+    """Use Cloudflare Workers AI as the configured image-generation fallback."""
+    if not settings.CLOUDFLARE_ACCOUNT_ID or not settings.CLOUDFLARE_API_TOKEN:
+        raise GeminiStoryGenerationError(
+            'Cloudflare image fallback is not configured. Add CLOUDFLARE_ACCOUNT_ID and CLOUDFLARE_API_TOKEN.'
+        )
+    endpoint = (
+        'https://api.cloudflare.com/client/v4/accounts/'
+        f'{settings.CLOUDFLARE_ACCOUNT_ID}/ai/run/{settings.CLOUDFLARE_IMAGE_MODEL}'
+    )
+    payload = json.dumps({'prompt': prompt[:2048], 'steps': 4}).encode('utf-8')
+    request = UrlRequest(
+        endpoint, data=payload,
+        headers={
+            'Content-Type': 'application/json',
+            'Authorization': f'Bearer {settings.CLOUDFLARE_API_TOKEN}',
+        },
+        method='POST',
+    )
+    try:
+        with urlopen(request, timeout=90) as response:
+            result = json.loads(response.read().decode('utf-8'))
+        encoded_image = result.get('result', {}).get('image')
+        if result.get('success') is False or not encoded_image:
+            raise ValueError('Cloudflare did not return an image.')
+        return base64.b64decode(encoded_image, validate=True), 'image/jpeg'
+    except HTTPError as error:
+        if error.code in (401, 403):
+            message = (
+                f'Cloudflare rejected the image request (HTTP {error.code}). '
+                'Check the account ID and ensure the token has Workers AI Read and Edit permissions.'
+            )
+        elif error.code == 404:
+            message = (
+                'Cloudflare could not find the image model endpoint (HTTP 404). '
+                'Check CLOUDFLARE_ACCOUNT_ID and CLOUDFLARE_IMAGE_MODEL.'
+            )
+        else:
+            message = f'Cloudflare image generation failed (HTTP {error.code}).'
+        raise GeminiStoryGenerationError(message) from error
+    except URLError as error:
+        raise GeminiStoryGenerationError('Could not reach the Cloudflare image service.') from error
+    except (UnicodeDecodeError, json.JSONDecodeError, ValueError) as error:
+        raise GeminiStoryGenerationError('Cloudflare returned an invalid image response.') from error
+
+
+def _generate_story_image(prompt, seed, cloudflare_fallback=False):
+    """Use Pollinations first, optionally falling back to Cloudflare for Grade 4."""
+    if cloudflare_fallback and not settings.POLLINATIONS_API_KEY:
+        return _fetch_cloudflare_image(prompt, seed)
+
+    url = _build_pollinations_url(prompt, seed)
+    try:
+        return _fetch_pollinations_image(url)
+    except (GeminiStoryGenerationError, ValueError) as pollinations_error:
+        if not cloudflare_fallback:
+            raise
+        try:
+            return _fetch_cloudflare_image(prompt, seed)
+        except GeminiStoryGenerationError as cloudflare_error:
+            raise GeminiStoryGenerationError(
+                f'{pollinations_error} Cloudflare fallback failed: {cloudflare_error}'
+            ) from cloudflare_error
+
+
+def generate_illustration(prompt, character_description, seed, cloudflare_fallback=False):
+    """Generate a private, child-safe, text-free, story-specific illustration.
 
     character_description and seed are shared across every image in one story — that pairing,
-    not the model choice, is what makes the images look consistent instead of unrelated.
+    not the model choice, keeps the illustrations consistent. Grade 4 may use Cloudflare as fallback.
     """
     image_prompt = (
         f'{STORY_STYLE_BRIEF}. If the main character appears in this scene, draw them exactly '
-        f'as: {character_description[:300]}. Scene to show: {str(prompt)[:600]}'
+        f'as: {character_description[:300]}. Scene to show: {str(prompt)[:600]}. '
+        f'{IMAGE_CONTENT_RESTRICTIONS}'
     )
-    url = _build_pollinations_url(image_prompt, seed)
-    image_bytes, content_type = _fetch_pollinations_image(url)
+    image_bytes, content_type = _generate_story_image(image_prompt, seed, cloudflare_fallback)
     return _save_image_bytes(image_bytes, content_type)
 
 
-def generate_vocab_image(word, seed):
+def generate_vocab_image(word, seed, cloudflare_fallback=False):
     """Generate one unmistakable object image for a visual-identification activity."""
     prompt = (
         f"{STORY_STYLE_BRIEF}. A single large, complete {word} centred in the frame. "
         "Show only that one object on a plain, softly coloured background. No people, animals, "
         "extra objects, scenery, labels, letters, numbers, logos, cropped object, or collage. "
-        "The object must be immediately recognisable to a young learner."
+        "The object must be immediately recognisable to a young learner. "
+        f'{IMAGE_CONTENT_RESTRICTIONS}'
     )
-    url = _build_pollinations_url(prompt, seed)
-    image_bytes, content_type = _fetch_pollinations_image(url)
+    image_bytes, content_type = _generate_story_image(prompt, seed, cloudflare_fallback)
     return _save_image_bytes(image_bytes, content_type)
 
 
@@ -1678,13 +1872,63 @@ def create_ai_story_for_grade(child):
     five sequential image calls) and is meant to be run from a background
     thread (see run_ai_story_job), never directly inside a request/response cycle.
     """
-    recent_titles = list(Lesson.objects.filter(grade=child.grade, is_ai_generated=True).values_list('title', flat=True))
-    story = generate_gemini_story(child.grade, recent_titles)
+    recent_story_titles = Lesson.objects.filter(grade=child.grade, is_ai_generated=True)
+    if child.grade == 1:
+        recent_story_titles = recent_story_titles.order_by('-created_at')[:12]
+    recent_titles = list(recent_story_titles.values_list('title', flat=True))
+    story = generate_gemini_story(
+        child.grade, recent_titles,
+        learner_token=f'learner-{child.id}-{uuid4().hex[:8]}',
+    )
     character_description = story['character_description'].strip()
     seed = random.randint(1, 999999)
 
+    if child.grade == 1:
+        illustrations = [
+            generate_illustration(
+                page.get('illustration_prompt', page['text']), character_description, seed,
+                cloudflare_fallback=child.grade in (1, 4),
+            )
+            for page in story['pages']
+        ]
+        vocabulary_images = [None] * len(story['vocabulary_words'])
+        for page_index in grade1_vocabulary_page_indices(story['_activity_variant']):
+            vocabulary_images[page_index] = generate_vocab_image(
+                story['vocabulary_words'][page_index],
+                seed + page_index + len(illustrations) + 1,
+                cloudflare_fallback=True,
+            )
+        lesson = Lesson.objects.create(
+            title=story['title'][:200],
+            grade=1,
+            character_description=character_description,
+            thumbnail_image=illustrations[0],
+            generation_metadata=story.get('_generation_metadata', {}),
+            curriculum_source='AI story collection — CAPS aligned',
+            source_attribution=(
+                'Original AI-generated Grade 1 English FAL story. '
+                'Generation used retrieved Grade 1 CAPS guidance and existing Grade 1 workbook stories as level references; '
+                'the assessment follows the existing Grade 1 three-group, three-question structure. '
+                'Illustrations are AI-generated to match.'
+            ),
+            is_ai_generated=True,
+            generated_for=child,
+        )
+        for page_number, page in enumerate(story['pages'], start=1):
+            StoryPage.objects.create(
+                lesson=lesson, page_number=page_number, text=page['text'],
+                image_url=illustrations[page_number - 1],
+                audio_url=f'voiceover:ai-story-{lesson.id}-page-{page_number}',
+                highlighted_words=','.join(str(word) for word in page.get('highlighted_words', [])),
+            )
+        save_grade1_activities(lesson, story, illustrations, vocabulary_images)
+        return lesson
+
     illustrations = [
-        generate_illustration(page.get('illustration_prompt', page['text']), character_description, seed)
+        generate_illustration(
+            page.get('illustration_prompt', page['text']), character_description, seed,
+            cloudflare_fallback=child.grade == 4,
+        )
         for page in story['pages']
     ]
 
@@ -1693,10 +1937,16 @@ def create_ai_story_for_grade(child):
         title=story['title'][:200],
         grade=child.grade,
         thumbnail_image=cover_image_url,
+        generation_metadata=story.get('_generation_metadata', {}),
         curriculum_source='AI story collection — CAPS aligned',
         source_attribution=(
-            'AI-generated practice story. Google Gemini writes the story and activities '
-            f'to follow the Grade {child.grade} CAPS reading format; illustrations are AI-generated to match.'
+            'AI-generated practice story. '
+            + (
+                'A Grade 4 database blueprint and vocabulary bank constrain the story and validated activities to the CAPS reading length and workbook structure. '
+                if child.grade == 4 else
+                f'Google Gemini writes the story and activities to follow the Grade {child.grade} CAPS reading format; '
+            )
+            + 'Illustrations are AI-generated to match.'
         ),
         is_ai_generated=True,
         generated_for=child,
@@ -1708,6 +1958,10 @@ def create_ai_story_for_grade(child):
             audio_url=f'voiceover:ai-story-{lesson.id}-page-{page_number}',
             highlighted_words=','.join(str(word) for word in page.get('highlighted_words', [])),
         )
+
+    if child.grade == 4:
+        save_grade4_activities(lesson, story)
+        return lesson
 
     for item in story['questions']:
         options = list(item['options'])
@@ -1762,6 +2016,7 @@ def run_ai_story_job(job_id):
         job.error_message = str(error)
         job.save(update_fields=['status', 'error_message', 'updated_at'])
     except Exception:  # noqa: BLE001 — a background thread must never crash silently
+        logger.exception('AI story job %s failed before the lesson was saved.', job_id)
         job.status = AIStoryJob.STATUS_ERROR
         job.error_message = 'Something went wrong creating the story. Please try again.'
         job.save(update_fields=['status', 'error_message', 'updated_at'])
@@ -1783,40 +2038,6 @@ def start_ai_story_job(child, grade):
     return job
 
 
-def check_ai_story_eligibility(child, grade):
-    """Shared gate used by both the manual 'explore more stories' button and the
-    automatic post-lesson trigger.
-
-    Returns (eligible, error_message, redirect_hint) where redirect_hint is only set
-    when the learner should be sent somewhere specific (e.g. back to an unfinished story).
-    """
-    if grade not in (1, 2, 3, 4):
-        return False, 'AI practice stories are available for Grades 1 to 4.', f'/grade/{grade}'
-
-    all_lessons = Lesson.objects.filter(grade=grade)
-    required_lessons = list(all_lessons.filter(is_ai_generated=False)) + list(all_lessons.filter(
-        is_ai_generated=True, generated_for__isnull=True, curriculum_source='AI story collection — CAPS aligned',
-    ))
-    if not required_lessons or not all(lesson_passed(child, lesson) for lesson in required_lessons):
-        return (
-            False,
-            f'Score at least {AI_STORY_PASS_THRESHOLD}% on every workbook story before creating an AI story.',
-            f'/grade/{grade}',
-        )
-
-    current_ai_lesson = Lesson.objects.filter(
-        grade=grade, is_ai_generated=True, generated_for=child,
-    ).order_by('-created_at').first()
-    if current_ai_lesson and not lesson_passed(child, current_ai_lesson):
-        return (
-            False,
-            f'Finish your current story with at least {AI_STORY_PASS_THRESHOLD}% before unlocking a new one.',
-            f'/lessons/{current_ai_lesson.id}/story',
-        )
-
-    return True, None, None
-
-
 def maybe_start_ai_story_job(child, grade):
     """Called right after a learner finishes a lesson at pass-threshold or above.
 
@@ -1825,7 +2046,7 @@ def maybe_start_ai_story_job(child, grade):
     every results-page render: check_ai_story_eligibility and start_ai_story_job both
     no-op if a story isn't actually due yet or a job is already in flight.
     """
-    if not settings.GEMINI_API_KEY:
+    if not story_text_provider_configured(grade):
         return
     try:
         eligible, _, _ = check_ai_story_eligibility(child, grade)
@@ -1852,10 +2073,11 @@ def generate_ai_story_ajax(request, grade):
     if not eligible:
         return JsonResponse({'success': False, 'error': error_message, 'redirect_url': redirect_hint}, status=400)
 
-    if not settings.GEMINI_API_KEY:
+    if not story_text_provider_configured(grade):
+        key_name = 'GROQ_API_KEY' if grade == 4 else 'GEMINI_API_KEY'
         return JsonResponse({
             'success': False,
-            'error': 'AI stories are not configured yet. Ask an adult to add the GEMINI_API_KEY setting.',
+            'error': f'AI stories are not configured yet. Ask an adult to add the {key_name} setting.',
         }, status=503)
 
     job = start_ai_story_job(child, grade)
@@ -2029,10 +2251,9 @@ def grade_home(request, grade):
         is_ai_generated=True,
         generated_for__isnull=True,
         curriculum_source='AI story collection — CAPS aligned',
-    ).order_by('id'))
-    # Only the most recent personal AI story is ever shown — once a new one is
-    # generated, the previous one quietly drops off this list (it's kept in the
-    # database for progress history, just not shown as a lesson card any more).
+    ).order_by('id')) if grade != 4 else []
+    # Show only the newest personal story. Older stories and their progress stay
+    # in the database for reporting and history.
     latest_ai_lesson = all_lessons.filter(
         is_ai_generated=True, generated_for=child,
     ).order_by('-created_at').first()
@@ -2072,7 +2293,10 @@ def grade_home(request, grade):
             'title': lesson.title,
             'grade': lesson.grade,
             'thumbnail_image': lesson.thumbnail_image,
-            'completed': grade3_completed if lesson.grade == 3 else bool(record),
+            'completed': (
+                grade3_completed if lesson.grade == 3
+                else (lesson_passed(child, lesson) if lesson.grade == 4 and lesson.is_ai_generated else bool(record))
+            ),
             'stars': range(record.stars_earned) if record else range(0),
             'is_current_ai_story': lesson.is_ai_generated and lesson.id == getattr(latest_ai_lesson, 'id', None),
             'activities': activity_choices_for(lesson),
@@ -2087,8 +2311,9 @@ def grade_home(request, grade):
     )
     # The "explore more stories" offer only opens once the workbook is mastered AND,
     # if a personal AI story already exists, once that one is mastered too.
-    ai_story_available = workbook_complete and (
-        latest_ai_lesson is None or lesson_passed(child, latest_ai_lesson)
+    ai_thresholds_enabled = are_story_thresholds_enabled()
+    ai_story_available = not ai_thresholds_enabled or (
+        workbook_complete and (latest_ai_lesson is None or lesson_passed(child, latest_ai_lesson))
     )
     active_ai_job = AIStoryJob.objects.filter(
         child=child, grade=grade, status__in=[AIStoryJob.STATUS_PENDING, AIStoryJob.STATUS_RUNNING],
@@ -2102,6 +2327,7 @@ def grade_home(request, grade):
         'completed_count': records.count(),
         'total_stars': sum(r.stars_earned for r in records),
         'ai_story_available': ai_story_available,
+        'ai_story_thresholds_enabled': ai_thresholds_enabled,
         'ai_story_job_id': active_ai_job.id if active_ai_job else None,
         'grades_with_ai': (1, 2, 3, 4),
     })
@@ -2604,7 +2830,7 @@ def legacy_results_page(request, lesson_id):
             },
         )
 
-        if percentage >= AI_STORY_PASS_THRESHOLD:
+        if are_story_thresholds_enabled() and percentage >= AI_STORY_PASS_THRESHOLD:
             maybe_start_ai_story_job(child, lesson.grade)
 
         breakdown = [
@@ -2707,7 +2933,7 @@ def legacy_results_page(request, lesson_id):
         },
     )
 
-    if percentage >= AI_STORY_PASS_THRESHOLD:
+    if are_story_thresholds_enabled() and percentage >= AI_STORY_PASS_THRESHOLD:
         maybe_start_ai_story_job(child, lesson.grade)
 
     for suffix in score_keys:

@@ -21,6 +21,11 @@ urlpatterns = [
     # OTP Verification (Step 2: verify code + create account + return JWT)
     path('verify-otp', views.verify_otp, name='verify-otp'),
 
+
+
+    path('stories/generate/<int:child_id>/', views.request_ai_story, name='request_ai_story'),
+    path('stories/jobs/<int:job_id>/status/', views.get_ai_story_status, name='get_ai_story_status'),
+
     # Resend OTP
     path('resend-otp', views.resend_otp, name='resend-otp'),
 

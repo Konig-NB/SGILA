@@ -451,6 +451,9 @@ function renderChoice(activity) {
       selectedAnswer = value;
       selectedButton = button;
       submit.disabled = false;
+      if (activityConfig(activity).presentation === 'grade1_vocabulary') {
+        speakActivityText(String(label), null);
+      }
     });
     grid.appendChild(button);
   });
