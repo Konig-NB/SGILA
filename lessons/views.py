@@ -103,6 +103,10 @@ from api.story_eligibility import (
 
 logger = logging.getLogger(__name__)
 
+from lessons import pricing
+from schools import context as school_context
+from schools.models import School
+
 
 def password_matches(raw, stored):
     if check_password(raw, stored):
@@ -3180,15 +3184,35 @@ def legacy_build_dashboard_row(child):
 
 def subscription_page(request):
     """
-    Shown right after registration (and reachable any time from the
-    dashboard). Parents see individual/family/enterprise plan options; teachers/schools see
-    the enterprise plan, framed as a government/district-funded package
-    request rather than an instant card checkout.
+    Every plan SGILA sells — Individual, Family and Enterprise — shown right
+    after registration, from the dashboard's "Plan" link, and from the signed-out
+    homepage nav so a visitor can read the pricing before creating an account.
+
+    Signed-out visitors get the same three cards read-only, with the
+    call-to-action pointing at registration. Enterprise is always activated with
+    a package code on /subscription/redeem-package; Individual and Family are
+    card-paid by both parents and teachers, and hand off to /subscription/payment.
     """
     role = request.session.get('account_role')
+
     if role not in ('parent', 'teacher'):
-        messages.error(request, 'Please sign in first.')
-        return redirect('/login')
+        # A plan choice is an account action, so it still needs a sign-in...
+        if request.method == 'POST':
+            messages.error(request, 'Please sign in first.')
+            return redirect('/login')
+        # ...but browsing the plans is not.
+        return render(request, 'subscription.html', {
+            'role': 'guest',
+            'account': None,
+            'subscription': None,
+            'can_choose_plans': False,
+            # Enterprise card + pricing dialog read every figure from config via
+            # lessons.pricing, so nothing below is hard-coded in the template.
+            'plan_prices': pricing.plan_prices(),
+            **pricing.card_context(),
+            **pricing.modal_context(),
+            **school_context.finder_context(instance='dialog'),
+        })
 
     account_id = request.session['account_id']
     if role == 'parent':
@@ -3206,127 +3230,287 @@ def subscription_page(request):
         )
 
     if request.method == 'POST':
-        if role == 'parent':
-            plan = request.POST.get('plan', 'individual')
-            skip = request.POST.get('skip') == '1'
-
-            if skip:
-                subscription.status = 'trial'
-                subscription.save(update_fields=['status', 'updated_at'])
+        # A teacher's Subscription is created in 'trial' status and their
+        # dashboard is gated on that trial lapsing, so "continue with a free
+        # trial" is a real outcome here too — same as the parent's skip.
+        if request.POST.get('skip') == '1':
+            subscription.status = 'trial'
+            subscription.save(update_fields=['status', 'updated_at'])
+            if role == 'parent':
                 messages.success(request, "No problem — you're on a free trial. You can subscribe any time from your dashboard.")
-                return redirect('/parent/dashboard')
-
-            if plan == 'family':
-                subscription.plan_type = 'family'
-                subscription.billing_cycle = 'monthly'
-                # No live payment gateway is wired up yet — this marks the
-                # choice as pending until payment details are captured next.
-                subscription.status = 'pending'
-                subscription.save()
-                return redirect('/subscription/payment')
-
-            elif plan == 'enterprise':
-                # Parent is redeeming an enterprise/school package code —
-                # accept school name + package code and activate immediately
-                school_name = request.POST.get('school_name', '').strip() or account.school_name
-                code_value = request.POST.get('package_code', '').strip().upper()
-
-                if not school_name or not code_value:
-                    messages.error(request, 'Please enter both your school name and package code.')
-                    return render(request, 'subscription.html', {'role': role, 'account': account, 'subscription': subscription})
-
-                try:
-                    code_obj = PackageCode.objects.get(code=code_value)
-                except PackageCode.DoesNotExist:
-                    code_obj = None
-
-                if not code_obj or not code_obj.is_redeemable:
-                    messages.error(request, "That package code isn't valid or has already been fully used. Please check the code from your district/government contact.")
-                    return render(request, 'subscription.html', {'role': role, 'account': account, 'subscription': subscription})
-
-                subscription.plan_type = 'enterprise'
-                subscription.school_name = school_name
-                subscription.package_code = code_obj
-                subscription.status = 'active'
-                subscription.save()
-
-                code_obj.redemptions_count += 1
-                code_obj.save(update_fields=['redemptions_count'])
-
-                messages.success(request, f"Your school's package is active! {school_name} now has full SGILA access.")
-                return redirect('/parent/dashboard')
-
             else:
-                subscription.plan_type = 'individual'
-                subscription.billing_cycle = 'monthly'
-                # No live payment gateway is wired up yet — this marks the
-                # choice as pending until payment details are captured next.
-                subscription.status = 'pending'
-                subscription.save()
-                return redirect('/subscription/payment')
+                messages.success(
+                    request,
+                    "No problem — you're on a free trial. You can activate a "
+                    "package any time from your dashboard.",
+                )
+            return redirect(f'/{role}/dashboard')
 
-        else:  # teacher / school — redeem a government-issued package code
-            school_name = request.POST.get('school_name', '').strip() or account.school_name
-            code_value = request.POST.get('package_code', '').strip().upper()
+        plan = request.POST.get('plan', 'individual')
 
-            if not school_name or not code_value:
-                messages.error(request, 'Please enter both your school name and package code.')
-                return render(request, 'subscription.html', {'role': role, 'account': account, 'subscription': subscription})
+        # Enterprise is redeemed with a package code rather than a card, on its
+        # own screen where the school name and code are entered.
+        if plan == 'enterprise':
+            return redirect('/subscription/redeem-package')
 
-            try:
-                code_obj = PackageCode.objects.get(code=code_value)
-            except PackageCode.DoesNotExist:
-                code_obj = None
+        # Individual and Family are card-paid and identical for both roles: mark
+        # the choice pending, then collect payment details on the next screen.
+        # No live payment gateway is wired up yet — 'pending' is what carries
+        # the choice across to subscription_payment_page.
+        subscription.plan_type = 'family' if plan == 'family' else 'individual'
+        subscription.billing_cycle = 'monthly'
+        subscription.status = 'pending'
+        subscription.save()
+        return redirect('/subscription/payment')
 
-            if not code_obj or not code_obj.is_redeemable:
-                messages.error(request, "That package code isn't valid or has already been fully used. Please check the code from your district/government contact.")
-                return render(request, 'subscription.html', {'role': role, 'account': account, 'subscription': subscription})
-
-            subscription.plan_type = 'enterprise'
-            subscription.school_name = school_name
-            subscription.package_code = code_obj
-            subscription.status = 'active'
-            subscription.save()
-
-            code_obj.redemptions_count += 1
-            code_obj.save(update_fields=['redemptions_count'])
-
-            messages.success(request, f"Your school's package is active! {school_name} now has full SGILA access.")
-            return redirect('/teacher/dashboard')
-
-    return render(request, 'subscription.html', {
+    context = {
         'role': role,
         'account': account,
         'subscription': subscription,
-    })
+        'can_choose_plans': True,
+        # Enterprise card + pricing dialog read every figure from config via
+        # lessons.pricing, so nothing below is hard-coded in the template.
+        'plan_prices': pricing.plan_prices(),
+        **pricing.card_context(),
+        **pricing.modal_context(),
+        # The school finder (province -> school search -> quintile and price)
+        # shown inside the pricing dialog.
+        **school_context.finder_context(instance='dialog'),
+    }
+    return render(request, 'subscription.html', context)
+
+
+def enquiry_from_request(request, source=None):
+    """
+    Carry the pricing calculator's choices (school type and learner count) from
+    the Enterprise dialog into the package-code screen, so a school's quote
+    survives the hand-off into activation.
+
+    Purely informational — redemption itself still only needs a school name and
+    a package code. Nothing is echoed back unless the school actually came from
+    the calculator; a partially-present or unusable set of values falls back to
+    the default school type and the minimum learner count rather than rendering
+    a broken quote.
+    """
+    getter = request.POST.get if source == 'post' else request.GET.get
+    school_type = (getter('school_type') or '').strip()
+    learners = pricing.parse_learners(getter('learners'))
+
+    if not school_type and learners is None:
+        return {'enquiry_school_type': '', 'enquiry_learners': None, 'enquiry_quote': None}
+
+    if not pricing.is_valid_school_type(school_type):
+        school_type = pricing.school_types()[0]['value']
+    if learners is None:
+        learners = pricing.minimum_learners()
+
+    return {
+        'enquiry_school_type': school_type,
+        'enquiry_learners': learners,
+        'enquiry_quote': pricing.quote(school_type, learners),
+    }
+
+
+def preselected_school(request):
+    """
+    The school chosen in the pricing dialog, identified by its id rather than its
+    name so the activation page can look the record back up instead of trusting
+    a typed string. Returns ``None`` for a missing, non-numeric or unknown id.
+    """
+    raw = (request.GET.get('school_id') or '').strip()
+    if not raw.isdigit():
+        return None
+    return School.objects.filter(pk=int(raw), status='open').first()
+
+
+@require_http_methods(['GET'])
+def enterprise_pricing_quote(request):
+    """
+    JSON quote behind the "See full pricing details" calculator on
+    /subscription.
+
+    The dialog deliberately does no arithmetic of its own: it posts the chosen
+    school type and learner count here and renders the strings that come back,
+    which keeps ``lessons.pricing`` the single place prices are calculated and
+    formatted. Responds 400 for an unknown school type so a stale or hand-
+    edited request can't silently produce a nonsense quote.
+    """
+    school_type = request.GET.get('school_type', '').strip()
+    if not pricing.is_valid_school_type(school_type):
+        return JsonResponse({'error': 'Unknown school type.'}, status=400)
+
+    learners = pricing.parse_learners(request.GET.get('learners'))
+    return JsonResponse(pricing.quote(school_type, learners))
+
+
+@require_http_methods(['GET', 'POST'])
+def redeem_package_page(request):
+    """
+    School-side redemption of a government/district-issued package code.
+
+    A school buys a package from its district or the DBE, is issued a
+    PackageCode (created by SGILA staff via admin), and enters it here with
+    just their school name — no card, no per-family payment. That flips their
+    Subscription to plan_type='enterprise' / status='active', linked to the
+    PackageCode, which is what actually unlocks story access:
+
+      * school-linked learners (no parent account, added via a class code)
+        follow the school's subscription instead of a parent's trial —
+        see learner_trial_expired;
+      * the school account itself stops being trial-expired, which is what
+        teacher_dashboard gates on — see account_trial_expired;
+      * for a parent redeeming on behalf of a school, the uncapped
+        enterprise plan (PLAN_CHILD_CAPS) lifts the active-learner limit,
+        so learners paused purely for plan capacity come back on.
+
+    The code row is locked while redeeming so two schools racing for the last
+    single-use code can't both get through.
+    """
+    role = request.session.get('account_role')
+    if role not in ('parent', 'teacher'):
+        messages.error(request, 'Please sign in first.')
+        return redirect('/login')
+
+    account_id = request.session['account_id']
+    if role == 'parent':
+        account = get_object_or_404(Parent, id=account_id)
+        subscription, _ = Subscription.objects.get_or_create(
+            parent=account, defaults={'plan_type': 'enterprise'}
+        )
+        dashboard_url = '/parent/dashboard'
+    else:
+        account = get_object_or_404(Teacher, id=account_id)
+        subscription, _ = Subscription.objects.get_or_create(
+            teacher=account, defaults={'plan_type': 'enterprise'}
+        )
+        dashboard_url = '/teacher/dashboard'
+
+    # A quote handed over from the pricing dialog identifies its school by id, so
+    # the finder can show the real record instead of a typed-in name.
+    chosen_school = preselected_school(request)
+    school_name = subscription.school_name or getattr(account, 'school_name', '')
+    if chosen_school is not None:
+        school_name = chosen_school.name
+
+    context = {
+        'role': role,
+        'account': account,
+        'subscription': subscription,
+        'school_name': school_name,
+        'package_code': '',
+        # Optional figures handed over by the pricing calculator on
+        # /subscription. Purely informational — redemption still only needs the
+        # school name and package code below.
+        'enterprise_start_price': pricing.format_rand(pricing.start_price_per_learner_month()),
+        'enterprise_minimum_learners': pricing.minimum_learners(),
+        **enquiry_from_request(request),
+        # The school finder itself, with the chosen school preselected and its
+        # name auto-filled into the School name field below.
+        **school_context.finder_context(
+            instance='redeem',
+            school=chosen_school,
+            autofill_name=True,
+        ),
+    }
+
+    if request.method != 'POST':
+        return render(request, 'redeem_package.html', context)
+
+    school_name = request.POST.get('school_name', '').strip() or getattr(account, 'school_name', '')
+    code_value = request.POST.get('package_code', '').strip().upper()
+
+    if not school_name or not code_value:
+        messages.error(request, 'Please enter both your school name and package code.')
+        context['school_name'] = school_name
+        context['package_code'] = code_value
+        context.update(enquiry_from_request(request, source='post'))
+        return render(request, 'redeem_package.html', context)
+
+    with transaction.atomic():
+        code_obj = PackageCode.objects.select_for_update().filter(code=code_value).first()
+        if not code_obj or not code_obj.is_redeemable:
+            messages.error(request, "This code is not valid or has already reached its limit. Please check the code from your district/government contact.")
+            context['school_name'] = school_name
+            context['package_code'] = code_value
+            return render(request, 'redeem_package.html', context)
+
+        subscription.plan_type = 'enterprise'
+        subscription.status = 'active'
+        subscription.school_name = school_name
+        subscription.package_code = code_obj
+        # Annual billing to the school is the norm for enterprise packages, and
+        # the seat/cap fields only mean something for individual/family plans.
+        subscription.billing_cycle = 'annual'
+        subscription.extra_active_seats = 0
+        subscription.pending_seat_quantity = 0
+        subscription.save()
+
+        code_obj.redemptions_count += 1
+        code_obj.save(update_fields=['redemptions_count'])
+
+        # Enterprise has no active-learner cap, so anything paused only because
+        # a family plan ran out of seats can come straight back on. Learners the
+        # parent paused deliberately (DEACTIVATED_MANUAL) stay paused.
+        resumed = 0
+        if role == 'parent':
+            capacity_paused = Child.objects.filter(
+                parent=account,
+                is_active=False,
+                deactivated_reason=Child.DEACTIVATED_PLAN_CAPACITY,
+            )
+            for child in capacity_paused:
+                child.reactivate()
+                resumed += 1
+
+    detail = f" {resumed} learner(s) paused for the plan limit are active again." if resumed else ""
+    messages.success(request, f"Your school's package is active! {school_name} now has full SGILA access.{detail}")
+    return redirect(dashboard_url)
 
 
 def subscription_payment_page(request):
     """
-    Payment-details step for the individual (parent) plan, shown right
-    after a plan is chosen on /subscription. Only parents with a pending
-    individual subscription land here.
+    Payment-details step for the Individual or Family plan, shown right after a
+    plan is chosen on /subscription. Both parents and teachers buy these two
+    plans by card; only the dashboard they land on afterwards differs.
 
     SECURITY NOTE: this view intentionally does NOT persist a full card
     number, CVV, or full bank account number anywhere — only a masked
-    summary (last 4 digits, expiry, name) is saved, purely so the parent
-    and support team can recognise which payment method is on file. A
+    summary (last 4 digits, expiry, name) is saved, purely so the account
+    owner and support team can recognise which payment method is on file. A
     production deployment must swap this out for a PCI-compliant gateway
     (e.g. PayFast) using their hosted/tokenised checkout, so raw card data
     is sent straight to the gateway and never touches this server at all.
     """
-    if request.session.get('account_role') != 'parent':
-        messages.error(request, 'Please sign in as a parent first.')
-        return redirect('/login?role=parent')
+    role = request.session.get('account_role')
+    if role not in ('parent', 'teacher'):
+        messages.error(request, 'Please sign in first.')
+        return redirect('/login')
 
-    parent = get_object_or_404(Parent, id=request.session['account_id'])
-    subscription, _ = Subscription.objects.get_or_create(
-        parent=parent, defaults={'plan_type': 'individual'}
-    )
+    account_id = request.session['account_id']
+    if role == 'parent':
+        account = get_object_or_404(Parent, id=account_id)
+        subscription, _ = Subscription.objects.get_or_create(
+            parent=account, defaults={'plan_type': 'individual'}
+        )
+    else:
+        account = get_object_or_404(Teacher, id=account_id)
+        subscription, _ = Subscription.objects.get_or_create(
+            teacher=account, defaults={'plan_type': 'individual'}
+        )
 
     # Only makes sense once a plan has actually been chosen.
     if subscription.plan_type not in ('individual', 'family') or not subscription.billing_cycle:
         return redirect('/subscription')
+
+    def payment_context():
+        """The re-render after a validation error needs the same context as
+        the first render, or the summary line and back link disappear."""
+        return {
+            'subscription': subscription,
+            'role': role,
+            'account': account,
+            'plan_price': pricing.format_rand(pricing.plan_price(subscription.plan_type)),
+        }
 
     if request.method == 'POST':
         method = request.POST.get('payment_method', 'card')
@@ -3339,7 +3523,7 @@ def subscription_payment_page(request):
 
             if not name_on_card or len(card_number) < 12 or not expiry:
                 messages.error(request, 'Please fill in all card details correctly.')
-                return render(request, 'subscription_payment.html', {'subscription': subscription})
+                return render(request, 'subscription_payment.html', payment_context())
 
             subscription.payer_name = name_on_card
             subscription.card_last4 = card_number[-4:]
@@ -3355,7 +3539,7 @@ def subscription_payment_page(request):
 
             if not account_holder or not bank_name or len(account_number) < 6:
                 messages.error(request, 'Please fill in all bank details correctly.')
-                return render(request, 'subscription_payment.html', {'subscription': subscription})
+                return render(request, 'subscription_payment.html', payment_context())
 
             subscription.payer_name = account_holder
             subscription.bank_name = bank_name
@@ -3365,9 +3549,9 @@ def subscription_payment_page(request):
         subscription.status = 'active'
         subscription.save()
         messages.success(request, "You're all set! Your SGILA subscription is active.")
-        return redirect('/parent/dashboard')
+        return redirect(f'/{role}/dashboard')
 
-    return render(request, 'subscription_payment.html', {'subscription': subscription})
+    return render(request, 'subscription_payment.html', payment_context())
 
 
 @require_http_methods(['GET', 'POST'])

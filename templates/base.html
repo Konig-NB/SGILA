@@ -25,6 +25,7 @@
     </a>
     {% if request.path == '/' and not request.session.account_role %}
     <div class="home-nav-links" aria-label="Homepage sections">
+      <a href="/subscription">Plans</a>
       <a href="/help/">Help and Feedback</a>
     </div>
     {% endif %}

@@ -7,3 +7,7 @@ db.sqlite3
 media/
 runserver.log
 runserver.err.log
+
+# Downloaded DBE National Master List of Schools. Not source code: re-download
+# and load it with `python manage.py import_schools`.
+data/
