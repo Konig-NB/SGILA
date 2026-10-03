@@ -16,6 +16,12 @@ urlpatterns = [
     path('verify-otp', views.verify_otp_page, name='verify-otp'),
     path('welcome', views.parent_welcome_page, name='parent-welcome'),
     path('subscription', views.subscription_page, name='subscription-page'),
+    path(
+        'subscription/enterprise-pricing',
+        views.enterprise_pricing_quote,
+        name='enterprise-pricing-quote',
+    ),
+    path('subscription/redeem-package', views.redeem_package_page, name='redeem-package-page'),
     path('subscription/add-seat', views.add_seat_page, name='add-seat-page'),
     path('subscription/add-seat/payment', views.add_seat_payment_page, name='add-seat-payment-page'),
     path('subscription/payment', views.subscription_payment_page, name='subscription-payment-page'),

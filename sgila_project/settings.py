@@ -1,3 +1,4 @@
+from django.core.exceptions import ImproperlyConfigured
 from pathlib import Path
 import os
 
@@ -46,6 +47,7 @@ INSTALLED_APPS = [
     'rest_framework',
     'api',
     'lessons',
+    'schools',
 ]
 
 MIDDLEWARE = [
@@ -161,6 +163,137 @@ JWT_ACCESS_TOKEN_LIFETIME_HOURS = 8  # informational; enforced in api/jwt_utils.
 
 # Base URL used in password-reset emails
 SITE_URL = os.environ.get('SITE_URL', 'http://127.0.0.1:8000')
+
+# ─── Individual & Family plan pricing ──────────────────────────────────────────
+# The two card-paid plans, in rand per month. Same rule as the Enterprise table
+# below: these numbers live here and nowhere else, and ``lessons.pricing``
+# renders them for the plan cards. 'enterprise' is deliberately absent — it is
+# priced per learner from the school-quintile table, not from a flat monthly fee.
+SUBSCRIPTION_PRICES = {
+    'individual': 49,
+    'family': 89,
+}
+
+# ─── Enterprise (school) pricing ───────────────────────────────────────────────
+# Single source of truth for Enterprise pricing. Nothing in a template or in
+# JavaScript may repeat these numbers — templates read the values rendered by
+# ``lessons.pricing`` and the calculator's live figures come from the
+# ``/subscription/enterprise-pricing`` JSON endpoint, which calls the same
+# module. Change anything here and the Enterprise card and the pricing dialog
+# both follow automatically.
+#
+# School types are the Department of Basic Education's poverty ranking:
+# Quintile 1 is the poorest, Quintile 5 the least poor. Private/independent
+# schools sit outside that ranking.
+SCHOOL_TYPES = [
+    ('quintile_1', 'Quintile 1 (poorest)'),
+    ('quintile_2', 'Quintile 2'),
+    ('quintile_3', 'Quintile 3'),
+    ('quintile_4', 'Quintile 4'),
+    ('quintile_5', 'Quintile 5 (least poor)'),
+    ('private', 'Private / independent school'),
+]
+
+# Smallest number of learners an Enterprise package can be sold to.
+MINIMUM_LEARNERS = 100
+
+# Which way round the quintile pricing runs:
+#   'government_funded' (default) — poorer schools (lower quintiles) receive
+#       more state funding and need more learning support, so they pay MORE per
+#       learner. Quintile 5 and private schools get our lowest rate.
+#   'school_paid' — the alternative model, where price rises with the school's
+#       own ability to pay, so Quintile 1 gets our lowest rate.
+# Values are rand per learner per month.
+PRICING_MODE = os.environ.get('SGILA_PRICING_MODE', 'government_funded')
+
+PRICE_PER_LEARNER_MONTH = {
+    'government_funded': {
+        'quintile_1': 40,
+        'quintile_2': 35,
+        'quintile_3': 30,
+        'quintile_4': 25,
+        'quintile_5': 20,
+        'private': 20,
+    },
+    'school_paid': {
+        'quintile_1': 20,
+        'quintile_2': 25,
+        'quintile_3': 30,
+        'quintile_4': 35,
+        'quintile_5': 40,
+        'private': 40,
+    },
+}
+
+# Optional annual prepay discount, off by default. Set the number of months a
+# school is actually charged for when paying a year up front; None or leaving it
+# unset means "no discount", and the dialog then shows the monthly billing total
+# only. The canonical example is 10 — pay 10 months, get 12.
+ANNUAL_PREPAY_MONTHS_BILLED = None
+
+# The "From R.../month per learner" figure on the Enterprise card. Derived from
+# the active mode's table rather than typed in, so the card can never disagree
+# with the calculator. Set ENTERPRISE_START_PRICE_PER_LEARNER_MONTH explicitly
+# below this line only if you deliberately want an advertised floor that isn't
+# a real school type price.
+_ACTIVE_PRICES = PRICE_PER_LEARNER_MONTH.get(PRICING_MODE)
+if _ACTIVE_PRICES is None:
+    raise ImproperlyConfigured(
+        f'PRICING_MODE must be one of {sorted(PRICE_PER_LEARNER_MONTH)}, got {PRICING_MODE!r}.'
+    )
+ENTERPRISE_START_PRICE_PER_LEARNER_MONTH = min(_ACTIVE_PRICES.values())
+
+# ─── School finder (DBE National Master List of Schools) ──────────────────────
+# The nine provinces, in the DBE's own spelling. Used as the canonical list by
+# ``schools.import_schools`` (to normalise whatever the source file says), by the
+# School model's province choices, and by the province dropdown in the UI — so
+# "KwaZulu-Natal" is spelled the same way everywhere.
+PROVINCES = [
+    'Eastern Cape',
+    'Free State',
+    'Gauteng',
+    'KwaZulu-Natal',
+    'Limpopo',
+    'Mpumalanga',
+    'Northern Cape',
+    'North West',
+    'Western Cape',
+]
+
+# Alternate spellings seen in older master-list exports, normalised on import.
+PROVINCE_ALIASES = {
+    'kwazulu natal': 'KwaZulu-Natal',
+    'kwazulunatal': 'KwaZulu-Natal',
+    'kzn': 'KwaZulu-Natal',
+    'natal': 'KwaZulu-Natal',
+    'eastern cape': 'Eastern Cape',
+    'e cape': 'Eastern Cape',
+    'cape': 'Eastern Cape',
+    'free state': 'Free State',
+    'gauteng': 'Gauteng',
+    'gauteng province': 'Gauteng',
+    'limpopo': 'Limpopo',
+    'mpumalanga': 'Mpumalanga',
+    'mpumalanga province': 'Mpumalanga',
+    'northern cape': 'Northern Cape',
+    'n cape': 'Northern Cape',
+    'north west': 'North West',
+    'northwest': 'North West',
+    'n west': 'North West',
+    'western cape': 'Western Cape',
+    'w cape': 'Western Cape',
+}
+
+# Default location of the cleaned master list, used when ``import_schools`` is
+# called with no argument.
+SCHOOLS_DATA_PATH = BASE_DIR / 'data' / 'schools_master_list_clean.csv'
+
+# ─── School finder throttling ─────────────────────────────────────────────────
+# The autocomplete is public and unauthenticated, so it is rate limited per IP to
+# keep it from being scraped. ``SCHOOLS_SEARCH_RATE_LIMIT`` calls per
+# ``SCHOOLS_SEARCH_RATE_WINDOW`` seconds.
+SCHOOLS_SEARCH_RATE_LIMIT = 60
+SCHOOLS_SEARCH_RATE_WINDOW = 60
 
 # ─── AI story generation (Gemini text + Pollinations illustrations) ────────────
 # Leave GEMINI_API_KEY blank to keep the feature disabled — the "Explore more

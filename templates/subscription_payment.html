@@ -9,8 +9,13 @@
     <p class="eyebrow">Last step</p>
     <h1>Add your payment details</h1>
     <p>
-      You chose the <strong>{{ subscription.get_plan_type_display }}</strong> plan.
-      Once this is saved you'll go straight to your dashboard to add your child.
+      You chose the <strong>{{ subscription.get_plan_type_display }}</strong> plan
+      at <strong>{{ plan_price }}/month</strong>.
+      {% if role == 'teacher' %}
+        Once this is saved you'll go straight to your teacher dashboard.
+      {% else %}
+        Once this is saved you'll go straight to your dashboard to add your child.
+      {% endif %}
     </p>
     <p class="payment-security-note">
       🔒 Your card/account number is never stored in full — we only keep the

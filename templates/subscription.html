@@ -3,7 +3,26 @@
 {% block title %}Choose your plan - SGILA{% endblock %}
 {% block content %}
 
-{% if role == 'parent' %}
+{% if role == 'guest' %}
+
+<section class="epic-band">
+  <img class="auth-koaly-peek subscription-koaly-peek" src="{% static 'img/koaly_cutout.png' %}" alt="" aria-hidden="true">
+  <h1>Every SGILA plan, in one place</h1>
+  <h2 class="subscription-parent-summary">
+    Every plan includes a <strong>30-day free trial</strong> — parents, teachers
+    and schools. Create a free account to start yours, and compare anything
+    below first.
+  </h2>
+
+  {% include 'includes/plan_cards.html' %}
+
+  <p class="subscription-add-seat-hint">
+    Ready to start? <a href="/register">Create your free account</a>
+    or <a href="/login">sign in</a> if you already have one.
+  </p>
+</section>
+
+{% elif role == 'parent' %}
 <section class="epic-band">
   <img class="auth-koaly-peek subscription-koaly-peek" src="{% static 'img/koaly_cutout.png' %}" alt="" aria-hidden="true">
   <h1>Choose the best SGILA plan for your child</h1>
@@ -17,39 +36,7 @@
     </p>
   {% endif %}
 
-  <div class="epic-cards">
-
-    <form method="POST" class="epic-card epic-card-individual">
-      {% csrf_token %}
-      <input type="hidden" name="plan" value="individual">
-      <h2 class="epic-plan-name">Individual</h2>
-      <p class="epic-billed epic-billed-tight">For 1 child</p>
-      <p class="epic-price">R49<span>/month</span></p>
-      <p class="epic-billed">Billed Monthly</p>
-      <button class="epic-cta epic-cta-individual" type="submit">Choose Individual Plan</button>
-    </form>
-
-    <form method="POST" class="epic-card epic-card-family">
-      {% csrf_token %}
-      <input type="hidden" name="plan" value="family">
-      <span class="epic-ribbon">Best value</span>
-      <h2 class="epic-plan-name">Family</h2>
-      <p class="epic-billed epic-billed-tight">For up to 4 children</p>
-      <p class="epic-price">R89<span>/month</span></p>
-      <p class="epic-billed">Billed Monthly</p>
-      <button class="epic-cta epic-cta-family" type="submit">Choose Family Plan</button>
-    </form>
-
-    <form method="POST" class="epic-card epic-card-enterprise">
-      {% csrf_token %}
-      <input type="hidden" name="plan" value="enterprise">
-      <h2 class="epic-plan-name">Enterprise</h2>
-      <p class="epic-billed epic-billed-tight">For schools &amp; shared accounts</p>
-      <p class="epic-enterprise-min">Minimum starts from 100 learners</p>
-      <button class="epic-cta epic-cta-enterprise" type="submit">Activate Enterprise Package</button>
-    </form>
-
-  </div>
+  {% include 'includes/plan_cards.html' %}
 
   <form method="POST" class="epic-skip">
     {% csrf_token %}
@@ -67,67 +54,31 @@
 <section class="dashboard-hero teacher-hero subscription-teacher-hero">
   <div>
     <p class="eyebrow">School / district setup</p>
-    <h1>Enterprise packages</h1>
-    <p>Bring SGILA to your school, district or province — funded through your government education budget. No cards, no per-family cost.</p>
+    <h1>Plans for teachers and schools</h1>
+    <p>Pay by card for your own class, or bring SGILA to your whole school, district or province — funded through your government education budget.</p>
   </div>
   <img class="auth-koaly-peek" src="{% static 'img/koaly_cutout.png' %}" alt="" aria-hidden="true">
 </section>
 
-<section class="epic-cards subscription-tier-cards">
+<section class="epic-band">
+  <h2 class="subscription-parent-summary">
+    All teacher plans include a <strong>30-day trial</strong> so you can start
+    before committing. Enterprise is billed to your school, not to families —
+    funded through your government education budget, a DBE partnership or a CSI
+    grant. No cards, no per-family cost.
+  </h2>
 
-  <div class="epic-card subscription-tier-card">
-    <span class="badge badge-new subscription-tier-badge">Single school</span>
-    <h2 class="epic-plan-name subscription-school-heading">School</h2>
-    <p class="epic-billed subscription-tier-description">One school, unlimited learners</p>
-    <ul class="epic-tier-list">
-      <li>Every learner &amp; teacher account for your school</li>
-      <li>Class &amp; grade progress dashboards</li>
-      <li>One package code for your school</li>
-    </ul>
-  </div>
+  {% include 'includes/plan_cards.html' %}
 
-  <div class="epic-card epic-card-family subscription-tier-card">
-    <span class="epic-ribbon">Most common</span>
-    <span class="badge badge-new subscription-tier-badge">Multiple schools</span>
-    <h2 class="epic-plan-name">District</h2>
-    <p class="epic-billed subscription-tier-description">A group of schools in one district</p>
-    <ul class="epic-tier-list">
-      <li>Everything in School, for every school in the district</li>
-      <li>Bulk onboarding support for rural/low-connectivity schools</li>
-      <li>One code, shared across the district's schools</li>
-    </ul>
-  </div>
-
-  <div class="epic-card subscription-tier-card">
-    <span class="badge badge-new subscription-tier-badge">Large-scale rollout</span>
-    <h2 class="epic-plan-name subscription-government-heading">Province / National</h2>
-    <p class="epic-billed subscription-tier-description">Provincial or national department rollout</p>
-    <ul class="epic-tier-list">
-      <li>Everything in District, at provincial/national scale</li>
-      <li>Dedicated onboarding &amp; reporting for your department</li>
-      <li>Multiple codes issued as schools are added</li>
-    </ul>
-  </div>
-
-</section>
-
-<section class="epic-cards subscription-activation-cards">
-  <form method="POST" class="epic-card form-card subscription-activation-card">
+  <form method="POST" class="epic-skip">
     {% csrf_token %}
-    <span class="badge badge-done subscription-tier-badge">Enterprise / Government-funded</span>
-    <h2 class="epic-plan-name subscription-package-heading">Activate your package</h2>
-    <p class="epic-billed subscription-activation-description">Have a code? Redeem it here</p>
-
-    <label class="subscription-field">School name
-      <input type="text" name="school_name" value="{{ subscription.school_name|default:account.school_name }}" required placeholder="e.g. Ntuzuma Primary School">
-    </label>
-
-    <label class="subscription-field subscription-field-spaced">Package code
-      <input class="uppercase-field" type="text" name="package_code" required placeholder="Code from your district/government contact">
-    </label>
-
-    <button class="epic-cta epic-cta-green subscription-action-large" type="submit">Activate school package</button>
+    <input type="hidden" name="skip" value="1">
+    <button type="submit">Not right now — continue with a free trial</button>
   </form>
+
+  <div class="subscription-cancel-wrap">
+    <a href="/subscription/cancel" class="epic-cta epic-cta-red subscription-cancel-link">Cancel subscription</a>
+  </div>
 </section>
 
 {% endif %}

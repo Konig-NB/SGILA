@@ -1,0 +1,65 @@
+{% extends 'base.html' %}
+{% load static %}
+{% block title %}Activate your school package - SGILA{% endblock %}
+{% block content %}
+
+<section class="epic-band">
+  <img class="auth-koaly-peek subscription-koaly-peek" src="{% static 'img/koaly_cutout.png' %}" alt="" aria-hidden="true">
+  <h1>Activate your school package</h1>
+  <h2 class="subscription-parent-summary">
+    Find your school, check your price, then enter the code from your district or
+    government contact to switch your school onto the <strong>Enterprise</strong> plan
+    and unlock story access for your learners.
+  </h2>
+</section>
+
+<section class="epic-cards">
+  <form method="POST" class="epic-card form-card subscription-activation-card">
+    {% csrf_token %}
+
+    {% include 'includes/school_finder.html' %}
+
+    <label class="subscription-field">School name
+      <input type="text" name="school_name" value="{{ school_name }}" required placeholder="Search above, or type it here">
+    </label>
+
+    <label class="subscription-field subscription-field-spaced">Package code
+      <input class="uppercase-field" type="text" name="package_code" value="{{ package_code }}" required placeholder="Code from your district/government contact">
+    </label>
+
+    {% if enquiry_quote.valid %}
+      <input type="hidden" name="school_type" value="{{ enquiry_school_type }}">
+      <input type="hidden" name="learners" value="{{ enquiry_learners }}">
+      <div class="subscription-enquiry">
+        <p class="subscription-enquiry-heading">Your estimate</p>
+        <p class="subscription-enquiry-line">
+          {{ enquiry_quote.school_type_label }} &middot; {{ enquiry_learners }} learners
+        </p>
+        <p class="subscription-enquiry-line subscription-enquiry-total">
+          {{ enquiry_quote.per_learner_month }} per learner per month
+          &middot; {{ enquiry_quote.total_month }} per month
+          &middot; {{ enquiry_quote.total_year }} per year
+        </p>
+        <p class="subscription-enquiry-line">{{ enquiry_quote.breakdown }}</p>
+      </div>
+    {% endif %}
+
+    <p class="subscription-field-hint">
+      Enterprise is billed to the school, not to families: from
+      {{ enterprise_start_price }} per learner per month, minimum
+      {{ enterprise_minimum_learners }} learners. Your code comes from the district or government
+      office that bought the package — if you don't have one yet, get in touch with
+      your district education office.
+    </p>
+
+    <button class="epic-cta epic-cta-green subscription-action-large" type="submit">Activate school package</button>
+  </form>
+</section>
+
+<div class="subscription-cancel-wrap">
+  <a href="/subscription" class="subscription-back-link">Back to plans</a>
+</div>
+
+<script src="{% static 'js/school_finder.js' %}"></script>
+
+{% endblock %}

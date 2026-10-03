@@ -1,0 +1,131 @@
+{% comment %}
+Shared Enterprise school finder: pick a province, search for the school, and get
+its quintile and price automatically. Included by both the pricing dialog on
+/subscription and /subscription/redeem-package so the two cannot drift apart.
+
+Every price shown here comes from lessons.pricing via schools.resolution; this
+template contains no numbers. Behaviour lives in static/js/school_finder.js.
+{% endcomment %}
+<div class="school-finder"
+     data-school-finder
+     data-sf-instance="{{ school_finder.instance }}"
+     data-sf-search="{{ school_finder.search_endpoint }}"
+     data-sf-quote="{{ school_finder.quote_endpoint }}"
+     data-sf-minimum="{{ school_finder.minimum_learners }}"
+     data-sf-min-chars="{{ school_finder.min_query_length }}"
+     data-sf-redeem="{{ school_finder.redeem_url }}"
+     {% if school_finder.autofill_name %}data-sf-autofill-name="redeem"{% endif %}
+     {% if school_finder.selected_school %}
+       data-sf-preselect-json="{{ school_finder.selected_school_json }}"
+     {% endif %}>
+
+  <div class="pricing-calculator-fields">
+    <label class="pricing-field" for="sf-province-{{ school_finder.instance }}">
+      Province
+      <select id="sf-province-{{ school_finder.instance }}" data-sf-province>
+        <option value="">Choose your province&hellip;</option>
+        {% for province in school_finder.provinces %}
+          <option value="{{ province }}">{{ province }}</option>
+        {% endfor %}
+      </select>
+    </label>
+
+    <div class="pricing-field">
+      <label for="sf-query-{{ school_finder.instance }}">School name</label>
+      <div class="sf-combobox">
+        <input
+          type="text"
+          id="sf-query-{{ school_finder.instance }}"
+          data-sf-query
+          role="combobox"
+          autocomplete="off"
+          aria-autocomplete="list"
+          aria-expanded="false"
+          aria-controls="sf-list-{{ school_finder.instance }}"
+          placeholder="Type at least {{ school_finder.min_query_length }} letters of your school name"
+          disabled
+        >
+        <ul
+          class="sf-suggestions"
+          id="sf-list-{{ school_finder.instance }}"
+          data-sf-suggestions
+          role="listbox"
+          aria-label="School suggestions"
+          hidden
+        ></ul>
+      </div>
+    </div>
+  </div>
+
+  <p class="pricing-note">
+    Search your school in the Department of Basic Education's National Master List
+    of Schools and we will look up its quintile and price for you. Quintiles are
+    the Department of Basic Education's school poverty ranking: Quintile 1 is the
+    poorest, Quintile 5 the least poor.
+  </p>
+
+  <p class="sf-status" data-sf-status role="status" hidden></p>
+
+  <div class="pricing-result sf-selected" data-sf-selected hidden>
+    <p class="sf-selected-name" data-sf-selected-name></p>
+    <p class="sf-selected-meta" data-sf-selected-meta></p>
+    <p class="sf-selected-note" data-sf-selected-note></p>
+    <p class="sf-selected-price">
+      <span>Per learner, per month</span>
+      <strong data-sf-selected-price></strong>
+    </p>
+  </div>
+
+  <div class="sf-manual" data-sf-manual hidden>
+    <p class="sf-manual-prompt">
+      <button type="button" class="sf-manual-toggle" data-sf-manual-toggle>
+        {{ school_finder.not_found_prompt }}
+      </button>
+    </p>
+
+    <div class="pricing-field" data-sf-manual-fields hidden>
+      <label for="sf-type-{{ school_finder.instance }}">School type</label>
+      <select id="sf-type-{{ school_finder.instance }}" data-sf-manual-type>
+        <option value="">Choose your school type&hellip;</option>
+        {% for value, label in school_finder.school_types %}
+          <option value="{{ value }}">{{ label }}</option>
+        {% endfor %}
+      </select>
+      <label class="sf-not-sure">
+        <input type="checkbox" data-sf-not-sure>
+        <span>Not sure &mdash; {{ school_finder.no_quintile_message|default:"we will confirm the price on activation." }}</span>
+      </label>
+    </div>
+  </div>
+
+  <div class="pricing-calculator-fields">
+    <label class="pricing-field" for="sf-learners-{{ school_finder.instance }}">
+      Number of learners
+      <input
+        type="number"
+        id="sf-learners-{{ school_finder.instance }}"
+        data-sf-learners
+        value="{{ school_finder.minimum_learners }}"
+        min="{{ school_finder.minimum_learners }}"
+        step="1"
+        inputmode="numeric"
+      >
+    </label>
+  </div>
+
+  <p class="pricing-validation" data-sf-error role="status" hidden></p>
+
+  <div class="pricing-result" data-sf-totals hidden>
+    <div class="pricing-result-row">
+      <span class="pricing-result-label">Total per month</span>
+      <strong class="pricing-result-value" data-sf-total-month></strong>
+    </div>
+    <div class="pricing-result-row">
+      <span class="pricing-result-label">Total per year (12 months)</span>
+      <strong class="pricing-result-value" data-sf-total-year></strong>
+    </div>
+    <p class="pricing-breakdown" data-sf-breakdown></p>
+  </div>
+
+  <p class="sf-footnote">{{ school_finder.footnote }}</p>
+</div>
