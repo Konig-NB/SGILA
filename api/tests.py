@@ -1,5 +1,10 @@
 import json
 import re
+import sys
+from datetime import timedelta
+from io import BytesIO
+from unittest.mock import MagicMock, Mock, patch
+from urllib.error import HTTPError
 from datetime import timedelta
 from unittest.mock import patch
 from pathlib import Path
@@ -46,6 +51,7 @@ from api.models import (
     VisualActivityItem,
     current_school_year,
 )
+from api.story_eligibility import check_ai_story_eligibility
 
 
 class SchoolDirectorySearchTests(TestCase):
@@ -466,6 +472,303 @@ class SgilaFlowTests(TestCase):
         session['child_grade'] = child.grade
         session.save()
 
+    @override_settings(ENABLE_STORY_THRESHOLDS=False)
+    def test_ai_story_eligibility_does_not_require_95_percent_when_disabled(self):
+        child = Child.objects.create(
+            name='Lerato', age=8, grade=1,
+            parent_email='story-threshold-disabled@example.com', password='hash',
+        )
+        Progress.objects.create(
+            child=child, lesson=self.lesson, total_score=50, total_possible=100,
+        )
+
+        eligible, _, _ = check_ai_story_eligibility(child, 1)
+
+        self.assertTrue(eligible)
+
+    @override_settings(ENABLE_STORY_THRESHOLDS=False)
+    def test_ai_story_eligibility_bypasses_completion_locks_when_disabled(self):
+        child = Child.objects.create(
+            name='Lerato', age=8, grade=1,
+            parent_email='story-completion-locks-disabled@example.com', password='hash',
+        )
+
+        eligible, _, _ = check_ai_story_eligibility(child, 1)
+
+        self.assertTrue(eligible)
+
+    @override_settings(ENABLE_STORY_THRESHOLDS=True)
+    def test_ai_story_eligibility_requires_95_percent_when_enabled(self):
+        child = Child.objects.create(
+            name='Lerato', age=8, grade=1,
+            parent_email='story-threshold-enabled@example.com', password='hash',
+        )
+        Progress.objects.create(
+            child=child, lesson=self.lesson, total_score=50, total_possible=100,
+        )
+
+        eligible, message, _ = check_ai_story_eligibility(child, 1)
+
+        self.assertFalse(eligible)
+        self.assertIn('95%', message)
+
+    @override_settings(
+        GROQ_API_KEY='invalid-groq-key',
+        GROQ_MODEL='llama-test',
+        GEMINI_API_KEY='valid-gemini-key',
+        GEMINI_MODEL='gemini-test',
+    )
+    def test_grade_four_story_falls_back_to_gemini_after_groq_auth_failure(self):
+        from lessons.views import generate_gemini_story
+
+        story = {'title': 'Fallback Story', 'pages': [{'text': 'Gemini fallback.'}], 'questions': []}
+        groq_error = HTTPError(
+            'https://api.groq.com', 401, 'Unauthorized', {},
+            BytesIO(b'{"error":{"message":"invalid key"}}'),
+        )
+        gemini_response = MagicMock()
+        gemini_response.__enter__.return_value.read.return_value = json.dumps({
+            'candidates': [{
+                'content': {'parts': [{'text': json.dumps(story)}]},
+            }],
+        }).encode()
+
+        with (
+            patch('lessons.views.retrieve_grade4_context', return_value=(Mock(pk=1, name='Test'), [], [])),
+            patch('lessons.views.grade4_prompt_context', return_value='prompt'),
+            patch('lessons.views.validate_and_repair_grade4_story', side_effect=lambda value, *_args, **_kwargs: value),
+            patch('lessons.views.urlopen', side_effect=[groq_error, gemini_response]) as open_url,
+        ):
+            result = generate_gemini_story(4, [])
+
+        self.assertEqual(result['title'], 'Fallback Story')
+        self.assertEqual(open_url.call_count, 2)
+
+    @override_settings(
+        GROQ_API_KEY='grade1-groq-key',
+        GROQ_MODEL='llama-test',
+        GEMINI_API_KEY='grade1-gemini-key',
+        GEMINI_MODEL='gemini-test',
+    )
+    def test_grade_one_story_uses_gemini_first_shared_text_generation(self):
+        from lessons.views import generate_gemini_story
+
+        story = {
+            'title': 'A Helpful Day',
+            'character_description': 'A friendly young learner with a blue shirt.',
+            'pages': [
+                {'text': 'A child finds a red button. It shines beside her blue bag.'},
+                {'text': 'A small bird rests near the gate. Its bright wing moves in the wind.'},
+                {'text': 'Mina takes the box home today. She gives it to her friend.'},
+            ],
+            'phonics_words': ['child', 'small', 'home'],
+            'vocabulary_words': ['button', 'bird', 'box'],
+            'picture_match': [
+                {'sentence': 'A child finds a red button.', 'page_number': 1},
+                {'sentence': 'A small bird rests near the gate.', 'page_number': 2},
+                {'sentence': 'Mina takes the box home today.', 'page_number': 3},
+            ],
+        }
+
+        def generate_with_validator(prompt, validator):
+            return validator(story)
+
+        with (
+            patch('lessons.views.grade1_prompt_context', return_value=('prompt', [], {})),
+            patch('lessons.views.generate_story_text', side_effect=generate_with_validator) as generate_text,
+        ):
+            result = generate_gemini_story(1, [])
+
+        self.assertEqual(generate_text.call_args.args[0], 'prompt')
+        self.assertTrue(callable(generate_text.call_args.kwargs['validator']))
+        self.assertEqual(result['title'], 'A Helpful Day')
+        self.assertEqual(len(result['_generation_metadata']['validated_page_word_counts']), 3)
+
+    @override_settings(
+        GROQ_API_KEY='grade1-fallback-key',
+        GROQ_MODEL='grade1-fallback-model',
+    )
+    def test_shared_text_generation_falls_back_from_gemini_to_groq(self):
+        from api.grade4_story_framework import generate_story_text
+
+        groq_client = Mock()
+        groq_module = Mock()
+        groq_module.Groq.return_value = groq_client
+        groq_client.chat.completions.create.return_value = Mock(
+            choices=[Mock(message=Mock(content=json.dumps({'title': 'Groq fallback story'})))],
+        )
+
+        with (
+            patch('api.grade4_story_framework.call_gemini_for_story', side_effect=RuntimeError('Gemini failed')),
+            patch.dict(sys.modules, {'groq': groq_module}),
+        ):
+            story = generate_story_text('Grade 1 story prompt')
+
+        self.assertEqual(story['title'], 'Groq fallback story')
+        groq_module.Groq.assert_called_once_with(api_key='grade1-fallback-key')
+        self.assertEqual(
+            groq_client.chat.completions.create.call_args.kwargs['model'],
+            'grade1-fallback-model',
+        )
+
+    @override_settings(GROQ_API_KEY='grade1-fallback-key')
+    def test_shared_text_generation_falls_back_when_primary_fails_validation(self):
+        from api.grade4_story_framework import generate_story_text
+
+        groq_client = Mock()
+        groq_module = Mock()
+        groq_module.Groq.return_value = groq_client
+        groq_client.chat.completions.create.return_value = Mock(
+            choices=[Mock(message=Mock(content=json.dumps({'title': 'Valid fallback'})))],
+        )
+
+        def require_title(story):
+            if 'title' not in story:
+                raise ValueError('Missing title')
+            return story
+
+        with (
+            patch('api.grade4_story_framework.call_gemini_for_story', return_value={'pages': []}),
+            patch.dict(sys.modules, {'groq': groq_module}),
+        ):
+            story = generate_story_text('Grade 1 story prompt', validator=require_title)
+
+        self.assertEqual(story['title'], 'Valid fallback')
+        groq_client.chat.completions.create.assert_called_once()
+
+    @override_settings(GEMINI_MODEL='configured-gemini-model')
+    def test_gemini_story_call_uses_configured_model(self):
+        from api.grade4_story_framework import call_gemini_for_story
+
+        client = Mock()
+        client.models.generate_content.return_value = Mock(text='{"title": "Configured model"}')
+        with patch('api.grade4_story_framework.genai.Client', return_value=client):
+            story = call_gemini_for_story('story prompt')
+
+        self.assertEqual(story['title'], 'Configured model')
+        self.assertEqual(
+            client.models.generate_content.call_args.kwargs['model'],
+            'configured-gemini-model',
+        )
+
+    def test_grade_four_activity_persistence_saves_memos_as_json_and_separate_groups(self):
+        from api.grade4_story_framework import save_grade4_activities
+        from api.views import reading_answer_score
+
+        lesson = Lesson.objects.create(title='Grade 4 Activity Structure', grade=4)
+        story = {
+            'questions': [],
+            'activities': [
+                {
+                    'activity_type': ReadingActivity.WORD_SCRAMBLE,
+                    'skill': 'spelling',
+                    'options': {'items': [{'key': 'ws_1', 'scramble': 'SLOHOC'}]},
+                    'correct_answer': {'ws_1': 'SCHOOL'},
+                },
+                {
+                    'activity_type': ReadingActivity.MATCHING,
+                    'skill': 'vocabulary_in_context',
+                    'options': {'prompts': [{'key': 'p_1', 'text': 'school'}]},
+                    'correct_answer': {'p_1': 'c_1'},
+                },
+                {
+                    'activity_type': ReadingActivity.CLOZE,
+                    'skill': 'vocabulary_in_context',
+                    'options': ['noticed', 'reached'],
+                    'correct_answer': 'noticed',
+                },
+            ],
+        }
+
+        save_grade4_activities(lesson, story)
+
+        activities = list(lesson.reading_activities.order_by('order'))
+        self.assertEqual([activity.group_number for activity in activities], [2, 3, 4])
+        self.assertEqual(json.loads(activities[0].correct_answer), {'ws_1': 'SCHOOL'})
+        self.assertEqual(json.loads(activities[1].correct_answer), {'p_1': 'c_1'})
+        self.assertEqual(activities[2].correct_answer, 'noticed')
+        self.assertEqual(reading_answer_score(activities[0], {'ws_1': 'school'}), (1, 1))
+        self.assertEqual(reading_answer_score(activities[1], {'p_1': 'c_1'}), (1, 1))
+
+    @override_settings(ENABLE_STORY_THRESHOLDS=False)
+    def test_grade_home_shows_only_latest_personal_ai_story_and_keeps_history(self):
+        child = Child.objects.create(
+            name='Lerato', age=10, grade=4,
+            parent_email='grade4-ai-story-history@example.com', password='hash',
+        )
+        older_story = Lesson.objects.create(
+            title='Older AI Story', grade=4, is_ai_generated=True, generated_for=child,
+        )
+        latest_story = Lesson.objects.create(
+            title='Latest AI Story', grade=4, is_ai_generated=True, generated_for=child,
+        )
+        Lesson.objects.filter(pk=older_story.pk).update(
+            created_at=timezone.now() - timedelta(days=1),
+        )
+        Progress.objects.create(
+            child=child, lesson=older_story, total_score=10, total_possible=10,
+        )
+        self.sign_in_child(child)
+
+        response = self.client.get('/grade/4')
+
+        self.assertContains(response, 'Latest AI Story')
+        self.assertNotContains(response, 'Older AI Story')
+        self.assertTrue(Lesson.objects.filter(pk=older_story.pk).exists())
+        self.assertTrue(Progress.objects.filter(child=child, lesson=older_story).exists())
+
+    @override_settings(
+        CLOUDFLARE_ACCOUNT_ID='test-account',
+        CLOUDFLARE_API_TOKEN='invalid-token',
+        CLOUDFLARE_IMAGE_MODEL='@cf/black-forest-labs/flux-1-schnell',
+        POLLINATIONS_API_KEY='configured-pollinations-key',
+    )
+    def test_image_fallback_reports_provider_status_without_credentials(self):
+        from lessons.views import GeminiStoryGenerationError, _generate_story_image
+
+        pollinations_error = GeminiStoryGenerationError(
+            'Pollinations image generation failed (HTTP 429).'
+        )
+        cloudflare_error = HTTPError(
+            'https://api.cloudflare.com', 403, 'Forbidden', {}, BytesIO(b'{}'),
+        )
+        with (
+            patch('lessons.views._build_pollinations_url', return_value='https://image.test'),
+            patch('lessons.views._fetch_pollinations_image', side_effect=pollinations_error),
+            patch('lessons.views.urlopen', side_effect=cloudflare_error),
+        ):
+            with self.assertRaises(GeminiStoryGenerationError) as raised:
+                _generate_story_image('A school library', 12, cloudflare_fallback=True)
+
+        self.assertIn('HTTP 429', str(raised.exception))
+        self.assertIn('HTTP 403', str(raised.exception))
+        self.assertIn('Workers AI Read and Edit permissions', str(raised.exception))
+        self.assertNotIn('invalid-token', str(raised.exception))
+
+    @override_settings(
+        CLOUDFLARE_ACCOUNT_ID='test-account',
+        CLOUDFLARE_API_TOKEN='test-token',
+        CLOUDFLARE_IMAGE_MODEL='@cf/black-forest-labs/flux-1-schnell',
+        POLLINATIONS_API_KEY='',
+    )
+    def test_grade_four_image_uses_cloudflare_without_seed_when_pollinations_is_unconfigured(self):
+        import base64
+        from lessons.views import _generate_story_image
+
+        image_bytes = b'test-image-data'
+        cloudflare_response = MagicMock()
+        cloudflare_response.__enter__.return_value.read.return_value = json.dumps({
+            'success': True,
+            'result': {'image': base64.b64encode(image_bytes).decode('ascii')},
+        }).encode()
+        with patch('lessons.views.urlopen', return_value=cloudflare_response) as open_url:
+            result = _generate_story_image('A simple test image', 12, cloudflare_fallback=True)
+
+        request = open_url.call_args.args[0]
+        payload = json.loads(request.data)
+        self.assertEqual(result, (image_bytes, 'image/jpeg'))
+        self.assertEqual(payload, {'prompt': 'A simple test image', 'steps': 4})
+
     def test_terrible_twins_extra_activity_is_marked_as_comprehension(self):
         self.assertEqual(
             EXTRA_ACTIVITIES['The Terrible Twins']['skill'],
@@ -611,6 +914,7 @@ class SgilaFlowTests(TestCase):
             "username": "lethum",
             "first_name": "Lethu",
             "last_name": "Mokoena",
+            "date_of_birth": f"{timezone.localdate().year - 7}-06-01",
             "age": 7,
             "grade": 1,
             "school_name": "",
@@ -625,6 +929,71 @@ class SgilaFlowTests(TestCase):
         self.assertEqual(child.teacher, teacher)
         self.assertEqual(child.teacher_class, teacher_class)
         self.assertEqual(child.school_name, teacher.school_name)
+
+    def test_parent_add_child_enforces_five_to_twelve_birth_year_window(self):
+        parent = Parent.objects.create(
+            full_name="Nomsa Dlamini",
+            email="nomsa@example.com",
+            password="hash",
+            accepted_popia=True,
+        )
+        session = self.client.session
+        session['account_role'] = 'parent'
+        session['account_id'] = parent.id
+        session['account_name'] = parent.full_name
+        session.save()
+        current_year = timezone.localdate().year
+
+        for username, birth_year in (
+            ('youngest', current_year - 5),
+            ('oldest', current_year - 12),
+        ):
+            with self.subTest(username=username):
+                response = self.client.post('/parent/add-child', {
+                    'username': username,
+                    'first_name': 'Test',
+                    'last_name': 'Learner',
+                    'date_of_birth': f'{birth_year}-06-01',
+                    'grade': 1,
+                    'password': 'password123',
+                })
+                self.assertEqual(response.status_code, 302)
+                self.assertTrue(Child.objects.filter(username__iexact=username).exists())
+
+        for username, birth_year in (
+            ('too-young', current_year - 4),
+            ('too-old', current_year - 13),
+        ):
+            with self.subTest(username=username):
+                response = self.client.post('/parent/add-child', {
+                    'username': username,
+                    'first_name': 'Test',
+                    'last_name': 'Learner',
+                    'date_of_birth': f'{birth_year}-06-01',
+                    'grade': 1,
+                    'password': 'password123',
+                })
+                self.assertEqual(response.status_code, 200)
+                self.assertFalse(Child.objects.filter(username__iexact=username).exists())
+
+    def test_parent_add_child_form_uses_current_five_to_twelve_year_bounds(self):
+        parent = Parent.objects.create(
+            full_name="Nomsa Dlamini",
+            email="nomsa@example.com",
+            password="hash",
+            accepted_popia=True,
+        )
+        session = self.client.session
+        session['account_role'] = 'parent'
+        session['account_id'] = parent.id
+        session['account_name'] = parent.full_name
+        session.save()
+
+        response = self.client.get('/parent/add-child')
+
+        current_year = timezone.localdate().year
+        self.assertContains(response, f'min="{current_year - 12}-01-01"')
+        self.assertContains(response, f'max="{current_year - 5}-12-31"')
 
     def test_parent_add_child_page_has_username_and_photo_upload(self):
         parent = Parent.objects.create(
@@ -902,6 +1271,42 @@ class SgilaFlowTests(TestCase):
         self.assertEqual(
             self.client.session[f"lesson_{self.lesson.id}_reading_skill_scores"]['vocabulary_in_context'],
             {'score': 1, 'total': 2},
+        )
+
+    def test_structured_reading_activity_excludes_blank_items_from_score_total(self):
+        child = Child.objects.create(
+            name="Lerato",
+            age=10,
+            grade=4,
+            parent_email="structured-blank@example.com",
+            password="hash",
+        )
+        activity = ReadingActivity.objects.create(
+            lesson=self.lesson,
+            order=2,
+            group_number=2,
+            group_title='Crossword Puzzle',
+            activity_type=ReadingActivity.CROSSWORD,
+            skill='vocabulary_in_context',
+            question='Complete the words.',
+            options={'entries': []},
+            correct_answer=json.dumps({'1-across': 'RUNNING', '2-down': 'NERVOUS'}),
+        )
+        self.sign_in_child(child)
+
+        response = self.client.post("/api/check-reading-activity", json.dumps({
+            "child_id": child.id,
+            "lesson_id": self.lesson.id,
+            "activity_id": activity.id,
+            "child_answer": {'1-across': 'running', '2-down': ''},
+        }), content_type="application/json")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()['score_awarded'], 1)
+        self.assertEqual(response.json()['score_possible'], 1)
+        self.assertEqual(
+            self.client.session[f"lesson_{self.lesson.id}_reading_skill_scores"]['vocabulary_in_context'],
+            {'score': 1, 'total': 1},
         )
 
     def test_matching_list_answers_are_accepted_for_single_choice_questions(self):
@@ -1778,6 +2183,36 @@ class ChildReassignmentCooldownTests(TestCase):
         self.assertTrue(can_activate_child(self.parent, child=self.second_child))
         self.assertIsNone(child_reassignment_cooldown_until(self.parent, child=self.second_child))
 
+    def test_add_seat_purchase_activates_the_learner_that_needed_it(self):
+        self.first_child.deactivate(Child.DEACTIVATED_MANUAL)
+        self.subscription.card_last4 = '4242'
+        self.subscription.save(update_fields=['card_last4'])
+        session = self.client.session
+        session['account_role'] = 'parent'
+        session['account_id'] = self.parent.id
+        session.save()
+
+        response = self.client.post(
+            f'/subscription/add-seat?child_id={self.second_child.id}',
+            {'quantity': 1},
+        )
+
+        self.assertRedirects(
+            response,
+            f'/subscription/add-seat/payment?child_id={self.second_child.id}',
+        )
+        response = self.client.post(
+            f'/subscription/add-seat/payment?child_id={self.second_child.id}',
+            {'action': 'use_on_file', 'child_id': self.second_child.id},
+        )
+
+        self.assertRedirects(response, '/parent/dashboard')
+        self.second_child.refresh_from_db()
+        self.subscription.refresh_from_db()
+        self.assertTrue(self.second_child.is_active)
+        self.assertEqual(self.subscription.extra_active_seats, 1)
+        self.assertFalse(self.first_child.is_active)
+
     def test_countdown_is_when_enough_cooling_seats_expire(self):
         from api.account_access import can_activate_child, child_reassignment_cooldown_until
 
@@ -1833,6 +2268,7 @@ class ChildReassignmentCooldownTests(TestCase):
         self.assertContains(response, 'Seat cooling down')
         self.assertContains(response, expected_date)
         self.assertContains(response, '/subscription/add-seat')
+        self.assertContains(response, f'?child_id={self.second_child.id}')
 
         same_child_response = self.client.get(f'/dashboard/{self.first_child.id}')
 
