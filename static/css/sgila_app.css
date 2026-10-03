@@ -722,6 +722,15 @@ body:not(.diagram-body) .learner-modal-card h2 {
 body:not(.diagram-body) #activity-picker-title { color: #000; }
 
 body:not(.diagram-body) .learner-modal-card p { color: #56617a; font-weight: 700; }
+[data-theme="dark"] body:not(.diagram-body) .learner-modal-card {
+  background: #0f172a;
+  border-color: rgba(148, 163, 184, .45);
+}
+[data-theme="dark"] body:not(.diagram-body) .learner-modal-card h2,
+[data-theme="dark"] body:not(.diagram-body) .learner-modal-card p,
+[data-theme="dark"] body:not(.diagram-body) .activity-pause-score {
+  color: #f8fbff;
+}
 body:not(.diagram-body) .learner-modal-options { display: grid; gap: 12px; margin: 22px 0 16px; }
 body:not(.diagram-body) .learner-modal-options .btn { width: 100%; min-height: 52px; font-size: 1.05rem; }
 body:not(.diagram-body) .learner-modal-options .btn-primary { background: var(--sun); border-color: var(--sun); color: var(--ink); box-shadow: none; }
