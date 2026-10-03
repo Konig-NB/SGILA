@@ -10839,18 +10839,18 @@ body:not(.diagram-body) .story-diary-signature {
     box-shadow: 0 10px 20px rgba(169, 150, 238, .35);
   }
   .epic-cta-individual {
-    color: var(--ink);
+    color: #111111;
     background: #ffd22e;
     box-shadow: 0 10px 20px rgba(255, 210, 46, .38);
   }
   .epic-cta-family {
-    color: #fff;
+    color: #111111;
     background: #83a8f6;
     box-shadow: 0 10px 20px rgba(131, 168, 246, .38);
   }
   .epic-cta-enterprise,
   .epic-cta-green {
-    color: var(--ink);
+    color: #111111;
     background: #5bdad4;
     box-shadow: 0 10px 20px rgba(91, 218, 212, .38);
   }
