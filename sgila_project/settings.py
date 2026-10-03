@@ -157,7 +157,7 @@ DEFAULT_FROM_EMAIL = os.environ.get(
     'DEFAULT_FROM_EMAIL',
     f'SGILA <{EMAIL_HOST_USER}>' if EMAIL_HOST_USER else 'SGILA <noreply@localhost>',
 )
-SUPPORT_EMAIL = os.environ.get('SUPPORT_EMAIL', 'sgila.support@gmail.com')
+SUPPORT_EMAIL = os.environ.get('SUPPORT_EMAIL', 'sgila.info@gmail.com')
 
 # ─── JWT ───────────────────────────────────────────────────────────────────────
 # Access tokens are signed with SECRET_KEY via HS256.

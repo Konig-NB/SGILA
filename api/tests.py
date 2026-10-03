@@ -48,6 +48,30 @@ from api.models import (
 )
 
 
+class SchoolDirectorySearchTests(TestCase):
+    @patch('api.views.school_directory_records', return_value=(
+        {'school_name': 'BIZANA PRIMARY SCHOOL', 'location': 'BIZANA', 'quantile': 'Q1'},
+        {'school_name': 'BIZANA SECONDARY SCHOOL', 'location': 'BIZANA', 'quantile': 'Q3'},
+        {'school_name': 'OTHER SCHOOL', 'location': 'OTHER TOWN', 'quantile': ''},
+    ))
+    def test_search_returns_matching_school_and_public_quantile_fields(self, _directory):
+        response = self.client.get('/api/schools/search/', {'q': 'bizana primary'})
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()['results'], [{
+            'school_name': 'BIZANA PRIMARY SCHOOL',
+            'location': 'BIZANA',
+            'quantile': 'Q1',
+        }])
+
+    @patch('api.views.school_directory_records')
+    def test_short_search_term_does_not_load_directory(self, directory):
+        response = self.client.get('/api/schools/search/', {'q': 'B'})
+
+        self.assertEqual(response.json(), {'results': []})
+        directory.assert_not_called()
+
+
 class HelpCenterApiTests(TestCase):
     def setUp(self):
         cache.clear()
@@ -201,7 +225,7 @@ class HelpCenterApiTests(TestCase):
         self.assertIsNone(ticket.user)
         self.assertEqual(ticket.email, 'reader@example.com')
         self.assertEqual(len(mail.outbox), 2)
-        self.assertEqual(mail.outbox[0].to, ['sgila.support@gmail.com'])
+        self.assertEqual(mail.outbox[0].to, ['sgila.info@gmail.com'])
         self.assertEqual(mail.outbox[0].reply_to, ['reader@example.com'])
         self.assertIn('The story stops at the cover.', mail.outbox[0].body)
         self.assertEqual(mail.outbox[1].to, ['reader@example.com'])
@@ -326,7 +350,7 @@ class HelpCenterApiTests(TestCase):
         self.assertEqual(feedback.user_role, Feedback.UserRole.TEACHER)
         self.assertEqual(feedback.issue_category, Feedback.IssueCategory.BUG)
         self.assertEqual(len(mail.outbox), 1)
-        self.assertEqual(mail.outbox[0].to, ['sgila.support@gmail.com'])
+        self.assertEqual(mail.outbox[0].to, ['sgila.info@gmail.com'])
         self.assertEqual(mail.outbox[0].reply_to, ['teacher@example.com'])
         self.assertIn('Audio does not play', mail.outbox[0].body)
 

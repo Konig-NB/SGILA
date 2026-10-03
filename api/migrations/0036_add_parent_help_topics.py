@@ -40,7 +40,7 @@ TOPICS = (
             'Q: How can I contact SGILA support? A: Open Contact the Sgila team at '
             'the bottom of this page and send a message with your email, a subject, '
             'and the details of your question. You can also email '
-            'sgila.support@gmail.com.'
+            'sgila.info@gmail.com.'
         ),
     },
 )

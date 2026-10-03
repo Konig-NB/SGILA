@@ -24,13 +24,13 @@ OLD_CONTENT = {
     'enterprise-get-package-code': (
         'Q: Where can I get an Enterprise package code? A: Get the code from the '
         'district or government contact arranging your school package. If you need '
-        'help choosing a package, contact SGILA support at sgila.support@gmail.com.'
+        'help choosing a package, contact SGILA support at sgila.info@gmail.com.'
     ),
     'enterprise-package-code-help': (
         'Q: My Enterprise package code is not working. What should I do? A: Check '
         'that you entered the school name and the code supplied by your district or '
         'government contact. If activation still does not work, contact that provider '
-        'or email sgila.support@gmail.com for help.'
+        'or email sgila.info@gmail.com for help.'
     ),
     'enterprise-package-payment': (
         'Q: Does an Enterprise package require a card or per-family payment? A: No. '
@@ -62,13 +62,13 @@ NEW_CONTENT = {
         'Q: Where can I get an Enterprise package code? A: Get the code from the '
         'organization arranging your package, such as your school, sponsor, district, '
         'or government contact. If your school is self-funding and needs a package '
-        'code, contact SGILA support at sgila.support@gmail.com.'
+        'code, contact SGILA support at sgila.info@gmail.com.'
     ),
     'enterprise-package-code-help': (
         'Q: My Enterprise package code is not working. What should I do? A: Check '
         'that you entered the school name and the code supplied by your package '
         'provider or sponsor. If activation still does not work, contact that '
-        'provider or email sgila.support@gmail.com for help.'
+        'provider or email sgila.info@gmail.com for help.'
     ),
     'enterprise-package-payment': (
         'Q: Does an Enterprise package require a card or per-family payment? A: No. '
@@ -86,7 +86,7 @@ NEW_TOPIC = {
         'private school can fund its own package, or an external sponsor can fund it. '
         'Districts and government departments can also arrange funding. Ask the '
         'organization funding the package for its code, or contact '
-        'sgila.support@gmail.com for help.'
+        'sgila.info@gmail.com for help.'
     ),
 }
 

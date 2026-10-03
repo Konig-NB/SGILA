@@ -15,6 +15,8 @@ help_router.register('help/tickets', SupportTicketViewSet, basename='help-ticket
 help_router.register('help/feedback', FeedbackViewSet, basename='help-feedback')
 
 urlpatterns = [
+    path('schools/search/', views.school_search, name='school-search'),
+
     # Screen 2 — Registration
     path('register', views.register, name='register'),
 
