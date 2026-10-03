@@ -1,0 +1,445 @@
+{% extends 'base.html' %}
+{% load static %}
+{% block title %}Help and Feedback - SGILA{% endblock %}
+{% block content %}
+<main class="terms-page help-center-page">
+  <div class="terms-container help-center-container">
+    <header class="terms-header help-center-header">
+      <img src="{% static 'img/koaly_cutout.png' %}" alt="Koaly" class="terms-koaly">
+      <div>
+        <p class="eyebrow">SGILA SUPPORT</p>
+        <h1>Help and Feedback</h1>
+        <p class="terms-meta">Find answers and support for learners, parents, and teachers</p>
+      </div>
+      <a class="btn btn-light" href="/">Back to Homepage</a>
+    </header>
+
+    <div class="terms-body help-center-body">
+      <section class="help-search-section" aria-label="Search the Help Centre">
+        <label for="help-search">How can we help you?</label>
+        <div class="help-search-control">
+          <svg class="help-search-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+            <circle cx="10.8" cy="10.8" r="6.8"></circle>
+            <path d="m16 16 4.2 4.2"></path>
+          </svg>
+          <input id="help-search" type="search" placeholder="Search our Help Centre" autocomplete="off">
+        </div>
+        <div class="help-audience-filter">
+          <label for="help-audience">I'm looking for help as a</label>
+          <select id="help-audience">
+            <option value="parent" selected>Parent</option>
+            <option value="teacher">Teacher</option>
+            <option value="enterprise">Enterprise</option>
+          </select>
+        </div>
+      </section>
+
+      <section class="help-articles-section" aria-labelledby="help-articles-title">
+        <div class="help-section-heading">
+          <h2 id="help-articles-title">All Help Topics</h2>
+          <span id="help-result-count" aria-live="polite"></span>
+        </div>
+        <div id="help-article-list" class="help-article-list" aria-live="polite">
+          <p>Loading topics...</p>
+        </div>
+      </section>
+
+      <details class="help-contact-section help-disclosure" id="contact" data-action-label="contact" aria-labelledby="help-contact-title">
+        <summary class="help-section-toggle">
+          <span class="eyebrow">CONTACT US</span>
+          <h2 id="help-contact-title">Contact the SGILA team</h2>
+          <span class="help-section-summary">Send us a message or email sgila.info@gmail.com.</span>
+          <span class="help-section-action"></span>
+        </summary>
+        <div class="help-contact-content" id="contact-content">
+          <div>
+            <p>Send us the details and we’ll reply to your email. You can also reach us directly at <a href="mailto:sgila.info@gmail.com">sgila.info@gmail.com</a>.</p>
+          </div>
+          <form id="support-ticket-form" class="help-ticket-form">
+            {% csrf_token %}
+            <label for="ticket-email">Your email</label>
+            <input id="ticket-email" name="email" type="email" maxlength="254" autocomplete="email" required>
+            <label for="ticket-subject">Subject</label>
+            <input id="ticket-subject" name="subject" type="text" maxlength="200" required>
+            <label for="ticket-description">Tell us what happened</label>
+            <textarea id="ticket-description" name="description" rows="5" maxlength="10000" required></textarea>
+            <button class="btn btn-primary" type="submit">Send message</button>
+            <p id="ticket-form-status" class="help-form-status" role="status" aria-live="polite"></p>
+          </form>
+        </div>
+      </details>
+
+      <details class="help-feedback-section help-disclosure" id="feedback" data-action-label="feedback" aria-labelledby="help-feedback-title">
+        <summary class="help-section-toggle">
+          <span class="eyebrow">HELP US IMPROVE</span>
+          <h2 id="help-feedback-title">Send feedback</h2>
+          <span class="help-section-summary">Report a bug or share a suggestion with the Sgila team.</span>
+          <span class="help-section-action"></span>
+        </summary>
+        <div class="help-feedback-content">
+          <form id="feedback-form" class="help-feedback-form">
+            {% csrf_token %}
+            <label for="feedback-email">Your email</label>
+            <input id="feedback-email" name="user_email" type="email" maxlength="254" autocomplete="email" required>
+            <label for="feedback-role">Your role</label>
+            <select id="feedback-role" name="user_role" required>
+              <option value="" selected disabled>Select your role...</option>
+              <option value="parent">Parent</option>
+              <option value="teacher">Teacher</option>
+            </select>
+            <label for="feedback-category">Feedback type</label>
+            <select id="feedback-category" name="issue_category" required>
+              <option value="" selected disabled>Select a category...</option>
+              <option value="bug">Bug report</option>
+              <option value="suggestion">Suggestion</option>
+              <option value="other">Other</option>
+            </select>
+            <label for="feedback-subject">Subject</label>
+            <input id="feedback-subject" name="subject" type="text" maxlength="200" required>
+            <label for="feedback-message">Tell us more</label>
+            <div class="help-feedback-message-control">
+              <textarea id="feedback-message" name="message_body" rows="5" maxlength="10000" aria-describedby="feedback-message-note" required></textarea>
+              <span id="feedback-message-note" class="help-feedback-note">Please don't include sensitive information in your message.</span>
+            </div>
+            <button class="btn btn-primary" type="submit">Send feedback</button>
+            <p id="feedback-form-status" class="help-form-status" role="status" aria-live="polite"></p>
+          </form>
+        </div>
+      </details>
+    </div>
+  </div>
+</main>
+<script>
+(() => {
+  document.querySelectorAll('.help-disclosure').forEach((section) => {
+    const action = section.querySelector('.help-section-action');
+    const label = section.dataset.actionLabel;
+    const updateAction = () => {
+      action.textContent = `${section.open ? 'Hide' : 'Show'} ${label} form`;
+    };
+    section.addEventListener('toggle', updateAction);
+    updateAction();
+  });
+
+  const articleList = document.getElementById('help-article-list');
+  const searchInput = document.getElementById('help-search');
+  const audienceSelect = document.getElementById('help-audience');
+  const count = document.getElementById('help-result-count');
+  let availableArticles = [];
+  const initialParams = new URLSearchParams(window.location.search);
+  const initialAudience = initialParams.get('audience');
+  if (['parent', 'teacher', 'enterprise'].includes(initialAudience)) {
+    audienceSelect.value = initialAudience;
+  }
+  searchInput.value = initialParams.get('q') || '';
+
+  function topicMatchesSearch(text) {
+    const terms = searchInput.value.trim().toLocaleLowerCase().split(/\s+/).filter(Boolean);
+    const normalizedText = text.toLocaleLowerCase();
+    return terms.every((term) => normalizedText.includes(term));
+  }
+
+  function renderSearchMatches(element, text) {
+    const terms = searchInput.value.trim().split(/\s+/).filter(Boolean);
+    if (!terms.length) {
+      element.textContent = text;
+      return;
+    }
+
+    const normalizedText = text.toLocaleLowerCase();
+    const normalizedTerms = terms.map((term) => term.toLocaleLowerCase());
+    let cursor = 0;
+    while (cursor < text.length) {
+      let matchIndex = text.length;
+      let matchedTerm = '';
+      normalizedTerms.forEach((term) => {
+        const index = normalizedText.indexOf(term, cursor);
+        if (index !== -1 && index < matchIndex) {
+          matchIndex = index;
+          matchedTerm = term;
+        }
+      });
+
+      if (!matchedTerm) {
+        element.append(document.createTextNode(text.slice(cursor)));
+        break;
+      }
+
+      if (matchIndex > cursor) {
+        element.append(document.createTextNode(text.slice(cursor, matchIndex)));
+      }
+      const mark = document.createElement('mark');
+      mark.className = 'help-search-match';
+      mark.textContent = text.slice(matchIndex, matchIndex + matchedTerm.length);
+      element.append(mark);
+      cursor = matchIndex + matchedTerm.length;
+    }
+  }
+
+  const categoryIconShapes = {
+    'getting-started-guides': [
+      ['path', { d: 'M13 4h6a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-6' }],
+      ['path', { d: 'M3 21h10V3L3 5v16Z' }],
+      ['path', { d: 'M7 12h.01' }],
+    ],
+    'account-access': [
+      ['circle', { cx: '12', cy: '8', r: '4' }],
+      ['path', { d: 'M5 21a7 7 0 0 1 14 0' }],
+    ],
+    'learning-activities': [
+      ['path', { d: 'M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2Z' }],
+      ['path', { d: 'M4 19.5A2.5 2.5 0 0 1 6.5 17H20M8 7h8M8 11h6' }],
+    ],
+    'progress-reports': [
+      ['path', { d: 'M3 3v18h18' }],
+      ['path', { d: 'M18 17V9M13 17V5M8 17v-3' }],
+    ],
+    'class-connections': [
+      ['path', { d: 'M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2' }],
+      ['circle', { cx: '9', cy: '7', r: '4' }],
+      ['path', { d: 'M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75' }],
+    ],
+    'plans-billing': [
+      ['rect', { x: '2', y: '5', width: '20', height: '14', rx: '2' }],
+      ['path', { d: 'M2 10h20M7 15h3' }],
+    ],
+    'audio-troubleshooting': [
+      ['path', { d: 'M11 5 6 9H3v6h3l5 4V5Z' }],
+      ['path', { d: 'M15.5 8.5a5 5 0 0 1 0 7M18.5 5.5a9 9 0 0 1 0 13' }],
+    ],
+    'email-delivery': [
+      ['rect', { x: '3', y: '5', width: '18', height: '14', rx: '2' }],
+      ['path', { d: 'm3 7 9 6 9-6' }],
+    ],
+    'support-feedback': [
+      ['path', { d: 'M3 13v-2a9 9 0 0 1 18 0v2' }],
+      ['rect', { x: '2', y: '12', width: '4', height: '7', rx: '2' }],
+      ['rect', { x: '18', y: '12', width: '4', height: '7', rx: '2' }],
+      ['path', { d: 'M18 19a6 6 0 0 1-6 3h-2' }],
+    ],
+    'enterprise-packages': [
+      ['path', { d: 'M3 21h18M5 21V7l7-4 7 4v14M9 21v-5h6v5M9 9h.01M15 9h.01M9 12h.01M15 12h.01' }],
+    ],
+    default: [
+      ['circle', { cx: '12', cy: '12', r: '9' }],
+      ['path', { d: 'M9.6 9a2.5 2.5 0 1 1 4.5 1.5c-1.2 1.2-2.1 1.5-2.1 3M12 17h.01' }],
+    ],
+  };
+
+  function createCategoryIcon(category) {
+    const svgNamespace = 'http://www.w3.org/2000/svg';
+    const svg = document.createElementNS(svgNamespace, 'svg');
+    svg.setAttribute('viewBox', '0 0 24 24');
+    svg.setAttribute('aria-hidden', 'true');
+    svg.setAttribute('focusable', 'false');
+    (categoryIconShapes[category.slug] || categoryIconShapes.default).forEach(([tagName, attributes]) => {
+      const shape = document.createElementNS(svgNamespace, tagName);
+      Object.entries(attributes).forEach(([name, value]) => shape.setAttribute(name, value));
+      svg.append(shape);
+    });
+    return svg;
+  }
+
+  function renderArticles(articles) {
+    articleList.replaceChildren();
+    const categories = new Map();
+    let visibleTopicCount = 0;
+    articles.forEach((article) => {
+      const category = article.category;
+      const categoryKey = category.slug || category.name;
+      if (!categories.has(categoryKey)) {
+        categories.set(categoryKey, { category, topics: [] });
+      }
+      const paragraphs = article.content.split(/\n{2,}/).filter(Boolean);
+      const questions = [];
+      paragraphs.forEach((paragraph) => {
+        const questionAnswer = paragraph.match(/^Q:\s*(.*?)\s+A:\s*([\s\S]*)$/);
+        if (questionAnswer) {
+          questions.push({ title: questionAnswer[1], answer: questionAnswer[2] });
+        }
+      });
+      const topics = questions.length
+        ? questions
+        : [{ title: article.title, answer: paragraphs.join('\n\n') }];
+      topics.forEach((topic) => {
+        const searchableText = `${category.name} ${topic.title} ${topic.answer}`;
+        if (topicMatchesSearch(searchableText)) {
+          categories.get(categoryKey).topics.push({ ...topic, article });
+          visibleTopicCount += 1;
+        }
+      });
+    });
+
+    const visibleCategories = [...categories.values()].filter(({ topics }) => topics.length);
+    if (!visibleCategories.length) {
+      count.textContent = '0 topics';
+      const empty = document.createElement('p');
+      empty.textContent = 'No questions match your search. Try another search or send feedback below.';
+      articleList.append(empty);
+      return;
+    }
+
+    visibleCategories.forEach(({ category, topics }) => {
+      const group = document.createElement('details');
+      group.className = 'help-category-card';
+      group.open = Boolean(searchInput.value.trim());
+      const heading = document.createElement('summary');
+      heading.className = 'help-category-heading';
+      const icon = document.createElement('span');
+      icon.className = 'help-category-icon';
+      icon.setAttribute('aria-hidden', 'true');
+      icon.append(createCategoryIcon(category));
+      const title = document.createElement('h3');
+      renderSearchMatches(title, category.name);
+      const description = document.createElement('p');
+      description.className = 'help-category-description';
+      description.textContent = category.description || 'Browse answers in this category.';
+      const categoryCount = document.createElement('span');
+      categoryCount.className = 'help-category-count';
+      categoryCount.textContent = `${topics.length} ${topics.length === 1 ? 'topic' : 'topics'}`;
+      heading.append(icon, title, description, categoryCount);
+      group.append(heading);
+
+      const topicList = document.createElement('div');
+      topicList.className = 'help-category-topics';
+      topics.forEach((topic, index) => {
+        const question = document.createElement('details');
+        question.className = 'help-question';
+        if (index >= 3) question.hidden = true;
+        const questionTitle = document.createElement('summary');
+        renderSearchMatches(questionTitle, topic.title);
+        const answer = document.createElement('div');
+        answer.className = 'help-answer';
+        topic.answer.split(/\n{2,}/).filter(Boolean).forEach((paragraph) => {
+          const answerParagraph = document.createElement('p');
+          renderSearchMatches(answerParagraph, paragraph);
+          answer.append(answerParagraph);
+        });
+        if (topic.article.video_tutorial_url) {
+          const videoLink = document.createElement('a');
+          videoLink.href = topic.article.video_tutorial_url;
+          videoLink.target = '_blank';
+          videoLink.rel = 'noopener noreferrer';
+          videoLink.textContent = 'Watch the video guide';
+          answer.append(videoLink);
+        }
+        question.append(questionTitle, answer);
+        topicList.append(question);
+      });
+      group.append(topicList);
+
+      if (topics.length > 3) {
+        const toggle = document.createElement('button');
+        toggle.className = 'help-category-toggle';
+        toggle.type = 'button';
+        toggle.textContent = 'See all';
+        toggle.setAttribute('aria-expanded', 'false');
+        toggle.addEventListener('click', () => {
+          const expanded = toggle.getAttribute('aria-expanded') === 'true';
+          [...topicList.children].forEach((topic, index) => {
+            if (index >= 3) topic.hidden = expanded;
+          });
+          toggle.setAttribute('aria-expanded', String(!expanded));
+          toggle.textContent = expanded ? 'See all' : 'Show fewer';
+        });
+        group.append(toggle);
+      }
+      articleList.append(group);
+    });
+    count.textContent = `${visibleTopicCount} ${visibleTopicCount === 1 ? 'topic' : 'topics'}`;
+  }
+
+  async function loadArticles() {
+    const params = new URLSearchParams();
+    params.set('audience', audienceSelect.value);
+    articleList.textContent = 'Loading topics...';
+    try {
+      const response = await fetch(`/api/help/articles/?${params}`, { headers: { Accept: 'application/json' } });
+      if (!response.ok) throw new Error('Guides could not be loaded.');
+      const payload = await response.json();
+      availableArticles = Array.isArray(payload) ? payload : payload.results || [];
+      renderArticles(availableArticles);
+    } catch (error) {
+      availableArticles = [];
+      articleList.textContent = error.message;
+    }
+  }
+
+  audienceSelect.addEventListener('change', loadArticles);
+  searchInput.addEventListener('input', () => renderArticles(availableArticles));
+  loadArticles();
+
+  document.getElementById('support-ticket-form').addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const button = form.querySelector('button[type="submit"]');
+    const status = document.getElementById('ticket-form-status');
+    const formData = new FormData(form);
+    const payload = Object.fromEntries(formData.entries());
+    delete payload.csrfmiddlewaretoken;
+    button.disabled = true;
+    status.textContent = 'Sending your message...';
+    try {
+      const response = await fetch('/api/help/tickets/', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRFToken': formData.get('csrfmiddlewaretoken'),
+          Accept: 'application/json',
+        },
+        body: JSON.stringify(payload),
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(Object.values(result).flat().join(' '));
+      form.reset();
+      if (result.support_notification_sent && result.confirmation_email_sent) {
+        status.textContent = 'Your message was sent to SGILA support. A confirmation email is on its way.';
+      } else if (result.support_notification_sent) {
+        status.textContent = `Your request #${result.id} reached SGILA support, but we could not send a confirmation email. Check that your email address is correct.`;
+      } else if (result.confirmation_email_sent) {
+        status.textContent = `A confirmation email was sent, but SGILA support could not be notified. Please email sgila.info@gmail.com and include reference #${result.id}.`;
+      } else {
+        status.textContent = `Your request #${result.id} was saved, but neither email could be sent. Please email sgila.info@gmail.com and include this reference.`;
+      }
+    } catch (error) {
+      status.textContent = error.message || 'We could not send your message. Please email sgila.info@gmail.com.';
+    } finally {
+      button.disabled = false;
+    }
+  });
+
+  document.getElementById('feedback-form').addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const button = form.querySelector('button[type="submit"]');
+    const status = document.getElementById('feedback-form-status');
+    const formData = new FormData(form);
+    const payload = Object.fromEntries(formData.entries());
+    delete payload.csrfmiddlewaretoken;
+    button.disabled = true;
+    status.textContent = 'Sending feedback...';
+    try {
+      const response = await fetch('/api/help/feedback/', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRFToken': formData.get('csrfmiddlewaretoken'),
+          Accept: 'application/json',
+        },
+        body: JSON.stringify(payload),
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(Object.values(result).flat().join(' '));
+      form.reset();
+      status.textContent = result.support_notification_sent
+        ? `Feedback #${result.id} was sent to the SGILA team. Thank you for helping us improve.`
+        : `Feedback #${result.id} was saved, but the team could not be emailed. Please try again later.`;
+    } catch (error) {
+      status.textContent = error.message || 'We could not submit your feedback. Please try again.';
+    } finally {
+      button.disabled = false;
+    }
+  });
+})();
+</script>
+{% endblock %}

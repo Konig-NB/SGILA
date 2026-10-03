@@ -5,13 +5,28 @@ showing which screen it belongs to and the HTTP method.
 """
 from django.urls import path
 from . import views
+from rest_framework.routers import DefaultRouter
+from .help_center_views import FeedbackViewSet, HelpArticleViewSet, HelpCategoryViewSet, SupportTicketViewSet
+
+help_router = DefaultRouter()
+help_router.register('help/categories', HelpCategoryViewSet, basename='help-category')
+help_router.register('help/articles', HelpArticleViewSet, basename='help-article')
+help_router.register('help/tickets', SupportTicketViewSet, basename='help-ticket')
+help_router.register('help/feedback', FeedbackViewSet, basename='help-feedback')
 
 urlpatterns = [
+    path('schools/search/', views.school_search, name='school-search'),
+
     # Screen 2 — Registration
     path('register', views.register, name='register'),
 
     # OTP Verification (Step 2: verify code + create account + return JWT)
     path('verify-otp', views.verify_otp, name='verify-otp'),
+
+
+
+    path('stories/generate/<int:child_id>/', views.request_ai_story, name='request_ai_story'),
+    path('stories/jobs/<int:job_id>/status/', views.get_ai_story_status, name='get_ai_story_status'),
 
     # Resend OTP
     path('resend-otp', views.resend_otp, name='resend-otp'),
@@ -81,4 +96,4 @@ urlpatterns = [
     path('messages/unread-count', views.unread_messages_count, name='messages-unread-count'),
     path('messages/<int:child_id>', views.get_messages, name='get-messages'),
     path('messages/<int:child_id>/send', views.send_message, name='send-message'),
-]
+] + help_router.urls

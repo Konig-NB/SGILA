@@ -112,6 +112,8 @@ MEDIA_URL = '/media/'
 MEDIA_ROOT = BASE_DIR / 'media'
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
+ENABLE_STORY_THRESHOLDS = False
+
 SESSION_COOKIE_SECURE = not DEBUG
 CSRF_COOKIE_SECURE = not DEBUG
 SECURE_SSL_REDIRECT = os.environ.get('DJANGO_SECURE_SSL_REDIRECT', str(not DEBUG)).lower() in {'1', 'true', 'yes', 'on'}
@@ -123,7 +125,11 @@ REST_FRAMEWORK = {
     'DEFAULT_RENDERER_CLASSES': [
         'rest_framework.renderers.JSONRenderer',
         'rest_framework.renderers.BrowsableAPIRenderer',
-    ]
+    ],
+    'DEFAULT_THROTTLE_RATES': {
+        'help_ticket': '5/hour',
+        'feedback': '5/hour',
+    },
 }
 
 # EMAIL (OTP delivery)
@@ -155,6 +161,7 @@ DEFAULT_FROM_EMAIL = os.environ.get(
     'DEFAULT_FROM_EMAIL',
     f'SGILA <{EMAIL_HOST_USER}>' if EMAIL_HOST_USER else 'SGILA <noreply@localhost>',
 )
+SUPPORT_EMAIL = os.environ.get('SUPPORT_EMAIL', 'sgila.info@gmail.com')
 
 # ─── JWT ───────────────────────────────────────────────────────────────────────
 # Access tokens are signed with SECRET_KEY via HS256.
@@ -300,7 +307,20 @@ SCHOOLS_SEARCH_RATE_WINDOW = 60
 # stories" button will show a friendly "not configured yet" message instead
 # of failing. No SDK/pip dependency needed; both providers are called with
 # plain HTTPS requests (see lessons/views.py).
+from google import genai
+client = genai.Client()  # Automatically reads GEMINI_API_KEY from environment
+# ─── AI story generation ─────────────────────────────────────────────────────
+# Grade 4 uses Groq for text and Pollinations with Cloudflare Workers AI as an
+# image fallback. Other grades retain their existing Gemini/Pollinations path.
+# All providers are called with plain HTTPS requests (see lessons/views.py).
+GROQ_API_KEY = os.environ.get('GROQ_API_KEY', '')
+GROQ_MODEL = os.environ.get('GROQ_MODEL', 'qwen/qwen3.8-27b')
 GEMINI_API_KEY = os.environ.get('GEMINI_API_KEY', '')
-GEMINI_MODEL = os.environ.get('GEMINI_MODEL', 'gemini-2.5-flash')
+GEMINI_MODEL = os.environ.get('GEMINI_MODEL', 'gemini-flash-lite-latest')
 POLLINATIONS_MODEL = os.environ.get('POLLINATIONS_MODEL', 'flux')
 POLLINATIONS_API_KEY = os.environ.get('POLLINATIONS_API_KEY', '')
+CLOUDFLARE_ACCOUNT_ID = os.environ.get('CLOUDFLARE_ACCOUNT_ID', '')
+CLOUDFLARE_API_TOKEN = os.environ.get('CLOUDFLARE_API_TOKEN', '')
+CLOUDFLARE_IMAGE_MODEL = os.environ.get(
+    'CLOUDFLARE_IMAGE_MODEL', '@cf/black-forest-labs/flux-1-schnell',
+)

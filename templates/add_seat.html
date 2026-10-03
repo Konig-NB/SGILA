@@ -17,6 +17,7 @@
   <div class="form-card">
     <form method="POST" id="add-seat-form">
       {% csrf_token %}
+      {% if target_child_id %}<input type="hidden" name="child_id" value="{{ target_child_id }}">{% endif %}
       <label for="seat-quantity">Number of extra seats</label>
       <input type="number" id="seat-quantity" name="quantity" min="1" max="10" value="1" inputmode="numeric">
 

@@ -10,8 +10,55 @@ from .models import (
     Parent, Teacher, Child, Lesson, StoryPage, ComprehensionQuestion, ReadingActivity,
     VisualActivityItem, PronunciationWord, SpellingActivity, Progress,
     TeacherClass, Message, Subscription, PackageCode, AIStoryJob, GradeHistory,
-    AccountActionOTP,
+    Grade4StoryBlueprint, Grade4VocabularyItem,
+    AccountActionOTP, Feedback, HelpCategory, HelpArticle, SupportTicket,
 )
+
+
+@admin.register(Grade4StoryBlueprint)
+class Grade4StoryBlueprintAdmin(admin.ModelAdmin):
+    list_display = ('name', 'genre', 'learning_focus', 'active')
+    list_filter = ('genre', 'active')
+    search_fields = ('name', 'setting', 'learning_focus')
+
+
+@admin.register(Grade4VocabularyItem)
+class Grade4VocabularyItemAdmin(admin.ModelAdmin):
+    list_display = ('word', 'term', 'part_of_speech', 'active')
+    list_filter = ('term', 'part_of_speech', 'active')
+    search_fields = ('word', 'meaning', 'example')
+
+
+@admin.register(HelpCategory)
+class HelpCategoryAdmin(admin.ModelAdmin):
+    list_display = ('name', 'slug', 'order')
+    list_editable = ('order',)
+    prepopulated_fields = {'slug': ('name',)}
+    search_fields = ('name', 'description')
+
+
+@admin.register(HelpArticle)
+class HelpArticleAdmin(admin.ModelAdmin):
+    list_display = ('title', 'category', 'audience', 'is_kid_friendly')
+    list_filter = ('audience', 'category', 'is_kid_friendly')
+    prepopulated_fields = {'slug': ('title',)}
+    search_fields = ('title', 'content')
+
+
+@admin.register(SupportTicket)
+class SupportTicketAdmin(admin.ModelAdmin):
+    list_display = ('subject', 'email', 'issue_category', 'status', 'created_at')
+    list_filter = ('status', 'issue_category', 'created_at')
+    search_fields = ('subject', 'email', 'description')
+    readonly_fields = ('user', 'email', 'subject', 'issue_category', 'description', 'created_at')
+
+
+@admin.register(Feedback)
+class FeedbackAdmin(admin.ModelAdmin):
+    list_display = ('subject', 'user_email', 'user_role', 'issue_category', 'created_at')
+    list_filter = ('user_role', 'issue_category', 'created_at')
+    search_fields = ('subject', 'user_email', 'message_body')
+    readonly_fields = ('user_email', 'user_role', 'issue_category', 'subject', 'message_body', 'created_at')
 
 @admin.register(PackageCode)
 class PackageCodeAdmin(admin.ModelAdmin):

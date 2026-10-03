@@ -14,6 +14,30 @@ from django.contrib.auth.hashers import check_password, make_password
 import json
 import hashlib
 import re
+import csv
+from functools import lru_cache
+
+import logging
+import threading
+from datetime import timedelta
+from typing import Tuple
+
+
+from django.utils import timezone
+from api.models import AIStoryJob, Child, Lesson
+from api.grade4_story_framework import (
+    are_story_thresholds_enabled,
+    retrieve_grade4_context,
+    grade4_prompt_context,
+    call_gemini_for_story,
+    validate_and_repair_grade4_story,
+    save_grade4_lesson,
+)
+from api.story_eligibility import check_ai_story_eligibility
+
+logger = logging.getLogger(__name__)
+
+
 
 import random
 from django.core.mail import send_mail
@@ -53,6 +77,51 @@ def json_body(request):
         return json.loads(request.body)
     except json.JSONDecodeError:
         return {}
+
+
+@lru_cache(maxsize=1)
+def school_directory_records():
+    """Load only the sanitized public fields needed by teacher registration."""
+    directory_path = django_settings.BASE_DIR / 'static' / 'data' / 'national_schools.csv'
+    if not directory_path.is_file():
+        return ()
+
+    with directory_path.open(encoding='utf-8-sig', newline='') as directory_file:
+        return tuple(
+            {
+                'school_name': row['school_name'].strip(),
+                'location': (
+                    '' if row['location'].strip().upper() in {'99', 'UNKNOWN', 'NULL', 'N/A'}
+                    else row['location'].strip()
+                ),
+                'quantile': row['quantile'].strip(),
+            }
+            for row in csv.DictReader(directory_file)
+            if row.get('school_name', '').strip()
+        )
+
+
+@require_http_methods(['GET'])
+def school_search(request):
+    query = request.GET.get('q', '').strip()[:100].casefold()
+    if len(query) < 2:
+        return JsonResponse({'results': []})
+
+    matches = []
+    for school in school_directory_records():
+        normalized_name = school['school_name'].casefold()
+        normalized_location = school['location'].casefold()
+        if query in normalized_name or query in normalized_location:
+            name_rank = 0 if normalized_name.startswith(query) else 1
+            matches.append((name_rank, school))
+
+    matches.sort(key=lambda match: (
+        match[0],
+        match[1]['school_name'].casefold(),
+        match[1]['location'].casefold(),
+        match[1]['quantile'],
+    ))
+    return JsonResponse({'results': [school for _rank, school in matches[:12]]})
 
 
 def calculate_stars(percentage):
@@ -264,23 +333,33 @@ def reading_answer_score(activity, child_answer):
     }:
         expected = structured_reading_answer(activity)
         submitted = child_answer if isinstance(child_answer, dict) else {}
+        assessed = {
+            str(key): submitted.get(str(key), submitted.get(key, ''))
+            for key in expected
+            if str(submitted.get(str(key), submitted.get(key, '')) or '').strip()
+        }
         score = 0
-        for key, answer in expected.items():
-            child_value = submitted.get(str(key), submitted.get(key, ''))
+        for key, child_value in assessed.items():
+            answer = expected[key]
             correct = normalise_reading_answer(child_value) == normalise_reading_answer(answer)
             score += int(correct)
-        return score, len(expected)
+        return score, len(assessed)
 
     if activity.activity_type == ReadingActivity.MATCHING:
         if isinstance(activity.options, dict):
             expected = structured_reading_answer(activity)
             submitted = child_answer if isinstance(child_answer, dict) else {}
+            assessed = {
+                str(key): submitted.get(str(key), submitted.get(key, ''))
+                for key in expected
+                if str(submitted.get(str(key), submitted.get(key, '')) or '').strip()
+            }
             score = 0
-            for key, answer in expected.items():
-                child_value = submitted.get(str(key), submitted.get(key, ''))
+            for key, child_value in assessed.items():
+                answer = expected[key]
                 correct = str(child_value) == str(answer)
                 score += int(correct)
-            return score, len(expected)
+            return score, len(assessed)
 
         correct = normalise_reading_answer(child_answer) == normalise_reading_answer(activity.correct_answer)
         return (1 if correct else 0), 1
@@ -886,17 +965,19 @@ def check_reading_activity(request):
         and activity.options.get('writing_template') is True
     )
     if activity.activity_type == ReadingActivity.SEQUENCING:
-        has_answer = isinstance(child_answer, list) and bool(child_answer)
+        has_answer = isinstance(child_answer, list) and any(str(item).strip() for item in child_answer)
     elif activity.activity_type in {
         ReadingActivity.CROSSWORD,
         ReadingActivity.WORD_SCRAMBLE,
     }:
-        has_answer = isinstance(child_answer, dict) and bool(child_answer)
+        has_answer = isinstance(child_answer, dict) and any(
+            str(value or '').strip() for value in child_answer.values()
+        )
     elif activity.activity_type == ReadingActivity.MATCHING:
         has_answer = (
-            (isinstance(child_answer, dict) and bool(child_answer))
+            (isinstance(child_answer, dict) and any(str(value or '').strip() for value in child_answer.values()))
             or (isinstance(child_answer, str) and bool(str(child_answer).strip()))
-            or (isinstance(child_answer, list) and bool(child_answer))
+            or (isinstance(child_answer, list) and any(str(item).strip() for item in child_answer))
         )
     else:
         has_answer = bool(str(child_answer or '').strip())
@@ -1894,3 +1975,159 @@ def unread_messages_count(request):
     ).count()
 
     return JsonResponse({'unread_count': count})
+
+
+def check_child_generation_eligibility(child: Child) -> Tuple[bool, str]:
+    """Checks daily quota / cooldown. Bypassed when testing."""
+    if not are_story_thresholds_enabled():
+        return True, ""  # Disabled for testing
+
+    now = timezone.now()
+    recent = AIStoryJob.objects.filter(
+        child=child,
+        created_at__gte=now - timedelta(days=1),
+        status__in=[AIStoryJob.STATUS_RUNNING, AIStoryJob.STATUS_DONE]
+    )
+    if recent.count() >= 3:
+        return False, "Daily limit reached (max 3 stories per day)."
+
+    last_job = recent.order_by('-created_at').first()
+    if last_job and (now - last_job.created_at).total_seconds() < 300:
+        return False, "Please wait 5 minutes before generating another story."
+
+    return True, ""
+
+
+def process_ai_story_job(job_id: int):
+    """Background worker thread for generating stories."""
+    try:
+        job = AIStoryJob.objects.get(pk=job_id)
+        job.status = AIStoryJob.STATUS_RUNNING
+        job.save(update_fields=['status', 'updated_at'])
+
+        if job.grade == 1:
+            # Keep the API entry point on the same CAPS RAG and assessment path
+            # as the Grade 1 learner-facing generator.
+            from lessons.views import create_ai_story_for_grade
+            lesson = create_ai_story_for_grade(job.child)
+            job.lesson = lesson
+            job.status = AIStoryJob.STATUS_DONE
+            job.save(update_fields=['status', 'lesson', 'updated_at'])
+            logger.info(f"AIStoryJob #{job_id} succeeded. Lesson #{lesson.id} created.")
+            return
+
+        # 1. RAG retrieval
+        recent_titles = list(
+            Lesson.objects.filter(grade=job.grade)
+            .order_by('-created_at')
+            .values_list('title', flat=True)[:10]
+        )
+        blueprint, vocabulary, expected_activities = retrieve_grade4_context(recent_titles)
+
+        # 2. Build prompt
+        prompt = grade4_prompt_context(
+            blueprint=blueprint,
+            vocabulary=vocabulary,
+            recent_titles=recent_titles,
+            learner_token=f"child-{job.child.pk}"
+        )
+
+        # 3. Call Gemini
+        raw_story = call_gemini_for_story(prompt)
+
+        # 4. Self-healing repair
+        validated_story = validate_and_repair_grade4_story(
+            story=raw_story,
+            retrieved_vocabulary=vocabulary,
+            expected_activity_types=expected_activities
+        )
+
+        # 5. Save lesson
+        lesson = save_grade4_lesson(story=validated_story, blueprint=blueprint, grade=job.grade)
+
+        # 6. Complete
+        job.lesson = lesson
+        job.status = AIStoryJob.STATUS_DONE
+        job.save(update_fields=['status', 'lesson', 'updated_at'])
+        logger.info(f"AIStoryJob #{job_id} succeeded. Lesson #{lesson.id} created.")
+
+    except Exception as exc:
+        logger.exception(f"AIStoryJob #{job_id} failed: {exc}")
+        AIStoryJob.objects.filter(pk=job_id).update(
+            status=AIStoryJob.STATUS_ERROR,
+            error_message=str(exc),
+            updated_at=timezone.now()
+        )
+
+
+@require_http_methods(["POST"])
+def request_ai_story(request, child_id: int):
+    """Starts the background story generation."""
+    try:
+        child = Child.objects.get(pk=child_id)
+    except Child.DoesNotExist:
+        return JsonResponse({"error": "Child not found"}, status=404)
+
+    eligible, reason, _ = check_ai_story_eligibility(child, child.grade)
+    if not eligible:
+        return JsonResponse({"error": reason}, status=429)
+
+    allowed, reason = check_child_generation_eligibility(child)
+    if not allowed:
+        return JsonResponse({"error": reason, "threshold_exceeded": True}, status=429)
+
+    # Return existing job if already in progress
+    in_flight = AIStoryJob.objects.filter(
+        child=child,
+        status__in=[AIStoryJob.STATUS_PENDING, AIStoryJob.STATUS_RUNNING]
+    ).first()
+    if in_flight:
+        return JsonResponse({"job_id": in_flight.id, "status": in_flight.status})
+
+    job = AIStoryJob.objects.create(
+        child=child,
+        grade=child.grade or 4,
+        status=AIStoryJob.STATUS_PENDING
+    )
+
+    # Start generation in background thread
+    threading.Thread(target=process_ai_story_job, args=(job.id,), daemon=True).start()
+
+    return JsonResponse({"job_id": job.id, "status": job.status}, status=202)
+
+
+@require_http_methods(["GET"])
+def get_ai_story_status(request, job_id: int):
+    """Polling endpoint for the frontend."""
+    try:
+        job = AIStoryJob.objects.select_related('lesson').get(pk=job_id)
+    except AIStoryJob.DoesNotExist:
+        return JsonResponse({"error": "Job not found"}, status=404)
+
+    data = {
+        "job_id": job.id,
+        "status": job.status,
+        "error_message": job.error_message,
+        "created_at": job.created_at.isoformat(),
+        "updated_at": job.updated_at.isoformat(),
+    }
+
+    if job.status == AIStoryJob.STATUS_DONE and job.lesson:
+        data["lesson"] = {
+            "id": job.lesson.id,
+            "title": job.lesson.title,
+            "grade": job.lesson.grade,
+            "character_description": job.lesson.character_description,
+            "pages": [
+                {
+                    "page_number": p.page_number,
+                    "text": p.text,
+                    "highlighted_words": p.highlighted_words,
+                    "illustration_prompt": p.illustration_prompt,
+                }
+                for p in job.lesson.pages.all()
+            ],
+            "activities_count": job.lesson.activities.count(),
+        }
+
+    return JsonResponse(data)

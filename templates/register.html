@@ -58,7 +58,16 @@
       <h2>Teacher registration</h2>
       <label>Full name<input type="text" name="full_name" required></label>
       <label>Work email<input type="email" name="email" required></label>
-      <label>School name<input type="text" name="school_name" required></label>
+      <div class="teacher-school-picker" id="teacher-school-picker">
+        <label for="teacher-school-search">School name</label>
+        <div class="teacher-school-control">
+          <input id="teacher-school-search" type="text" autocomplete="off" placeholder="Search or enter your school" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="teacher-school-results" required>
+          <input id="teacher-school-name" type="hidden" name="school_name">
+          <div id="teacher-school-results" class="teacher-school-results" role="listbox" aria-label="School search results" hidden></div>
+        </div>
+        <p id="teacher-school-status" class="teacher-school-status" role="status" aria-live="polite">Search for your school, or type its name if it is not listed.</p>
+        <p id="teacher-school-quantile" class="teacher-school-quantile" aria-live="polite" hidden></p>
+      </div>
       <label>Grades taught<input type="text" name="grades_taught" placeholder="e.g. 1, 2"></label>
       <label>Password
         <div class="password-field-wrap">
@@ -98,6 +107,142 @@
 
 <script>
 (function () {
+  const schoolSearch = document.getElementById('teacher-school-search');
+  if (schoolSearch) {
+    const schoolPicker = document.getElementById('teacher-school-picker');
+    const schoolName = document.getElementById('teacher-school-name');
+    const schoolResults = document.getElementById('teacher-school-results');
+    const schoolStatus = document.getElementById('teacher-school-status');
+    const schoolQuantile = document.getElementById('teacher-school-quantile');
+    const registrationForm = schoolSearch.closest('form');
+    let searchTimer;
+    let searchSequence = 0;
+    let activeSchoolIndex = -1;
+
+    function closeSchoolResults() {
+      schoolResults.hidden = true;
+      schoolSearch.setAttribute('aria-expanded', 'false');
+      schoolSearch.removeAttribute('aria-activedescendant');
+      activeSchoolIndex = -1;
+    }
+
+    function setActiveSchoolOption(index) {
+      const options = [...schoolResults.querySelectorAll('.teacher-school-option')];
+      if (!options.length) return;
+      activeSchoolIndex = Math.max(0, Math.min(index, options.length - 1));
+      options.forEach((option, optionIndex) => {
+        const isActive = optionIndex === activeSchoolIndex;
+        option.classList.toggle('is-active', isActive);
+        option.setAttribute('aria-selected', String(isActive));
+      });
+      schoolSearch.setAttribute('aria-activedescendant', options[activeSchoolIndex].id);
+    }
+
+    function selectSchool(school) {
+      schoolSearch.value = school.school_name;
+      schoolName.value = school.school_name;
+      schoolStatus.textContent = school.location
+        ? `Selected from the directory: ${school.location}.`
+        : 'Selected from the national school directory.';
+      schoolQuantile.textContent = school.quantile
+        ? `School quantile: ${school.quantile} (2025 National School Directory).`
+        : 'This school has no quantile listed in the 2025 National School Directory.';
+      schoolQuantile.hidden = false;
+      closeSchoolResults();
+      schoolSearch.focus();
+    }
+
+    function renderSchoolResults(schools, query) {
+      schoolResults.replaceChildren();
+      if (!schools.length) {
+        schoolStatus.textContent = `No listed school matches "${query}". You can still register with this school name; its quantile will be unavailable.`;
+        closeSchoolResults();
+        return;
+      }
+
+      schools.forEach((school, index) => {
+        const option = document.createElement('div');
+        option.id = `teacher-school-option-${index}`;
+        option.className = 'teacher-school-option';
+        option.setAttribute('role', 'option');
+        option.setAttribute('aria-selected', 'false');
+        option.tabIndex = -1;
+
+        const name = document.createElement('span');
+        name.className = 'teacher-school-option-name';
+        name.textContent = school.school_name;
+        const detail = document.createElement('span');
+        detail.className = 'teacher-school-option-detail';
+        detail.textContent = [school.location, school.quantile || 'Quantile unavailable'].filter(Boolean).join(' · ');
+        option.append(name, detail);
+        option.addEventListener('mousedown', (event) => event.preventDefault());
+        option.addEventListener('click', () => selectSchool(school));
+        schoolResults.append(option);
+      });
+
+      schoolStatus.textContent = 'Select your school to see its quantile, or keep typing to enter an unlisted school.';
+      schoolSearch.setAttribute('aria-expanded', 'true');
+      schoolResults.hidden = false;
+    }
+
+    schoolSearch.addEventListener('input', () => {
+      const query = schoolSearch.value.trim();
+      schoolName.value = query;
+      schoolQuantile.hidden = true;
+      schoolQuantile.textContent = '';
+      closeSchoolResults();
+      const sequence = ++searchSequence;
+      window.clearTimeout(searchTimer);
+
+      if (query.length < 2) {
+        schoolStatus.textContent = query
+          ? 'Enter at least two characters to search, or continue with a custom school name.'
+          : 'Search for your school, or type its name if it is not listed.';
+        return;
+      }
+
+      schoolStatus.textContent = 'Searching the national school directory...';
+      searchTimer = window.setTimeout(async () => {
+        try {
+          const response = await fetch(`/api/schools/search/?q=${encodeURIComponent(query)}`, {
+            headers: { Accept: 'application/json' },
+          });
+          if (!response.ok) throw new Error('School search is unavailable.');
+          const payload = await response.json();
+          if (sequence !== searchSequence || schoolSearch.value.trim() !== query) return;
+          renderSchoolResults(payload.results || [], query);
+        } catch (error) {
+          if (sequence !== searchSequence) return;
+          schoolStatus.textContent = 'School search is unavailable. You can still enter your school name; its quantile will be unavailable.';
+        }
+      }, 180);
+    });
+
+    schoolSearch.addEventListener('keydown', (event) => {
+      const options = schoolResults.querySelectorAll('.teacher-school-option');
+      if (event.key === 'ArrowDown' && !schoolResults.hidden && options.length) {
+        event.preventDefault();
+        setActiveSchoolOption(activeSchoolIndex + 1);
+      } else if (event.key === 'ArrowUp' && !schoolResults.hidden && options.length) {
+        event.preventDefault();
+        setActiveSchoolOption(activeSchoolIndex < 0 ? options.length - 1 : activeSchoolIndex - 1);
+      } else if (event.key === 'Enter' && !schoolResults.hidden && activeSchoolIndex >= 0) {
+        event.preventDefault();
+        options[activeSchoolIndex].click();
+      } else if (event.key === 'Escape') {
+        closeSchoolResults();
+      }
+    });
+
+    document.addEventListener('click', (event) => {
+      if (!schoolPicker.contains(event.target)) closeSchoolResults();
+    });
+
+    registrationForm.addEventListener('submit', () => {
+      if (!schoolName.value.trim()) schoolName.value = schoolSearch.value.trim();
+    });
+  }
+
   const SPECIAL_RE = /[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?~`]/;
 
   function evaluatePassword(pw) {

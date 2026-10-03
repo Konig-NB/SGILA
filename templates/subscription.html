@@ -74,6 +74,19 @@
     {% csrf_token %}
     <input type="hidden" name="skip" value="1">
     <button type="submit">Not right now — continue with a free trial</button>
+    <span class="badge badge-done subscription-tier-badge">School, sponsor, or government-funded</span>
+    <h2 class="epic-plan-name subscription-package-heading">Activate your package</h2>
+    <p class="epic-billed subscription-activation-description">Have a code? Redeem it here</p>
+
+    <label class="subscription-field">School name
+      <input type="text" name="school_name" value="{{ subscription.school_name|default:account.school_name }}" required placeholder="e.g. Ntuzuma Primary School">
+    </label>
+
+    <label class="subscription-field subscription-field-spaced">Package code
+      <input class="uppercase-field" type="text" name="package_code" required placeholder="Code from your school, sponsor, or district contact">
+    </label>
+
+    <button class="epic-cta epic-cta-green subscription-action-large" type="submit">Activate school package</button>
   </form>
 
   <div class="subscription-cancel-wrap">

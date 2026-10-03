@@ -41,7 +41,7 @@
             {% csrf_token %}
             <button type="submit" class="btn learner-activation-btn learner-activation-btn--reactivate">Activate learner</button>
           </form>
-          <a href="/subscription/add-seat" class="btn btn-light learner-activation-btn">Add a seat</a>
+          <a href="/subscription/add-seat?child_id={{ child.id }}" class="btn btn-light learner-activation-btn">Add a seat</a>
         {% elif seat_reassignment_cooldown_until and child.deactivated_reason == 'manual' %}
           <span class="lr-paused-badge">Seat cooling down</span>
           <span>
@@ -53,7 +53,7 @@
             {% csrf_token %}
             <button type="submit" class="btn learner-activation-btn learner-activation-btn--reactivate">Reactivate learner</button>
           </form>
-          <a href="/subscription/add-seat" class="btn btn-light learner-activation-btn">Add a seat</a>
+          <a href="/subscription/add-seat?child_id={{ child.id }}" class="btn btn-light learner-activation-btn">Add a seat</a>
         {% elif child.deactivated_reason == 'plan_capacity' %}
           <span class="lr-paused-badge">Plan full</span>
           <span>
@@ -68,7 +68,7 @@
             <button type="submit" class="btn learner-activation-btn learner-activation-btn--reactivate">Activate learner</button>
           </form>
           {% if not capacity_has_room %}
-            <a href="/subscription/add-seat" class="btn btn-light learner-activation-btn">Add a seat</a>
+            <a href="/subscription/add-seat?child_id={{ child.id }}" class="btn btn-light learner-activation-btn">Add a seat</a>
           {% endif %}
         {% else %}
           <span class="lr-paused-badge">Paused</span>
