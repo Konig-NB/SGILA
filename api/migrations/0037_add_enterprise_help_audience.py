@@ -58,7 +58,7 @@ TOPICS = (
         'enterprise-get-package-code',
         'Q: Where can I get an Enterprise package code? A: Get the code from the '
         'district or government contact arranging your school package. If you need '
-        'help choosing a package, contact SGILA support at sgila.support@gmail.com.',
+        'help choosing a package, contact SGILA support at sgila.info@gmail.com.',
     ),
     (
         'My Enterprise package code is not working. What should I do?',
@@ -66,7 +66,7 @@ TOPICS = (
         'Q: My Enterprise package code is not working. What should I do? A: Check '
         'that you entered the school name and the code supplied by your district or '
         'government contact. If activation still does not work, contact that provider '
-        'or email sgila.support@gmail.com for help.',
+        'or email sgila.info@gmail.com for help.',
     ),
     (
         'Does an Enterprise package require a card or per-family payment?',

@@ -1,6 +1,6 @@
 {% extends 'base.html' %}
 {% load static %}
-{% block title %}Help and Feedback - Sgila{% endblock %}
+{% block title %}Help and Feedback - SGILA{% endblock %}
 {% block content %}
 <main class="terms-page help-center-page">
   <div class="terms-container help-center-container">
@@ -47,13 +47,13 @@
       <details class="help-contact-section help-disclosure" id="contact" data-action-label="contact" aria-labelledby="help-contact-title">
         <summary class="help-section-toggle">
           <span class="eyebrow">CONTACT US</span>
-          <h2 id="help-contact-title">Contact the Sgila team</h2>
-          <span class="help-section-summary">Send us a message or email sgila.support@gmail.com.</span>
+          <h2 id="help-contact-title">Contact the SGILA team</h2>
+          <span class="help-section-summary">Send us a message or email sgila.info@gmail.com.</span>
           <span class="help-section-action"></span>
         </summary>
         <div class="help-contact-content" id="contact-content">
           <div>
-            <p>Send us the details and we’ll reply to your email. You can also reach us directly at <a href="mailto:sgila.support@gmail.com">sgila.support@gmail.com</a>.</p>
+            <p>Send us the details and we’ll reply to your email. You can also reach us directly at <a href="mailto:sgila.info@gmail.com">sgila.info@gmail.com</a>.</p>
           </div>
           <form id="support-ticket-form" class="help-ticket-form">
             {% csrf_token %}
@@ -393,16 +393,16 @@
       if (!response.ok) throw new Error(Object.values(result).flat().join(' '));
       form.reset();
       if (result.support_notification_sent && result.confirmation_email_sent) {
-        status.textContent = 'Your message was sent to Sgila support. A confirmation email is on its way.';
+        status.textContent = 'Your message was sent to SGILA support. A confirmation email is on its way.';
       } else if (result.support_notification_sent) {
-        status.textContent = `Your request #${result.id} reached Sgila support, but we could not send a confirmation email. Check that your email address is correct.`;
+        status.textContent = `Your request #${result.id} reached SGILA support, but we could not send a confirmation email. Check that your email address is correct.`;
       } else if (result.confirmation_email_sent) {
-        status.textContent = `A confirmation email was sent, but Sgila support could not be notified. Please email sgila.support@gmail.com and include reference #${result.id}.`;
+        status.textContent = `A confirmation email was sent, but SGILA support could not be notified. Please email sgila.info@gmail.com and include reference #${result.id}.`;
       } else {
-        status.textContent = `Your request #${result.id} was saved, but neither email could be sent. Please email sgila.support@gmail.com and include this reference.`;
+        status.textContent = `Your request #${result.id} was saved, but neither email could be sent. Please email sgila.info@gmail.com and include this reference.`;
       }
     } catch (error) {
-      status.textContent = error.message || 'We could not send your message. Please email sgila.support@gmail.com.';
+      status.textContent = error.message || 'We could not send your message. Please email sgila.info@gmail.com.';
     } finally {
       button.disabled = false;
     }
@@ -432,7 +432,7 @@
       if (!response.ok) throw new Error(Object.values(result).flat().join(' '));
       form.reset();
       status.textContent = result.support_notification_sent
-        ? `Feedback #${result.id} was sent to the Sgila team. Thank you for helping us improve.`
+        ? `Feedback #${result.id} was sent to the SGILA team. Thank you for helping us improve.`
         : `Feedback #${result.id} was saved, but the team could not be emailed. Please try again later.`;
     } catch (error) {
       status.textContent = error.message || 'We could not submit your feedback. Please try again.';

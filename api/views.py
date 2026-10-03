@@ -14,6 +14,8 @@ from django.contrib.auth.hashers import check_password, make_password
 import json
 import hashlib
 import re
+import csv
+from functools import lru_cache
 
 import logging
 import threading
@@ -75,6 +77,51 @@ def json_body(request):
         return json.loads(request.body)
     except json.JSONDecodeError:
         return {}
+
+
+@lru_cache(maxsize=1)
+def school_directory_records():
+    """Load only the sanitized public fields needed by teacher registration."""
+    directory_path = django_settings.BASE_DIR / 'static' / 'data' / 'national_schools.csv'
+    if not directory_path.is_file():
+        return ()
+
+    with directory_path.open(encoding='utf-8-sig', newline='') as directory_file:
+        return tuple(
+            {
+                'school_name': row['school_name'].strip(),
+                'location': (
+                    '' if row['location'].strip().upper() in {'99', 'UNKNOWN', 'NULL', 'N/A'}
+                    else row['location'].strip()
+                ),
+                'quantile': row['quantile'].strip(),
+            }
+            for row in csv.DictReader(directory_file)
+            if row.get('school_name', '').strip()
+        )
+
+
+@require_http_methods(['GET'])
+def school_search(request):
+    query = request.GET.get('q', '').strip()[:100].casefold()
+    if len(query) < 2:
+        return JsonResponse({'results': []})
+
+    matches = []
+    for school in school_directory_records():
+        normalized_name = school['school_name'].casefold()
+        normalized_location = school['location'].casefold()
+        if query in normalized_name or query in normalized_location:
+            name_rank = 0 if normalized_name.startswith(query) else 1
+            matches.append((name_rank, school))
+
+    matches.sort(key=lambda match: (
+        match[0],
+        match[1]['school_name'].casefold(),
+        match[1]['location'].casefold(),
+        match[1]['quantile'],
+    ))
+    return JsonResponse({'results': [school for _rank, school in matches[:12]]})
 
 
 def calculate_stars(percentage):
