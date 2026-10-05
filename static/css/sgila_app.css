@@ -629,6 +629,7 @@ a { color: inherit; }
 
 .badge-new { background: var(--sun-soft); }
 .badge-done { background: var(--mint-soft); color: var(--success); }
+.badge-progress { background: var(--auto-e7efff-bg); color: var(--auto-35405d-t); }
 
 .activity-shell {
   max-width: 860px;
@@ -671,8 +672,8 @@ body:not(.diagram-body) .learner-modal-card {
   padding: 78px 28px 28px;
   border: 1px solid var(--line);
   border-radius: var(--radius);
-  background: var(--white);
-  box-shadow: none;
+  border-color: var(--white), var(--scrim-70);
+  background: var(--surface);
   text-align: center;
 }
 
@@ -8139,7 +8140,7 @@ body:not(.diagram-body) .question-meta-copy {
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  gap: 4px;
+  gap: px;
   min-width: 0;
 }
 
@@ -8153,7 +8154,7 @@ body:not(.diagram-body) .question-meta-copy .question-number {
   background: transparent;
   color: var(--auto-23304a-t);
   font-weight: 900;
-  line-height: 1.3;
+  line-height: 1.6;
 }
 
 body:not(.diagram-body) .question-meta-copy .question-number {
@@ -9133,6 +9134,11 @@ body:not(.diagram-body) .story-detail-header > div {
   min-width: 0;
 }
 
+body:not(.diagram-body) .story-progress-all-children {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
 body:not(.diagram-body) .story-detail-identity {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr);
@@ -9470,8 +9476,13 @@ body:not(.diagram-body) .status-complete {
 }
 
 body:not(.diagram-body) .status-not-started {
-  color: var(--auto-667085-t);
-  background: var(--auto-e9edf2-bg);
+  color: #8f1d25;
+  background: #ffe3e5;
+}
+
+body:not(.diagram-body) .status-in-progress {
+  color: #8a4b00;
+  background: #ffedcc;
 }
 
 body:not(.diagram-body) .story-report-copy h3 {
@@ -12906,12 +12917,12 @@ body:not(.diagram-body) .listen-spell-row.is-wrong .spelling-result {
 }
 
 body:not(.diagram-body) .spelling-number {
-  display: grid;
-  width: 34px;
-  height: 34px;
+  display: inline-flex;
+  width: auto;
+  height: auto;
   place-items: center;
-  border-radius: 50%;
-  background: var(--sun-soft);
+  border-radius: 0;
+  background: transparent;
   color: var(--ink);
   font-weight: 900;
 }
@@ -13314,7 +13325,7 @@ body:not(.diagram-body) .truth-card > img {
 .grade3-section-heading h2 { margin: 0; color: var(--ink); font-size: .86rem; font-weight: 900; line-height: 1.35; }
 .grade3-section-heading p { margin: 4px 0 0; color: var(--muted); }
 .grade3-activity-name { align-self: flex-start; max-width: 48%; color: #176b54; font-size: .86rem; font-weight: 900; line-height: 1.35; text-align: right; }
-.activity-number, .spelling-number { display: grid; flex: 0 0 auto; width: 42px; height: 42px; place-items: center; border-radius: 50%; background: var(--sun-soft); font-weight: 900; }
+.activity-number, .spelling-number { display: inline-flex; flex: 0 0 auto; width: auto; height: auto; place-items: center; border-radius: 0; background: transparent; font-weight: 900; }
 .grade3-question-card, .truth-card { padding: 18px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--white); }
 .grade3-question-card + .grade3-question-card, .truth-card + .truth-card { margin-top: 14px; }
 .audio-assist { white-space: nowrap; }
