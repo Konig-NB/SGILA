@@ -11,7 +11,7 @@
     {% if request.session.account_role == 'learner' %}
       <a href="/grade/{{ child.grade }}" class="btn btn-light">Back to lessons</a>
     {% elif request.session.account_role == 'parent' %}
-      <a href="/parent/dashboard" class="btn btn-light">All children</a>
+      <a href="/parent/dashboard" class="btn btn-light story-progress-all-children">All children</a>
     {% else %}
       <a href="/teacher/dashboard" class="btn btn-light">All learners</a>
     {% endif %}
@@ -126,7 +126,7 @@
 
     <label class="story-sort-field" for="story-sort">
       <span>Sort by</span>
-      <select id="story-sort" name="sort">
+      <select id="story-sort" name="sort" onchange="this.form.requestSubmit()">
         <option value="curriculum" {% if sort_value == 'curriculum' %}selected{% endif %}>Curriculum order</option>
         <option value="recent" {% if sort_value == 'recent' %}selected{% endif %}>Recently completed</option>
         <option value="oldest" {% if sort_value == 'oldest' %}selected{% endif %}>Oldest completed</option>
@@ -135,7 +135,7 @@
         <option value="score_desc" {% if sort_value == 'score_desc' %}selected{% endif %}>Score: high to low</option>
         <option value="score_asc" {% if sort_value == 'score_asc' %}selected{% endif %}>Score: low to high</option>
         <option value="completed_first" {% if sort_value == 'completed_first' %}selected{% endif %}>Completed first</option>
-        <option value="incomplete_first" {% if sort_value == 'incomplete_first' %}selected{% endif %}>Not completed first</option>
+        <option value="incomplete_first" {% if sort_value == 'incomplete_first' %}selected{% endif %}>Not started first</option>
         <option value="title_asc" {% if sort_value == 'title_asc' %}selected{% endif %}>Title: A to Z</option>
         <option value="title_desc" {% if sort_value == 'title_desc' %}selected{% endif %}>Title: Z to A</option>
       </select>
@@ -166,8 +166,8 @@
           {% endif %}
         </div>
         <div class="story-report-copy">
-          <span class="story-status {% if item.completed %}status-complete{% else %}status-not-started{% endif %}">
-            {% if item.completed %}Completed{% else %}Not completed{% endif %}
+          <span class="story-status {% if item.completed %}status-complete{% elif request.session.account_role == 'parent' and item.in_progress %}status-in-progress{% else %}status-not-started{% endif %}">
+            {% if item.completed %}Completed{% elif request.session.account_role == 'parent' %}{% if item.in_progress %}In progress{% else %}Not started{% endif %}{% else %}Not completed{% endif %}
           </span>
           <h3>{{ item.lesson.title }}</h3>
           {% if item.completed %}

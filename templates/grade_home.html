@@ -43,8 +43,8 @@
         {% endif %}
       </div>
       <div class="lesson-info">
-        <span class="badge {% if lesson.completed %}badge-done{% else %}badge-new{% endif %}">
-          {% if lesson.completed %}Completed{% else %}New lesson{% endif %}
+        <span class="badge {% if lesson.completed %}badge-done{% elif lesson.in_progress %}badge-progress{% else %}badge-new{% endif %}">
+          {% if lesson.completed %}Completed{% elif lesson.in_progress %}Paused{% else %}New lesson{% endif %}
         </span>
         {% if lesson.is_current_ai_story %}<span class="badge badge-ai">AI story — just for you</span>{% endif %}
         <h2>{{ lesson.title }}</h2>
