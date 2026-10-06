@@ -2292,6 +2292,17 @@ def grade_home(request, grade):
             if group_sizes and len(set(group_sizes.values())) == 1
             else None
         )
+        completed = grade3_completed if lesson.grade == 3 else bool(record)
+        resume_url = paused_activity_url(child, lesson)
+        session_prefix = f'lesson_{lesson.id}_'
+        has_session_attempt = any(
+            key.startswith(session_prefix)
+            for key in request.session.keys()
+        )
+        has_saved_response = ReadingActivityResponse.objects.filter(
+            child=child,
+            lesson=lesson,
+        ).exists()
         lesson_data.append({
             'id': lesson.id,
             'title': lesson.title,
@@ -2304,7 +2315,7 @@ def grade_home(request, grade):
             'stars': range(record.stars_earned) if record else range(0),
             'is_current_ai_story': lesson.is_ai_generated and lesson.id == getattr(latest_ai_lesson, 'id', None),
             'activities': activity_choices_for(lesson),
-            'resume_url': paused_activity_url(child, lesson),
+            'resume_url': resume_url,
             'activity_count': len(group_sizes),
             'questions_per_activity': questions_per_activity,
         })
@@ -3743,6 +3754,17 @@ def dashboard_page(request, child_id):
         .order_by('-completed_on')
     )
     records_by_lesson = {record.lesson_id: record for record in records}
+    paused_lesson_ids = {
+        str(lesson_id)
+        for lesson_id, entry in (child.paused_activities or {}).items()
+        if (entry.get('url') if isinstance(entry, dict) else entry)
+    }
+    saved_response_lesson_ids = set(
+        ReadingActivityResponse.objects.filter(
+            child=child,
+            lesson__grade=child.grade,
+        ).values_list('lesson_id', flat=True)
+    )
     story_rows = []
     for lesson in lessons:
         record = records_by_lesson.get(lesson.id)
@@ -3753,6 +3775,10 @@ def dashboard_page(request, child_id):
             'lesson': lesson,
             'record': record,
             'completed': bool(record),
+            'in_progress': not record and (
+                str(lesson.id) in paused_lesson_ids
+                or lesson.id in saved_response_lesson_ids
+            ),
             'assessment_count': len(assessment_rows),
             'percentage': round((assessed_score / assessed_total) * 100) if assessed_total else 0,
         })
@@ -3810,10 +3836,13 @@ def dashboard_page(request, child_id):
             item['lesson'].title.lower(),
         ))
     elif sort_value == 'completed_first':
-        story_rows.sort(key=completed_first_key)
+        story_rows.sort(key=lambda item: (
+            0 if item['completed'] else 1 if item['in_progress'] else 2,
+            item['lesson'].title.lower(),
+        ))
     elif sort_value == 'incomplete_first':
         story_rows.sort(key=lambda item: (
-            0 if not item['completed'] else 1,
+            0 if not item['completed'] and not item['in_progress'] else 1 if item['in_progress'] else 2,
             item['lesson'].title.lower(),
         ))
     elif sort_value == 'title_asc':
