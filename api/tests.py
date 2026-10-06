@@ -472,6 +472,31 @@ class SgilaFlowTests(TestCase):
         session['child_grade'] = child.grade
         session.save()
 
+    def test_grade_home_shows_new_in_progress_and_completed_lesson_statuses(self):
+        child = Child.objects.create(
+            name='Status learner',
+            age=8,
+            grade=1,
+            parent_email='lesson-status@example.com',
+            password='hash',
+        )
+        started_lesson = Lesson.objects.create(title='Started story', grade=1)
+        completed_lesson = Lesson.objects.create(title='Finished story', grade=1)
+        Progress.objects.create(child=child, lesson=completed_lesson)
+        self.sign_in_child(child)
+        session = self.client.session
+        session[f'lesson_{started_lesson.id}_comprehension_score'] = 0
+        session.save()
+
+        response = self.client.get('/grade/1')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'New lesson')
+        self.assertContains(response, 'Started story')
+        self.assertContains(response, 'Paused')
+        self.assertContains(response, 'Finished story')
+        self.assertContains(response, 'Completed')
+        self.assertContains(response, 'badge-progress')
     @override_settings(ENABLE_STORY_THRESHOLDS=False)
     def test_ai_story_eligibility_does_not_require_95_percent_when_disabled(self):
         child = Child.objects.create(
@@ -1620,6 +1645,133 @@ class SgilaFlowTests(TestCase):
         self.assertEqual(response.json()['message'], 'Your diary entry is saved to your profile, Mandu.')
         saved = ReadingActivityResponse.objects.get(child=child, lesson=self.lesson)
         self.assertEqual(saved.response, answer)
+
+    def test_parent_dashboard_shows_not_started_in_progress_and_completed_stories(self):
+        parent = Parent.objects.create(
+            full_name='Story Status Parent',
+            email='story-status@example.com',
+            password='hash',
+            accepted_popia=True,
+        )
+        child = Child.objects.create(
+            parent=parent,
+            name='Story Status Learner',
+            age=10,
+            grade=4,
+            parent_email=parent.email,
+            password='hash',
+        )
+        untouched_lesson = Lesson.objects.create(title='Untouched story', grade=4)
+        paused_lesson = Lesson.objects.create(title='Paused story', grade=4)
+        saved_response_lesson = Lesson.objects.create(title='Saved response story', grade=4)
+        completed_lesson = Lesson.objects.create(title='Completed story', grade=4)
+        child.paused_activities = {
+            str(paused_lesson.id): {'url': f'/lessons/{paused_lesson.id}/questions'}
+        }
+        child.save(update_fields=['paused_activities'])
+        ReadingActivityResponse.objects.create(
+            child=child,
+            lesson=saved_response_lesson,
+            response={'answer': 'A saved response'},
+        )
+        Progress.objects.create(child=child, lesson=completed_lesson)
+        session = self.client.session
+        session['account_role'] = 'parent'
+        session['account_id'] = parent.id
+        session.save()
+
+        response = self.client.get(f'/dashboard/{child.id}')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Not started')
+        self.assertEqual(response.content.decode().count('In progress'), 2)
+        self.assertContains(response, 'Completed')
+        statuses = {
+            row['lesson'].title: (row['completed'], row['in_progress'])
+            for row in response.context['story_rows']
+        }
+        self.assertEqual(statuses['Untouched story'], (False, False))
+        self.assertEqual(statuses['Paused story'], (False, True))
+        self.assertEqual(statuses['Saved response story'], (False, True))
+        self.assertEqual(statuses['Completed story'], (True, False))
+
+    def test_dashboard_sort_choices_submit_retain_selection_and_order_stories(self):
+        parent = Parent.objects.create(
+            full_name='Sort Test Parent',
+            email='sort-test@example.com',
+            password='hash',
+            accepted_popia=True,
+        )
+        child = Child.objects.create(
+            parent=parent,
+            name='Sort Test Learner',
+            age=9,
+            grade=3,
+            parent_email=parent.email,
+            password='hash',
+        )
+        zulu_lesson = Lesson.objects.create(title='Zulu Story', grade=3)
+        Lesson.objects.create(title='Alpha Story', grade=3)
+        charlie_lesson = Lesson.objects.create(title='Charlie Story', grade=3)
+        Lesson.objects.create(title='Bravo Story', grade=3)
+        in_progress_lesson = Lesson.objects.create(title='Between Story', grade=3)
+        ReadingActivityResponse.objects.create(
+            child=child,
+            lesson=in_progress_lesson,
+            response={'answer': 'A saved response'},
+        )
+        now = timezone.now()
+        zulu_record = Progress.objects.create(
+            child=child,
+            lesson=zulu_lesson,
+            stars_earned=3,
+            assessment_scores={'grade3_comprehension_check': {'score': 9, 'total': 10}},
+        )
+        zulu_record.completed_on = now
+        zulu_record.save(update_fields=['completed_on'])
+        charlie_record = Progress.objects.create(
+            child=child,
+            lesson=charlie_lesson,
+            stars_earned=1,
+            assessment_scores={'grade3_comprehension_check': {'score': 3, 'total': 10}},
+        )
+        charlie_record.completed_on = now - timedelta(days=1)
+        charlie_record.save(update_fields=['completed_on'])
+        session = self.client.session
+        session['account_role'] = 'parent'
+        session['account_id'] = parent.id
+        session.save()
+
+        expected_orders = {
+            'curriculum': ['Zulu Story', 'Alpha Story', 'Charlie Story', 'Bravo Story', 'Between Story'],
+            'recent': ['Zulu Story', 'Charlie Story', 'Alpha Story', 'Between Story', 'Bravo Story'],
+            'oldest': ['Charlie Story', 'Zulu Story', 'Alpha Story', 'Between Story', 'Bravo Story'],
+            'stars_desc': ['Zulu Story', 'Charlie Story', 'Alpha Story', 'Between Story', 'Bravo Story'],
+            'stars_asc': ['Charlie Story', 'Zulu Story', 'Alpha Story', 'Between Story', 'Bravo Story'],
+            'score_desc': ['Zulu Story', 'Charlie Story', 'Alpha Story', 'Between Story', 'Bravo Story'],
+            'score_asc': ['Charlie Story', 'Zulu Story', 'Alpha Story', 'Between Story', 'Bravo Story'],
+            'completed_first': [
+                'Charlie Story', 'Zulu Story', 'Between Story', 'Alpha Story', 'Bravo Story',
+            ],
+            'incomplete_first': [
+                'Alpha Story', 'Bravo Story', 'Between Story', 'Charlie Story', 'Zulu Story',
+            ],
+            'title_asc': ['Alpha Story', 'Between Story', 'Bravo Story', 'Charlie Story', 'Zulu Story'],
+            'title_desc': ['Zulu Story', 'Charlie Story', 'Bravo Story', 'Between Story', 'Alpha Story'],
+        }
+
+        for sort_value, expected_titles in expected_orders.items():
+            with self.subTest(sort=sort_value):
+                response = self.client.get(f'/dashboard/{child.id}', {'sort': sort_value})
+
+                self.assertEqual(response.status_code, 200)
+                self.assertEqual(response.context['sort_value'], sort_value)
+                self.assertEqual(
+                    [item['lesson'].title for item in response.context['story_rows']],
+                    expected_titles,
+                )
+                self.assertContains(response, 'onchange="this.form.requestSubmit()"')
+                self.assertContains(response, f'<option value="{sort_value}" selected>')
 
     def test_dashboard_lists_grade_stories_and_opens_dynamic_story_report(self):
         parent = Parent.objects.create(
