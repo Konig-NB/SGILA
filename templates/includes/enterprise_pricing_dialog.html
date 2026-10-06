@@ -1,0 +1,156 @@
+  {% load static %}
+{% comment %}
+The Enterprise price calculator dialog, opened from the Enterprise card.
+
+Included by templates/includes/plan_cards.html so parents and teachers get the
+identical dialog. Pricing and school search live in static/js/school_finder.js,
+which is shared with /subscription/redeem-package; this file only owns the
+dialog's open/close and focus behaviour.
+{% endcomment %}
+<dialog class="account-dialog enterprise-pricing-dialog" id="enterprise-pricing-dialog" aria-labelledby="enterprise-pricing-title"
+          data-pricing-endpoint="{{ pricing_quote_endpoint }}" data-pricing-redeem="{{ pricing_redeem_url }}">
+    <div class="account-dialog-form">
+      <div class="account-dialog-heading">
+        <span class="account-dialog-icon" aria-hidden="true">R</span>
+        <div>
+          <p class="eyebrow">Enterprise</p>
+          <h2 id="enterprise-pricing-title">Full school pricing details</h2>
+        </div>
+      </div>
+
+<div class="pricing-calculator">
+        {% include 'includes/school_finder.html' %}
+
+        <p class="pricing-note">
+          Not sure yet? The table below shows every school type's price, and the
+          buttons below will take you to activation.
+        </p>
+
+        <div class="pricing-result" data-pricing-result{% if not pricing_initial.valid %} hidden{% endif %}>
+          <div class="pricing-result-row">
+            <span class="pricing-result-label">Per learner, per month</span>
+            <strong class="pricing-result-value" data-pricing-per-learner>{{ pricing_initial.per_learner_month }}</strong>
+          </div>
+          <div class="pricing-result-row">
+            <span class="pricing-result-label">Total per month</span>
+            <strong class="pricing-result-value" data-pricing-total-month>{{ pricing_initial.total_month }}</strong>
+          </div>
+          <div class="pricing-result-row">
+            <span class="pricing-result-label">Total per year (12 months)</span>
+            <strong class="pricing-result-value" data-pricing-total-year>{{ pricing_initial.total_year }}</strong>
+          </div>
+          {% if pricing_show_prepay %}
+            <div class="pricing-result-row pricing-result-row-prepay" data-pricing-prepay-row{% if not pricing_initial.annual_prepay %} hidden{% endif %}>
+              <span class="pricing-result-label">Pay yearly up front</span>
+              <strong class="pricing-result-value" data-pricing-prepay>{% if pricing_initial.annual_prepay %}{{ pricing_initial.annual_prepay.total }}{% endif %}</strong>
+            </div>
+          {% endif %}
+          <p class="pricing-breakdown" data-pricing-breakdown>{{ pricing_initial.breakdown }}</p>
+          {% if pricing_show_prepay %}
+            <p class="pricing-breakdown-note" data-pricing-prepay-note>{% if pricing_initial.annual_prepay %}{{ pricing_initial.annual_prepay.note }}{% endif %}</p>
+          {% endif %}
+        </div>
+
+        <div class="pricing-table-wrap">
+          <table class="pricing-table">
+            <caption>Per-learner monthly price for every school type, at the {{ enterprise_minimum_learners_display }}-learner minimum</caption>
+            <thead>
+              <tr>
+                <th scope="col">School type</th>
+                <th scope="col">Per learner / month</th>
+                <th scope="col">For {{ enterprise_minimum_learners_display }} learners</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for row in pricing_rows %}
+                <tr{% if row.value == pricing_initial.school_type %} class="pricing-table-row-current"{% endif %}>
+                  <th scope="row">{{ row.label }}</th>
+                  <td>{{ row.per_learner_month }}</td>
+                  <td>{{ row.minimum_total_month }}</td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="pricing-plain">
+        <p>
+          SGILA is billed to the school — or to the funder on the school's
+          behalf — and never to families.
+        </p>
+        <p>
+          The money usually comes from government, a Department of Basic
+          Education partnership, or a CSI grant.
+        </p>
+        <p>
+          What a school pays depends on its quintile and on how many learners
+          it brings to SGILA.
+        </p>
+        {% if pricing_show_funding_note %}
+          <p>
+            Schools in the lower quintiles receive more state funding and need
+            more learning support, so their per-learner price is higher.
+          </p>
+        {% endif %}
+      </div>
+
+      <div class="account-dialog-actions">
+        <button type="button" class="btn btn-light" data-close-enterprise-pricing>Close</button>
+        <a class="btn btn-primary" data-pricing-activate
+           href="{{ pricing_redeem_url }}?school_type={{ pricing_initial.school_type }}&amp;learners={{ pricing_initial.learners }}">Activate Enterprise Package</a>
+      </div>
+    </div>
+  </dialog>
+
+  <script src="{% static 'js/school_finder.js' %}"></script>
+
+  <script>
+  /* Dialog behaviour only. Pricing and the school search are handled by
+     school_finder.js, which is shared with /subscription/redeem-package. */
+  (function () {
+    var dialog = document.getElementById('enterprise-pricing-dialog');
+    if (!dialog) return;
+    var openers = document.querySelectorAll('[data-open-enterprise-pricing]');
+    var closers = dialog.querySelectorAll('[data-close-enterprise-pricing]');
+    var firstField = dialog.querySelector('[data-sf-province]');
+    var lastFocused = null;
+
+    function openDialog(event) {
+      if (event) event.preventDefault();
+      lastFocused = document.activeElement;
+      if (typeof dialog.showModal === 'function') dialog.showModal();
+      else dialog.setAttribute('open', '');
+      if (firstField && typeof firstField.focus === 'function') firstField.focus();
+    }
+
+    function closeDialog() {
+      if (typeof dialog.close === 'function') dialog.close();
+      else dialog.removeAttribute('open');
+      if (lastFocused && typeof lastFocused.focus === 'function') lastFocused.focus();
+      lastFocused = null;
+    }
+
+    openers.forEach(function (opener) {
+      opener.addEventListener('click', openDialog);
+    });
+    closers.forEach(function (closer) {
+      closer.addEventListener('click', closeDialog);
+    });
+
+    /* Clicking the backdrop closes the dialog. */
+    dialog.addEventListener('click', function (event) {
+      if (event.target === dialog) closeDialog();
+    });
+
+    /* Escape closes it too, and returns focus to the control that opened it. */
+    dialog.addEventListener('cancel', function (event) {
+      if (event.preventDefault) event.preventDefault();
+      closeDialog();
+    });
+    dialog.addEventListener('close', function () {
+      if (lastFocused && typeof lastFocused.focus === 'function') lastFocused.focus();
+      lastFocused = null;
+    });
+  })();
+  </script>

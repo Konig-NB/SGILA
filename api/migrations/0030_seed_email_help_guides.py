@@ -46,7 +46,7 @@ ARTICLES = (
             'Check Spam or Junk for a confirmation first. If the form said the request '
             'was saved but email delivery was not configured, the support team did not '
             'receive an email notification.\n\n'
-            'For help with your request, email sgila.support@gmail.com directly. If '
+            'For help with your request, email sgila.info@gmail.com directly. If '
             'you administer this SGILA installation, configure SMTP as described in '
             'the email delivery setup guide and check the server logs for sending '
             'errors.'

@@ -720,7 +720,18 @@ body:not(.diagram-body) .learner-modal-card h2 {
   font-size: clamp(1.35rem, 4vw, 1.8rem);
 }
 
+body:not(.diagram-body) #activity-picker-title { color: #000; }
+
 body:not(.diagram-body) .learner-modal-card p { color: #56617a; font-weight: 700; }
+[data-theme="dark"] body:not(.diagram-body) .learner-modal-card {
+  background: #0f172a;
+  border-color: rgba(148, 163, 184, .45);
+}
+[data-theme="dark"] body:not(.diagram-body) .learner-modal-card h2,
+[data-theme="dark"] body:not(.diagram-body) .learner-modal-card p,
+[data-theme="dark"] body:not(.diagram-body) .activity-pause-score {
+  color: #f8fbff;
+}
 body:not(.diagram-body) .learner-modal-options { display: grid; gap: 12px; margin: 22px 0 16px; }
 body:not(.diagram-body) .learner-modal-options .btn { width: 100%; min-height: 52px; font-size: 1.05rem; }
 body:not(.diagram-body) .learner-modal-options .btn-primary { background: var(--sun); border-color: var(--sun); color: var(--ink); box-shadow: none; }
@@ -3173,6 +3184,18 @@ body:not(.diagram-body) .btn-primary {
   background: #ffd22e;
 }
 
+body:not(.diagram-body) .response-submit {
+  color: #000;
+}
+
+[data-theme="dark"] body:not(.diagram-body) .btn-primary.response-submit {
+  color: #000;
+}
+
+[data-theme="dark"] body:not(.diagram-body) #submit-btn-teacher {
+  color: #000;
+}
+
 [data-theme="dark"] body:not(.diagram-body) .btn-primary,
 [data-theme="dark"] body:not(.diagram-body) .yellow-btn,
 [data-theme="dark"] body:not(.diagram-body) .phone-tabs .learner-tab,
@@ -3186,6 +3209,10 @@ body:not(.diagram-body) .btn-primary {
 
 body:not(.diagram-body) .btn-mint {
   background: #5bdad4;
+}
+
+body:not(.diagram-body) .audio-bar .play-voiceover {
+  color: #000;
 }
 
 body:not(.diagram-body) .btn-light {
@@ -6773,6 +6800,14 @@ body:not(.diagram-body) .lr-btn {
   box-shadow: 0 30px 70px rgba(0, 0, 0, .28);
 }
 
+[data-theme="dark"] body:not(.diagram-body) .pd-greeting-copy p {
+  color: #ffffff;
+}
+
+[data-theme="dark"] body:not(.diagram-body) .pd-hero .pd-add-child {
+  color: #000000;
+}
+
 [data-theme="dark"] body:not(.diagram-body) .pd-section-hdr {
   color: var(--ink) !important;
 }
@@ -7496,6 +7531,11 @@ body:not(.diagram-body) .role-teacher .tabs a.active {
   border-color: #5bdad4;
 }
 
+[data-theme="dark"] body:not(.diagram-body) .auth-layout .btn-primary,
+[data-theme="dark"] body:not(.diagram-body) .auth-layout .tabs a.active {
+  color: #14213d;
+}
+
 /* Role-specific form card colors */
 body:not(.diagram-body) .role-parent .auth-card-blue {
   border-color: rgba(168, 197, 242, .72);
@@ -7652,6 +7692,17 @@ body:not(.diagram-body) .role-teacher .auth-card-blue textarea:focus {
   border-color: #5bdad4;
   box-shadow: 0 0 0 4px rgba(91, 218, 212, .20);
 }
+
+.teacher-school-picker { display: grid; gap: 7px; }
+.teacher-school-control { position: relative; }
+.teacher-school-results { position: absolute; z-index: 30; top: calc(100% - 1px); right: 0; left: 0; max-height: 280px; overflow-y: auto; padding: 5px; border: 1px solid var(--line); border-radius: 0 0 8px 8px; background: var(--surface); box-shadow: 0 12px 28px rgba(20, 40, 60, .18); }
+.teacher-school-results[hidden] { display: none; }
+.teacher-school-option { display: grid; width: 100%; gap: 3px; padding: 9px 11px; border: 0; border-radius: 5px; background: transparent; color: var(--ink); font: inherit; text-align: left; cursor: pointer; }
+.teacher-school-option:hover, .teacher-school-option.is-active { outline: none; background: var(--sun-soft); }
+.teacher-school-option-name { font-weight: 800; }
+.teacher-school-option-detail { color: var(--muted); font-size: .82rem; }
+.teacher-school-status, .teacher-school-quantile { margin: 0; color: var(--muted); font-size: .83rem; line-height: 1.45; }
+.teacher-school-quantile:not([hidden]) { padding: 9px 11px; border-radius: 6px; background: var(--sun-soft); color: var(--ink); font-weight: 800; }
 
 body:not(.diagram-body) .add-child-layout {
   align-items: start;
@@ -10689,7 +10740,7 @@ body:not(.diagram-body) .story-diary-signature {
     margin-left: -50vw;
     padding: 56px 24px 64px;
     overflow: visible;
-    background: linear-gradient(180deg, var(--mint), var(--mint-soft));
+    background: transparent;
     text-align: center;
   }
   .epic-band h1 {
@@ -10715,6 +10766,10 @@ body:not(.diagram-body) .story-diary-signature {
     display: flex;
     flex-wrap: wrap;
     justify-content: center;
+    /* Stated explicitly rather than left as the flex default: the three plan
+       cards must render at one identical height so their bottom-aligned CTAs
+       line up and no card shows a gap above its button. */
+    align-items: stretch;
     gap: 26px;
     max-width: 1100px;
     margin: 0 auto;
@@ -10765,6 +10820,22 @@ body:not(.diagram-body) .story-diary-signature {
     font-weight: 900;
   }
   .epic-price span { color: var(--muted); font-size: 1rem; font-weight: 700; }
+  /* The Enterprise price carries two extra qualifiers ("From" and
+     "/month per learner") around the amount, which is more text than the other
+     two cards' "R49/month" and "R89/month". At the full qualifier size that
+     line overflows a 320px card and wraps, which makes the Enterprise card
+     taller than its neighbours — and because every card's CTA is pinned to the
+     bottom with `margin-top: auto`, the extra height shows up as dead space
+     above the Individual and Family buttons. Shrinking only the qualifiers (not
+     the amount) keeps the price figure the same size as the other two cards
+     while fitting the whole line on one row. */
+  .epic-card-enterprise .epic-price span { font-size: .75rem; }
+  @media (min-width: 721px) {
+    /* Desktop cards are a fixed 320px wide, where the line above now fits. */
+    .epic-card-enterprise .epic-price { white-space: nowrap; }
+  }
+  /* Below 720px the cards stack and size to their own content, so a wrap there
+     costs nothing and lets long qualifiers shrink rather than overflow. */
   .epic-billed {
     margin: 0 0 22px;
     color: var(--muted);
@@ -10800,6 +10871,7 @@ body:not(.diagram-body) .story-diary-signature {
   }
   .epic-cta {
     width: 100%;
+    margin-top: auto;
     padding: 15px 26px;
     border: 0;
     border-radius: 999px;
@@ -10809,6 +10881,15 @@ body:not(.diagram-body) .story-diary-signature {
     transition: transform .15s ease, box-shadow .15s ease;
   }
   .epic-cta:hover { transform: translateY(-1px); }
+  /* The enterprise CTAs are links to the package-code redemption screen, not
+     form submits — an <a> is inline by default, so it needs to be told to
+     behave like the buttons it replaces (full-width pill, centred label). */
+  .epic-cta-link {
+    display: block;
+    color: inherit;
+    text-align: center;
+    text-decoration: none;
+  }
   .epic-cta-pink {
     color: var(--ink);
     background: var(--sun);
@@ -10820,18 +10901,18 @@ body:not(.diagram-body) .story-diary-signature {
     box-shadow: 0 10px 20px rgba(169, 150, 238, .35);
   }
   .epic-cta-individual {
-    color: var(--ink);
+    color: #111111;
     background: #ffd22e;
     box-shadow: 0 10px 20px rgba(255, 210, 46, .38);
   }
   .epic-cta-family {
-    color: #fff;
+    color: #111111;
     background: #83a8f6;
     box-shadow: 0 10px 20px rgba(131, 168, 246, .38);
   }
   .epic-cta-enterprise,
   .epic-cta-green {
-    color: var(--ink);
+    color: #111111;
     background: #5bdad4;
     box-shadow: 0 10px 20px rgba(91, 218, 212, .38);
   }
@@ -10866,7 +10947,392 @@ body:not(.diagram-body) .story-diary-signature {
   .uppercase-field { text-transform: uppercase; }
   .subscription-action-top { margin-top: 12px; }
   .subscription-action-large { margin-top: 20px; }
+  .subscription-field-hint {
+    width: 100%;
+    margin: 14px 0 0;
+    color: var(--muted);
+    font-size: .9rem;
+    font-weight: 600;
+    line-height: 1.45;
+    text-align: left;
+  }
+  /* Opens the "Full school pricing details" calculator on the Enterprise card.
+     Kept compact so the three plan cards stay the same short height. */
+  .subscription-details-link {
+    margin-top: -2px;
+    padding: 0;
+    border: 0;
+    color: var(--auto-4338ca-t);
+    background: none;
+    font: inherit;
+    font-size: .86rem;
+    font-weight: 800;
+    line-height: 1.2;
+    text-decoration: underline;
+    cursor: pointer;
+  }
+  .subscription-details-link:hover { color: var(--auto-b8860b-t); }
+
+  /* ── Enterprise pricing calculator ────────────────────────────────────────
+     Scoped to body:not(.diagram-body) like the rest of the dialog styles so
+     the ui-flow diagram page is unaffected. The dialog itself already caps its
+     height and scrolls (see .account-dialog), so the calculator only has to
+     flow sensibly from a single column on phones to two up on wide screens. */
+  body:not(.diagram-body) .enterprise-pricing-dialog {
+    width: min(680px, calc(100% - 32px));
+  }
+  body:not(.diagram-body) .enterprise-pricing-dialog .pricing-calculator {
+    display: grid;
+    gap: 16px;
+  }
+  body:not(.diagram-body) .enterprise-pricing-dialog .pricing-calculator-fields {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 14px;
+  }
+  body:not(.diagram-body) .enterprise-pricing-dialog .pricing-field {
+    display: grid;
+    gap: 7px;
+    color: #27344c;
+    font-size: .92rem;
+    font-weight: 800;
+    text-align: left;
+  }
+  body:not(.diagram-body) .enterprise-pricing-dialog .pricing-field select,
+  body:not(.diagram-body) .enterprise-pricing-dialog .pricing-field input {
+    width: 100%;
+    min-height: 48px;
+    padding: 10px 13px;
+    border: 1px solid #c9d3e4;
+    border-radius: 9px;
+    color: #17233a;
+    background: #fff;
+    font: inherit;
+    font-size: 1rem;
+    font-weight: 600;
+  }
+  body:not(.diagram-body) .enterprise-pricing-dialog .pricing-field input:focus-visible,
+  body:not(.diagram-body) .enterprise-pricing-dialog .pricing-field select:focus-visible {
+    outline: 3px solid #5bdad4;
+    outline-offset: 1px;
+  }
+  body:not(.diagram-body) .enterprise-pricing-dialog .pricing-note {
+    color: #566176;
+    font-size: .88rem;
+    line-height: 1.55;
+  }
+  body:not(.diagram-body) .enterprise-pricing-dialog .pricing-validation {
+    margin: 0;
+    padding: 11px 14px;
+    border: 1px solid #e4b5ba;
+    border-radius: 10px;
+    color: #7d1f2a;
+    background: #fdf1f2;
+    font-size: .92rem;
+    font-weight: 700;
+    line-height: 1.5;
+  }
+  body:not(.diagram-body) .enterprise-pricing-dialog .pricing-result {
+    display: grid;
+    gap: 2px;
+    padding: 16px 18px;
+    border: 1px solid #d6eee7;
+    border-radius: 14px;
+    background: #f2fbf8;
+    /* Dimmed while a fresh quote is on its way, so stale figures for the
+       previous school type are never mistaken for the current answer. */
+    transition: opacity .12s ease;
+  }
+  body:not(.diagram-body) .enterprise-pricing-dialog .pricing-result[data-pricing-pending="true"] {
+    opacity: .45;
+  }
+  body:not(.diagram-body) .enterprise-pricing-dialog .pricing-result-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px 12px;
+    align-items: baseline;
+    justify-content: space-between;
+  }
+  body:not(.diagram-body) .enterprise-pricing-dialog .pricing-result-label {
+    color: #46625b;
+    font-size: .92rem;
+    font-weight: 700;
+  }
+  body:not(.diagram-body) .enterprise-pricing-dialog .pricing-result-value {
+    color: #123b32;
+    font-size: 1.3rem;
+    font-weight: 900;
+  }
+  body:not(.diagram-body) .enterprise-pricing-dialog .pricing-result-row-prepay {
+    margin-top: 8px;
+    padding-top: 8px;
+    border-top: 1px dashed #bfe3d9;
+  }
+  body:not(.diagram-body) .enterprise-pricing-dialog .pricing-breakdown {
+    margin: 10px 0 0;
+    color: #46625b;
+    font-size: .9rem;
+    font-weight: 700;
+  }
+  body:not(.diagram-body) .enterprise-pricing-dialog .pricing-breakdown-note {
+    margin: 4px 0 0;
+    color: #566176;
+    font-size: .86rem;
+    line-height: 1.5;
+  }
+  body:not(.diagram-body) .enterprise-pricing-dialog .pricing-table-wrap {
+    overflow-x: auto;
+    border: 1px solid #e2e8f2;
+    border-radius: 12px;
+  }
+  body:not(.diagram-body) .enterprise-pricing-dialog .pricing-table {
+    width: 100%;
+    min-width: 380px;
+    border-collapse: collapse;
+    font-size: .88rem;
+  }
+  body:not(.diagram-body) .enterprise-pricing-dialog .pricing-table caption {
+    padding: 12px 14px 0;
+    color: #566176;
+    font-size: .84rem;
+    font-weight: 700;
+    line-height: 1.5;
+    text-align: left;
+  }
+  body:not(.diagram-body) .enterprise-pricing-dialog .pricing-table th,
+  body:not(.diagram-body) .enterprise-pricing-dialog .pricing-table td {
+    padding: 9px 14px;
+    text-align: left;
+  }
+  body:not(.diagram-body) .enterprise-pricing-dialog .pricing-table thead th {
+    border-bottom: 1px solid #e2e8f2;
+    color: #27344c;
+    font-weight: 800;
+    white-space: nowrap;
+  }
+  body:not(.diagram-body) .enterprise-pricing-dialog .pricing-table tbody tr + tr th,
+  body:not(.diagram-body) .enterprise-pricing-dialog .pricing-table tbody tr + tr td {
+    border-top: 1px solid #eef2f8;
+  }
+  body:not(.diagram-body) .enterprise-pricing-dialog .pricing-table tbody th {
+    color: #27344c;
+    font-weight: 700;
+  }
+  body:not(.diagram-body) .enterprise-pricing-dialog .pricing-table tbody td {
+    color: #46625b;
+    font-weight: 700;
+    white-space: nowrap;
+  }
+  body:not(.diagram-body) .enterprise-pricing-dialog .pricing-table tbody tr.pricing-table-row-current {
+    background: #f2fbf8;
+  }
+  body:not(.diagram-body) .enterprise-pricing-dialog .pricing-plain {
+    display: grid;
+    gap: 8px;
+    color: #566176;
+  }
+  body:not(.diagram-body) .enterprise-pricing-dialog .pricing-plain p {
+    margin: 0;
+    font-size: .9rem;
+    line-height: 1.6;
+  }
+  @media (max-width: 560px) {
+    body:not(.diagram-body) .enterprise-pricing-dialog .pricing-calculator-fields {
+      grid-template-columns: minmax(0, 1fr);
+    }
+    body:not(.diagram-body) .enterprise-pricing-dialog .pricing-result-value {
+      font-size: 1.15rem;
+    }
+  }
   .subscription-cancel-wrap { margin-top: 32px; text-align: center; }
+  /* Echoes back the quote a school built in the Enterprise pricing dialog, so
+     the package-code screen doesn't lose the figures it just calculated. */
+  .subscription-enquiry {
+    display: grid;
+    gap: 4px;
+    width: 100%;
+    margin-top: 16px;
+    padding: 14px 16px;
+    border: 1px solid #d6eee7;
+    border-radius: 14px;
+    color: #46625b;
+    background: #f2fbf8;
+    text-align: left;
+  }
+  .subscription-enquiry-heading {
+    margin: 0;
+    color: #123b32;
+    font-size: .84rem;
+    font-weight: 900;
+    letter-spacing: .04em;
+    text-transform: uppercase;
+  }
+  .subscription-enquiry-line { margin: 0; font-size: .92rem; font-weight: 700; line-height: 1.5; }
+  .subscription-enquiry-total { color: #123b32; }
+
+  /* ── Enterprise school finder ────────────────────────────────────────────
+     Province + school search with autocomplete, shared by the pricing dialog
+     and /subscription/redeem-package so both look and behave identically. */
+  .school-finder {
+    display: grid;
+    gap: 14px;
+    width: 100%;
+    text-align: left;
+  }
+  .school-finder .sf-combobox {
+    position: relative;
+  }
+  .school-finder [data-sf-suggestions] {
+    position: absolute;
+    z-index: 5;
+    top: calc(100% + 4px);
+    right: 0;
+    left: 0;
+    max-height: 260px;
+    margin: 0;
+    padding: 4px;
+    overflow-y: auto;
+    list-style: none;
+    border: 1px solid #c9d3e4;
+    border-radius: 10px;
+    background: #fff;
+    box-shadow: 0 12px 28px rgba(36, 48, 68, .18);
+  }
+  .school-finder [data-sf-suggestions][hidden] { display: none; }
+  .school-finder .sf-suggestion {
+    display: grid;
+    gap: 2px;
+    padding: 9px 11px;
+    border-radius: 7px;
+    cursor: pointer;
+  }
+  .school-finder .sf-suggestion.is-active,
+  .school-finder .sf-suggestion:hover {
+    background: #eef4ff;
+  }
+  .school-finder .sf-suggestion-name {
+    color: #17233a;
+    font-size: .95rem;
+    font-weight: 800;
+    line-height: 1.3;
+  }
+  /* Town and district, so two schools sharing a name are told apart. */
+  .school-finder .sf-suggestion-place {
+    color: #566176;
+    font-size: .84rem;
+    font-weight: 600;
+  }
+  .school-finder .sf-suggestion-quintile {
+    color: #176f5d;
+    font-size: .78rem;
+    font-weight: 800;
+  }
+  .school-finder .sf-suggestion-status,
+  .school-finder .sf-suggestion-empty {
+    color: #566176;
+    font-size: .88rem;
+    font-weight: 700;
+    cursor: default;
+  }
+  .school-finder .sf-suggestion-status:hover,
+  .school-finder .sf-suggestion-empty:hover { background: none; }
+  .school-finder .sf-status {
+    margin: 0;
+    color: #566176;
+    font-size: .86rem;
+    font-weight: 700;
+    line-height: 1.5;
+  }
+  .school-finder .sf-status[hidden] { display: none; }
+  .school-finder .sf-selected {
+    gap: 4px;
+  }
+  .school-finder .sf-selected-name {
+    margin: 0;
+    color: #123b32;
+    font-size: 1.02rem;
+    font-weight: 900;
+    line-height: 1.35;
+  }
+  .school-finder .sf-selected-meta {
+    margin: 0;
+    color: #46625b;
+    font-size: .84rem;
+    font-weight: 700;
+  }
+  .school-finder .sf-selected-note {
+    margin: 4px 0 0;
+    color: #566176;
+    font-size: .86rem;
+    font-weight: 600;
+    line-height: 1.5;
+  }
+  .school-finder .sf-selected-price {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px 12px;
+    align-items: baseline;
+    justify-content: space-between;
+    margin: 10px 0 0;
+    padding-top: 10px;
+    border-top: 1px dashed #bfe3d9;
+  }
+  .school-finder .sf-selected-price span {
+    color: #46625b;
+    font-size: .92rem;
+    font-weight: 700;
+  }
+  .school-finder .sf-selected-price strong {
+    color: #123b32;
+    font-size: 1.3rem;
+    font-weight: 900;
+  }
+  .school-finder .sf-manual[hidden] { display: none; }
+  .school-finder .sf-manual-prompt { margin: 0; }
+  .school-finder .sf-manual-toggle {
+    padding: 0;
+    border: 0;
+    color: var(--auto-4338ca-t);
+    background: none;
+    font: inherit;
+    font-size: .9rem;
+    font-weight: 800;
+    line-height: 1.4;
+    text-decoration: underline;
+    cursor: pointer;
+  }
+  .school-finder .sf-manual-toggle:hover { color: var(--auto-b8860b-t); }
+  .school-finder .sf-manual-toggle:focus-visible {
+    outline: 3px solid #5bdad4;
+    outline-offset: 2px;
+  }
+  .school-finder .sf-not-sure {
+    display: flex;
+    gap: 9px;
+    align-items: start;
+    margin-top: 10px;
+    color: #566176;
+    font-size: .84rem;
+    font-weight: 600;
+    line-height: 1.45;
+    cursor: pointer;
+  }
+  .school-finder .sf-not-sure input {
+    width: 17px;
+    height: 17px;
+    margin: 1px 0 0;
+    flex: 0 0 auto;
+    accent-color: #176f5d;
+  }
+  .school-finder .sf-footnote {
+    margin: 0;
+    padding-top: 10px;
+    border-top: 1px solid #e2e8f2;
+    color: #6b7486;
+    font-size: .78rem;
+    font-weight: 600;
+    line-height: 1.5;
+  }
   .subscription-cancel-link { display: inline-block; width: auto; padding: 12px 24px; }
   .subscription-note { margin-top: 18px; text-align: center; }
   .subscription-teacher-hero { position: relative; overflow: visible; }
@@ -11301,6 +11767,60 @@ body:not(.diagram-body) .story-diary-signature {
   --auto-4338ca-t: #9591ca;
   --auto-bbf7d0-bd: #2c7044;
   --auto-b8860b-t: #e1ce9e;
+}
+
+[data-theme="dark"] {
+  --muted: #ffffff;
+  --text-muted: #ffffff;
+  --auto-8d7d4d-t: #ffffff;
+  --auto-5d7b66-t: #ffffff;
+  --auto-5b6f91-t: #ffffff;
+  --auto-665d8a-t: #ffffff;
+  --auto-5e6884-t: #ffffff;
+  --auto-69748f-t: #ffffff;
+  --auto-64708d-t: #ffffff;
+  --auto-5b6682-t: #ffffff;
+  --auto-6a748e-t: #ffffff;
+  --auto-5d6884-t: #ffffff;
+  --auto-4c5875-t: #ffffff;
+  --auto-59647f-t: #ffffff;
+  --auto-667085-t: #ffffff;
+  --auto-3f4a5c-t: #ffffff;
+  --auto-4b5563-t: #ffffff;
+  --auto-5d6678-t: #ffffff;
+  --auto-687287-t: #ffffff;
+  --auto-5f6878-t: #ffffff;
+  --auto-4e5d73-t: #ffffff;
+  --auto-506d7a-t: #ffffff;
+  --auto-777f91-t: #ffffff;
+  --auto-7a8493-t: #ffffff;
+  --auto-526071-t: #ffffff;
+  --auto-45516a-t: #ffffff;
+  --auto-6b7486-t: #ffffff;
+  --auto-374151-t: #ffffff;
+  --auto-555555-t: #ffffff;
+  --auto-666666-t: #ffffff;
+  --auto-64748b-t: #ffffff;
+  --auto-6b7280-t: #ffffff;
+  --auto-5a5f6f-t: #ffffff;
+}
+
+[data-theme="dark"] body:not(.diagram-body) :is(
+  .portal-learner-copy small,
+  .chat-empty,
+  .chat-bubble-time,
+  .conv-other-label,
+  .conv-preview--empty,
+  .conv-time,
+  .terms-footer-note,
+  .password-requirements li:not(.met),
+  .gc-banner-head p,
+  .gc-confirm-current,
+  .gc-confirm-label,
+  .pronunciation-translation,
+  .drag-match-slot
+) {
+  color: #ffffff;
 }
 
 [data-theme="dark"] body {

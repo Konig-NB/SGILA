@@ -1,0 +1,69 @@
+{% comment %}
+The three SGILA plans, rendered identically for parents, teachers and
+signed-out visitors.
+
+Included by templates/subscription.html so no two audiences can drift apart.
+Prices come from context built in lessons.pricing — no numbers appear here.
+
+Set ``can_choose_plans`` to False for a read-only view: the same three cards,
+with every call-to-action pointing at registration instead of a POST that
+would bounce an anonymous visitor to the login page. Enterprise is always
+activated with a package code on /subscription/redeem-package, so it has no
+POST of its own.
+{% endcomment %}
+<div class="epic-cards">
+
+  {% if can_choose_plans %}
+  <form method="POST" class="epic-card epic-card-individual">
+    {% csrf_token %}
+    <input type="hidden" name="plan" value="individual">
+    <h2 class="epic-plan-name">Individual</h2>
+    <p class="epic-billed epic-billed-tight">For 1 child</p>
+    <p class="epic-price">{{ plan_prices.individual }}<span>/month</span></p>
+    <p class="epic-billed">Billed Monthly</p>
+    <button class="epic-cta epic-cta-individual" type="submit">Choose Individual Plan</button>
+  </form>
+  {% else %}
+  <div class="epic-card epic-card-individual">
+    <h2 class="epic-plan-name">Individual</h2>
+    <p class="epic-billed epic-billed-tight">For 1 child</p>
+    <p class="epic-price">{{ plan_prices.individual }}<span>/month</span></p>
+    <p class="epic-billed">Billed Monthly</p>
+    <a class="epic-cta epic-cta-individual epic-cta-link" href="/register">Start with a free trial</a>
+  </div>
+  {% endif %}
+
+  {% if can_choose_plans %}
+  <form method="POST" class="epic-card epic-card-family">
+    {% csrf_token %}
+    <input type="hidden" name="plan" value="family">
+    <span class="epic-ribbon">Best value</span>
+    <h2 class="epic-plan-name">Family</h2>
+    <p class="epic-billed epic-billed-tight">For up to 4 children</p>
+    <p class="epic-price">{{ plan_prices.family }}<span>/month</span></p>
+    <p class="epic-billed">Billed Monthly</p>
+    <button class="epic-cta epic-cta-family" type="submit">Choose Family Plan</button>
+  </form>
+  {% else %}
+  <div class="epic-card epic-card-family">
+    <span class="epic-ribbon">Best value</span>
+    <h2 class="epic-plan-name">Family</h2>
+    <p class="epic-billed epic-billed-tight">For up to 4 children</p>
+    <p class="epic-price">{{ plan_prices.family }}<span>/month</span></p>
+    <p class="epic-billed">Billed Monthly</p>
+    <a class="epic-cta epic-cta-family epic-cta-link" href="/register">Start with a free trial</a>
+  </div>
+  {% endif %}
+
+  <div class="epic-card epic-card-enterprise">
+    <h2 class="epic-plan-name">Enterprise</h2>
+    <p class="epic-billed epic-billed-tight">For schools &amp; shared accounts</p>
+    <p class="epic-price"><span>From</span> {{ enterprise_start_price }}<span>/month per learner</span></p>
+    <p class="epic-billed epic-billed-tight">Minimum {{ enterprise_minimum_learners_display }} learners</p>
+    <button type="button" class="subscription-details-link" data-open-enterprise-pricing>See full pricing details</button>
+    <a class="epic-cta epic-cta-enterprise epic-cta-link" href="/subscription/redeem-package">Activate Enterprise Package</a>
+  </div>
+
+</div>
+
+{% include 'includes/enterprise_pricing_dialog.html' %}

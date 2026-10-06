@@ -4,8 +4,10 @@ Frontend views for the SGILA web app.
 The API module exposes JSON endpoints. These views render the role-aware
 application screens described in the supplied wireframes and data-flow docs.
 """
+import base64
 import hashlib
 import json
+import logging
 import random
 import re
 import secrets
@@ -77,6 +79,33 @@ from api.account_access import (
     subscription_allows_children,
 )
 from api.reporting import aggregate_rows, rows_for_record, rows_from_scores
+from api.grade4_story_framework import (
+    are_story_thresholds_enabled,
+    generate_story_text,
+    grade4_prompt_context,
+    retrieve_grade4_context,
+    save_grade4_activities,
+    validate_and_repair_grade4_story,
+)
+from api.grade1_story_framework import (
+    grade1_generation_preferences,
+    grade1_prompt_context,
+    grade1_vocabulary_page_indices,
+    save_grade1_activities,
+    story_generation_metadata as grade1_story_generation_metadata,
+    validate_grade1_story,
+)
+from api.story_eligibility import (
+    AI_STORY_PASS_THRESHOLD,
+    check_ai_story_eligibility,
+    lesson_passed,
+)
+
+logger = logging.getLogger(__name__)
+
+from lessons import pricing
+from schools import context as school_context
+from schools.models import School
 
 
 def password_matches(raw, stored):
@@ -212,19 +241,76 @@ def activity_choices_for(lesson):
     """Return the learner-facing activity menu for a lesson."""
     base = f'/lessons/{lesson.id}'
     choices = [{'label': 'Read the Story', 'url': f'{base}/story'}]
-    if lesson.grade == 3 and lesson.reading_activities.exists():
-        grade3_headings = [
-            'Story Questions: Find Details',
-            'Story Sequencer: Order Events',
-            'Fact Check: True or False',
-            'Word Detective: Discover Meanings',
-            'Listen and Spell: Build Words',
-        ]
-        choices.extend(
-            {'label': heading, 'url': f'{base}/activities'}
-            for heading in grade3_headings
-        )
+    if lesson.grade == 1 and lesson.reading_activities.exists():
+        ordered_activities = list(lesson.reading_activities.order_by('group_number', 'order', 'id'))
+        groups = {}
+        for index, activity in enumerate(ordered_activities):
+            inferred_group = activity.group_number or (
+                1 if activity.activity_type == 'cloze'
+                else 2 if activity.skill == 'literal_comprehension'
+                else 3 if activity.skill == 'vocabulary_in_context'
+                else activity.order
+            )
+            group_number = inferred_group
+            group_label = {
+                1: 'Spelling - Fill in the Blank',
+                2: 'Comprehension - Multiple Choice',
+                3: 'Vocabulary - Multiple Choice',
+            }.get(group_number, learner_activity_label(activity))
+            groups.setdefault(group_number, {
+                'label': group_label,
+                'url': f'{base}/questions?activity_index={index}',
+            })
+        choices.extend(groups.values())
+    elif lesson.grade == 2 and lesson.reading_activities.exists():
+        choices = [{'label': 'Read the Story', 'url': f'{base}/story'}]
+        ordered_activities = list(lesson.reading_activities.order_by('group_number', 'order', 'id'))
+        groups = {}
+        for index, activity in enumerate(ordered_activities):
+            group_number = activity.group_number or activity.order
+            group_label = {
+                1: 'Comprehension Questions',
+                2: 'Match It!',
+                3: 'Visual Matching',
+                4: 'Spelling',
+                5: 'Fix the Mistake',
+            }.get(group_number, learner_activity_label(activity))
+            groups.setdefault(group_number, {
+                'label': group_label,
+                'url': f'{base}/questions?activity_index={index}',
+            })
+        choices.extend(groups.values())
+    elif lesson.grade == 3:
+        choices = [{'label': 'Read the Story', 'url': f'{base}/story'}]
+        choices.extend([
+            {'label': 'Comprehension Questions - Remember the story', 'url': f'{base}/activities?activity_index=0'},
+            {'label': 'Sequencing - Put events in order', 'url': f'{base}/activities?activity_index=1'},
+            {'label': 'True or False - Think carefully', 'url': f'{base}/activities?activity_index=2'},
+            {'label': 'Word Detective - Find the missing words', 'url': f'{base}/activities?activity_index=3'},
+            {'label': 'Spelling Questions - Build the story words', 'url': f'{base}/activities?activity_index=4'},
+            {'label': 'Word Balloon Pop', 'url': f'{base}/activities?activity_index=5'},
+        ])
+    elif lesson.grade == 4 and (
+        lesson.vocabulary_questions.exists()
+        or lesson.sequencing_activities.exists()
+        or lesson.inference_questions.exists()
+        or lesson.prediction_questions.exists()
+        or lesson.feelings_questions.exists()
+        or lesson.cause_effect_pairs.exists()
+        or lesson.theme_questions.exists()
+    ):
+        choices = [{'label': 'Read the Story', 'url': f'{base}/story'}]
+        choices.extend([
+            {'label': 'Vocabulary: Explore New Words', 'url': f'{base}/vocabulary'},
+            {'label': 'Sequencing: Order Events', 'url': f'{base}/sequencing'},
+            {'label': 'Inference: Read Between the Lines', 'url': f'{base}/inference'},
+            {'label': 'Prediction: Think Ahead', 'url': f'{base}/prediction'},
+            {'label': 'Feelings: Understand Characters', 'url': f'{base}/feelings'},
+            {'label': 'Cause and Effect: Follow the Story', 'url': f'{base}/cause-effect'},
+            {'label': 'Main Lesson: Find the Big Idea', 'url': f'{base}/theme'},
+        ])
     elif lesson.grade == 4 and lesson.reading_activities.exists():
+        choices = [{'label': 'Read the Story', 'url': f'{base}/story'}]
         groups = {}
         for activity in lesson.reading_activities.order_by('order', 'id'):
             group_number = activity.group_number or activity.order
@@ -326,6 +412,11 @@ def paused_activity_url(child, lesson):
 def activity_score_summary(request, lesson):
     """Summarise the in-progress attempt stored in the learner session."""
     prefix = f'lesson_{lesson.id}_'
+    reading_skill_scores = request.session.get(prefix + 'reading_skill_scores', {})
+    if lesson.reading_activities.exists() and isinstance(reading_skill_scores, dict) and reading_skill_scores:
+        score = sum(int(item.get('score') or 0) for item in reading_skill_scores.values() if isinstance(item, dict))
+        possible = sum(int(item.get('total') or 0) for item in reading_skill_scores.values() if isinstance(item, dict))
+        return score, possible
     if lesson.grade == 4:
         fields = [
             ('comprehension_score', 'comprehension_total', lesson.questions.count()),
@@ -1443,41 +1534,88 @@ def parent_add_child(request):
 # called right after a learner finishes a lesson at pass-threshold or above,
 # so a new story is often already waiting by the time they go looking for it.
 
-AI_STORY_PASS_THRESHOLD = 95
-
-
-def lesson_passed(child, lesson):
-    """A lesson only counts as 'mastered' at 95%+, so comprehension has genuinely happened."""
-    record = Progress.objects.filter(child=child, lesson=lesson).first()
-    return bool(record and record.percentage >= AI_STORY_PASS_THRESHOLD)
-
-
 class GeminiStoryGenerationError(Exception):
     """A learner-safe error raised when Gemini/Pollinations cannot create a story."""
 
 
-def generate_gemini_story(grade, recent_titles):
-    """Ask Gemini for a structured, CAPS-aligned practice story for one grade."""
-    api_key = settings.GEMINI_API_KEY
+def story_text_provider_configured(grade):
+    if grade in (1, 4):
+        return bool(settings.GROQ_API_KEY or settings.GEMINI_API_KEY)
+    return bool(settings.GEMINI_API_KEY)
+
+
+def generate_gemini_story(grade, recent_titles, learner_token=None, _provider=None):
+    """Generate a constrained story using the grade-specific provider and validation rules."""
+    is_grade4 = grade == 4
+    provider = _provider or ('groq' if grade in (1, 4) and settings.GROQ_API_KEY else 'gemini')
+    api_key = settings.GROQ_API_KEY if provider == 'groq' else settings.GEMINI_API_KEY
     if not api_key:
-        raise GeminiStoryGenerationError('AI stories are not configured yet. Ask an adult to add the GEMINI_API_KEY setting.')
-    theme = random.choice([
-        'a school library discovery', 'a soccer practice', 'a family cooking day',
-        'a visit to a science centre', 'a beach clean-up', 'a neighbourhood music day',
-        'a bus trip to a museum', 'a lost-and-found kindness story', 'a rainy-day invention',
-        'a young reader helping at a community event',
-    ])
-    word_count = '25-45' if grade == 1 else ('30-55' if grade == 2 else ('35-65' if grade == 3 else '70-100'))
-    prompt = f'''Create one original English Home Language reading-practice story for a South African Grade {grade} learner.
+        key_name = 'GROQ_API_KEY' if provider == 'groq' else 'GEMINI_API_KEY'
+        raise GeminiStoryGenerationError(f'AI stories are not configured yet. Ask an adult to add the {key_name} setting.')
+    activity_types = []
+    grade1_context = None
+    if grade == 4:
+        try:
+            blueprint, vocabulary, activity_types = retrieve_grade4_context(recent_titles)
+        except ValueError as error:
+            raise GeminiStoryGenerationError(str(error)) from error
+        prompt = grade4_prompt_context(
+            blueprint, vocabulary, recent_titles,
+            learner_token or uuid4().hex[:10],
+        )
+    elif grade == 1:
+        theme, recent_themes, recent_characters, activity_variant = grade1_generation_preferences()
+        prompt, retrieved, assessment_reference = grade1_prompt_context(
+            theme, recent_titles, recent_themes, recent_characters,
+        )
+        def validate_grade1_response(story):
+            if not isinstance(story, dict):
+                raise ValueError('The story provider returned an invalid Grade 1 response.')
+            story['_activity_variant'] = activity_variant
+            return validate_grade1_story(story)
+
+        try:
+            story = generate_story_text(prompt, validator=validate_grade1_response)
+        except RuntimeError as error:
+            raise GeminiStoryGenerationError(str(error)) from error
+        story['_generation_metadata'] = grade1_story_generation_metadata(
+            theme, retrieved, assessment_reference, story,
+        )
+        return story
+    else:
+        theme = random.choice([
+            'a school library discovery', 'a soccer practice', 'a family cooking day',
+            'a visit to a science centre', 'a beach clean-up', 'a neighbourhood music day',
+            'a bus trip to a museum', 'a lost-and-found kindness story', 'a rainy-day invention',
+            'a young reader helping at a community event',
+        ])
+        word_count = '25-45' if grade == 1 else ('30-55' if grade == 2 else '35-65')
+        prompt = f'''Create one original English Home Language reading-practice story for a South African Grade {grade} learner.
 Use this fresh theme: {theme}.
 Avoid these recently used story titles and topics: {', '.join(recent_titles[-10:]) or 'none'}.
 Return ONLY valid JSON with this exact shape:
 {{"title":"short story title","character_description":"","pages":[{{"text":"","highlighted_words":["word"],"illustration_prompt":""}}],"questions":[{{"question":"","options":["","","",""],"answer":""}}],"visual_words":["","",""],"spelling":{{"display_text":"word with one missing vowel","answer":"complete word"}}}}
 Rules: exactly 2 pages; each page has {word_count} age-appropriate words; each illustration_prompt describes that page only; use an everyday South African setting; age-appropriate vocabulary; no unsafe, frightening, commercial, or copyrighted characters; 3 comprehension questions; exactly 4 options per question; the answer must exactly match one option; and all content must be CAPS-aligned Grade {grade} reading practice. visual_words must contain exactly three different, single-word, concrete nouns from the story (for example "train", "book", "apple") that can be shown alone in a picture. Never use actions, people, places, descriptions, or compound words there.
 character_description must be one concrete sentence describing the main character's appearance only — approximate age, hairstyle, one clothing colour/item, and skin tone — written so it can be pasted unchanged into an image-generation prompt every time that character appears, keeping them visually identical across illustrations.'''
-    model = settings.GEMINI_MODEL
-    payload = json.dumps({'contents': [{'parts': [{'text': prompt}]}], 'generationConfig': {'responseMimeType': 'application/json', 'temperature': 0.7}}).encode('utf-8')
-    api_request = UrlRequest(f'https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent', data=payload, headers={'Content-Type': 'application/json', 'x-goog-api-key': api_key}, method='POST')
+    if provider == 'groq':
+        model = settings.GROQ_MODEL
+        payload = json.dumps({
+            'model': model,
+            'messages': [
+                {'role': 'system', 'content': 'Follow the curriculum and output contract exactly. Return only one JSON object.'},
+                {'role': 'user', 'content': prompt},
+            ],
+            'response_format': {'type': 'json_object'},
+            'temperature': 0.7,
+        }).encode('utf-8')
+        endpoint = 'https://api.groq.com/openai/v1/chat/completions'
+        headers = {'Content-Type': 'application/json', 'Authorization': f'Bearer {api_key}'}
+    else:
+        model = settings.GEMINI_MODEL
+        payload = json.dumps({'contents': [{'parts': [{'text': prompt}]}], 'generationConfig': {'responseMimeType': 'application/json', 'temperature': 0.7}}).encode('utf-8')
+        endpoint = f'https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent'
+        headers = {'Content-Type': 'application/json', 'x-goog-api-key': api_key}
+    api_request = UrlRequest(endpoint, data=payload, headers=headers, method='POST')
     try:
         with urlopen(api_request, timeout=45) as response:
             result = json.loads(response.read().decode('utf-8'))
@@ -1487,36 +1625,72 @@ character_description must be one concrete sentence describing the main characte
             provider_message = detail.get('message', '')
         except (UnicodeDecodeError, json.JSONDecodeError):
             provider_message = ''
+        provider_name = 'Groq' if provider == 'groq' else 'Gemini'
         if error.code in (401, 403):
-            message = 'Gemini rejected the API key. Check that the key is active in Google AI Studio and restart SGILA.'
+            message = f'{provider_name} rejected the API key. Check its value and permissions, then restart SGILA.'
         elif error.code == 404:
-            message = f'Gemini model "{model}" is not available for this API key. Check GEMINI_MODEL in .env.'
+            setting_name = 'GROQ_MODEL' if is_grade4 or provider == 'groq' else 'GEMINI_MODEL'
+            message = f'{provider_name} model "{model}" is not available for this API key. Check {setting_name} in .env.'
         elif error.code == 429:
-            message = 'Gemini has reached its request limit. Wait a moment, then try again.'
+            message = f'{provider_name} has reached its request limit. Wait a moment, then try again.'
         elif error.code == 400:
-            message = 'Gemini could not accept the story request. Check the selected Gemini model and try again.'
+            message = f'{provider_name} could not accept the story request. Check the selected model and try again.'
         else:
-            message = f'Gemini returned an error ({error.code}). Please try again later.'
+            message = f'{provider_name} returned an error ({error.code}). Please try again later.'
         if provider_message:
             message = f'{message} Details: {provider_message[:180]}'
+        if provider == 'groq' and settings.GEMINI_API_KEY:
+            logger.warning('Groq story request failed with HTTP %s; trying Gemini.', error.code)
+            return generate_gemini_story(grade, recent_titles, learner_token, _provider='gemini')
         raise GeminiStoryGenerationError(message) from error
     except URLError as error:
-        raise GeminiStoryGenerationError('SGILA could not reach Gemini. Check the internet connection and try again.') from error
+        if provider == 'groq' and settings.GEMINI_API_KEY:
+            logger.warning('Could not reach Groq for story generation; trying Gemini.')
+            return generate_gemini_story(grade, recent_titles, learner_token, _provider='gemini')
+        provider_name = 'Groq' if provider == 'groq' else 'Gemini'
+        raise GeminiStoryGenerationError(f'SGILA could not reach {provider_name}. Check the internet connection and try again.') from error
     try:
-        text = ''.join(part.get('text', '') for part in result['candidates'][0]['content']['parts'])
+        if provider == 'groq':
+            text = result['choices'][0]['message']['content']
+        else:
+            text = ''.join(part.get('text', '') for part in result['candidates'][0]['content']['parts'])
         story = json.loads(text)
-        visual_words = story.get('visual_words', [])
-        if len(story['pages']) != 2 or len(story['questions']) != 3 or len(visual_words) != 3:
-            raise ValueError('Unexpected story shape')
-        if not str(story.get('character_description', '')).strip():
-            raise ValueError('Missing character_description')
-        for question in story['questions']:
-            if len(question['options']) != 4 or question['answer'] not in question['options']:
-                raise ValueError('Invalid question options')
-        if any(not re.fullmatch(r'[A-Za-z]+', str(word).strip()) for word in visual_words):
-            raise ValueError('Invalid visual word')
+        if grade == 4:
+            story = validate_and_repair_grade4_story(story, vocabulary, activity_types)
+            story_text = ' '.join(str(page.get('text', '')) for page in story['pages'])
+            word_count = len(re.findall(r"\b[\w'-]+\b", story_text))
+            story['_generation_metadata'] = {
+                'blueprint_id': blueprint.pk,
+                'blueprint_name': blueprint.name,
+                'vocabulary_ids': [item.pk for item in vocabulary],
+                'activity_types': activity_types,
+                'validated_word_count': word_count,
+                'comprehension_question_count': len(story['questions']),
+            }
+        elif grade == 1:
+            theme, retrieved, assessment_reference, activity_variant = grade1_context
+            story['_activity_variant'] = activity_variant
+            story = validate_grade1_story(story)
+            story['_generation_metadata'] = grade1_story_generation_metadata(
+                theme, retrieved, assessment_reference, story,
+            )
+        else:
+            visual_words = story.get('visual_words', [])
+            if len(story['pages']) != 2 or len(story['questions']) != 3 or len(visual_words) != 3:
+                raise ValueError('Unexpected story shape')
+            if not str(story.get('character_description', '')).strip():
+                raise ValueError('Missing character_description')
+            for question in story['questions']:
+                if len(question['options']) != 4 or question['answer'] not in question['options']:
+                    raise ValueError('Invalid question options')
+            if any(not re.fullmatch(r'[A-Za-z]+', str(word).strip()) for word in visual_words):
+                raise ValueError('Invalid visual word')
     except (KeyError, IndexError, TypeError, ValueError, json.JSONDecodeError) as error:
-        raise GeminiStoryGenerationError('Gemini returned a story in an unexpected format. Please try again.') from error
+        if provider == 'groq' and settings.GEMINI_API_KEY:
+            logger.warning('Groq returned an invalid story response; trying Gemini.')
+            return generate_gemini_story(grade, recent_titles, learner_token, _provider='gemini')
+        provider_name = 'Groq' if provider == 'groq' else 'Gemini'
+        raise GeminiStoryGenerationError(f'{provider_name} returned a story in an unexpected format. Please try again.') from error
     return story
 
 
@@ -1526,8 +1700,13 @@ character_description must be one concrete sentence describing the main characte
 # mode — text (seed + wording) is the only consistency lever.
 STORY_STYLE_BRIEF = (
     "children's picture-book illustration, soft warm gouache-and-watercolour style, rounded "
-    "friendly shapes, bright gentle colour palette, everyday South African setting, "
-    "no text, no letters, no logos, no watermarks"
+    "friendly shapes, bright gentle colour palette, child-friendly everyday South African setting"
+)
+
+IMAGE_CONTENT_RESTRICTIONS = (
+    "Show only a safe, age-appropriate, non-frightening scene. Absolutely no words, text, "
+    "writing, letters, numbers, labels, signs, logos, signatures, watermarks, captions, "
+    "or readable marks anywhere in the image."
 )
 
 
@@ -1535,7 +1714,8 @@ def _build_pollinations_url(prompt_text, seed, width=1024, height=1024):
     encoded_prompt = urllib.parse.quote(prompt_text[:1500])
     url = (
         f'https://image.pollinations.ai/prompt/{encoded_prompt}'
-        f'?width={width}&height={height}&seed={seed}&model={settings.POLLINATIONS_MODEL}&nologo=true'
+        f'?width={width}&height={height}&seed={seed}&model={settings.POLLINATIONS_MODEL}'
+        '&nologo=true&safe=true&private=true'
     )
     if settings.POLLINATIONS_API_KEY:
         url += f'&token={settings.POLLINATIONS_API_KEY}'
@@ -1563,7 +1743,11 @@ def _fetch_pollinations_image(url, max_attempts=3):
         image_request = UrlRequest(url, headers={'User-Agent': 'SGILA-App/1.0'}, method='GET')
         try:
             with urlopen(image_request, timeout=60) as response:
-                return response.read(), response.headers.get('Content-Type', '')
+                image_bytes = response.read()
+                content_type = response.headers.get('Content-Type', '')
+                if not content_type.lower().startswith('image/'):
+                    raise ValueError('Pollinations returned a non-image response.')
+                return image_bytes, content_type
         except HTTPError as error:
             last_error = error
             if error.code in (429, 502, 503) and attempt < max_attempts:
@@ -1581,36 +1765,107 @@ def _fetch_pollinations_image(url, max_attempts=3):
                 time.sleep(attempt * 2)
                 continue
             break
+    if isinstance(last_error, HTTPError):
+        failure = f'HTTP {last_error.code}'
+    elif isinstance(last_error, URLError):
+        failure = 'network connection failed'
+    else:
+        failure = 'the response was not a usable image'
     raise GeminiStoryGenerationError(
-        'Could not create the story illustrations right now (Pollinations is busy). Please try again shortly.'
+        f'Pollinations image generation failed ({failure}).'
     ) from last_error
 
 
-def generate_illustration(prompt, character_description, seed):
-    """Generate and store one safe, story-specific illustration via Pollinations (free, unlimited).
+def _fetch_cloudflare_image(prompt, seed):
+    """Use Cloudflare Workers AI as the configured image-generation fallback."""
+    if not settings.CLOUDFLARE_ACCOUNT_ID or not settings.CLOUDFLARE_API_TOKEN:
+        raise GeminiStoryGenerationError(
+            'Cloudflare image fallback is not configured. Add CLOUDFLARE_ACCOUNT_ID and CLOUDFLARE_API_TOKEN.'
+        )
+    endpoint = (
+        'https://api.cloudflare.com/client/v4/accounts/'
+        f'{settings.CLOUDFLARE_ACCOUNT_ID}/ai/run/{settings.CLOUDFLARE_IMAGE_MODEL}'
+    )
+    payload = json.dumps({'prompt': prompt[:2048], 'steps': 4}).encode('utf-8')
+    request = UrlRequest(
+        endpoint, data=payload,
+        headers={
+            'Content-Type': 'application/json',
+            'Authorization': f'Bearer {settings.CLOUDFLARE_API_TOKEN}',
+        },
+        method='POST',
+    )
+    try:
+        with urlopen(request, timeout=90) as response:
+            result = json.loads(response.read().decode('utf-8'))
+        encoded_image = result.get('result', {}).get('image')
+        if result.get('success') is False or not encoded_image:
+            raise ValueError('Cloudflare did not return an image.')
+        return base64.b64decode(encoded_image, validate=True), 'image/jpeg'
+    except HTTPError as error:
+        if error.code in (401, 403):
+            message = (
+                f'Cloudflare rejected the image request (HTTP {error.code}). '
+                'Check the account ID and ensure the token has Workers AI Read and Edit permissions.'
+            )
+        elif error.code == 404:
+            message = (
+                'Cloudflare could not find the image model endpoint (HTTP 404). '
+                'Check CLOUDFLARE_ACCOUNT_ID and CLOUDFLARE_IMAGE_MODEL.'
+            )
+        else:
+            message = f'Cloudflare image generation failed (HTTP {error.code}).'
+        raise GeminiStoryGenerationError(message) from error
+    except URLError as error:
+        raise GeminiStoryGenerationError('Could not reach the Cloudflare image service.') from error
+    except (UnicodeDecodeError, json.JSONDecodeError, ValueError) as error:
+        raise GeminiStoryGenerationError('Cloudflare returned an invalid image response.') from error
+
+
+def _generate_story_image(prompt, seed, cloudflare_fallback=False):
+    """Use Pollinations first, optionally falling back to Cloudflare for Grade 4."""
+    if cloudflare_fallback and not settings.POLLINATIONS_API_KEY:
+        return _fetch_cloudflare_image(prompt, seed)
+
+    url = _build_pollinations_url(prompt, seed)
+    try:
+        return _fetch_pollinations_image(url)
+    except (GeminiStoryGenerationError, ValueError) as pollinations_error:
+        if not cloudflare_fallback:
+            raise
+        try:
+            return _fetch_cloudflare_image(prompt, seed)
+        except GeminiStoryGenerationError as cloudflare_error:
+            raise GeminiStoryGenerationError(
+                f'{pollinations_error} Cloudflare fallback failed: {cloudflare_error}'
+            ) from cloudflare_error
+
+
+def generate_illustration(prompt, character_description, seed, cloudflare_fallback=False):
+    """Generate a private, child-safe, text-free, story-specific illustration.
 
     character_description and seed are shared across every image in one story — that pairing,
-    not the model choice, is what makes the images look consistent instead of unrelated.
+    not the model choice, keeps the illustrations consistent. Grade 4 may use Cloudflare as fallback.
     """
     image_prompt = (
         f'{STORY_STYLE_BRIEF}. If the main character appears in this scene, draw them exactly '
-        f'as: {character_description[:300]}. Scene to show: {str(prompt)[:600]}'
+        f'as: {character_description[:300]}. Scene to show: {str(prompt)[:600]}. '
+        f'{IMAGE_CONTENT_RESTRICTIONS}'
     )
-    url = _build_pollinations_url(image_prompt, seed)
-    image_bytes, content_type = _fetch_pollinations_image(url)
+    image_bytes, content_type = _generate_story_image(image_prompt, seed, cloudflare_fallback)
     return _save_image_bytes(image_bytes, content_type)
 
 
-def generate_vocab_image(word, seed):
+def generate_vocab_image(word, seed, cloudflare_fallback=False):
     """Generate one unmistakable object image for a visual-identification activity."""
     prompt = (
         f"{STORY_STYLE_BRIEF}. A single large, complete {word} centred in the frame. "
         "Show only that one object on a plain, softly coloured background. No people, animals, "
         "extra objects, scenery, labels, letters, numbers, logos, cropped object, or collage. "
-        "The object must be immediately recognisable to a young learner."
+        "The object must be immediately recognisable to a young learner. "
+        f'{IMAGE_CONTENT_RESTRICTIONS}'
     )
-    url = _build_pollinations_url(prompt, seed)
-    image_bytes, content_type = _fetch_pollinations_image(url)
+    image_bytes, content_type = _generate_story_image(prompt, seed, cloudflare_fallback)
     return _save_image_bytes(image_bytes, content_type)
 
 
@@ -1621,13 +1876,63 @@ def create_ai_story_for_grade(child):
     five sequential image calls) and is meant to be run from a background
     thread (see run_ai_story_job), never directly inside a request/response cycle.
     """
-    recent_titles = list(Lesson.objects.filter(grade=child.grade, is_ai_generated=True).values_list('title', flat=True))
-    story = generate_gemini_story(child.grade, recent_titles)
+    recent_story_titles = Lesson.objects.filter(grade=child.grade, is_ai_generated=True)
+    if child.grade == 1:
+        recent_story_titles = recent_story_titles.order_by('-created_at')[:12]
+    recent_titles = list(recent_story_titles.values_list('title', flat=True))
+    story = generate_gemini_story(
+        child.grade, recent_titles,
+        learner_token=f'learner-{child.id}-{uuid4().hex[:8]}',
+    )
     character_description = story['character_description'].strip()
     seed = random.randint(1, 999999)
 
+    if child.grade == 1:
+        illustrations = [
+            generate_illustration(
+                page.get('illustration_prompt', page['text']), character_description, seed,
+                cloudflare_fallback=child.grade in (1, 4),
+            )
+            for page in story['pages']
+        ]
+        vocabulary_images = [None] * len(story['vocabulary_words'])
+        for page_index in grade1_vocabulary_page_indices(story['_activity_variant']):
+            vocabulary_images[page_index] = generate_vocab_image(
+                story['vocabulary_words'][page_index],
+                seed + page_index + len(illustrations) + 1,
+                cloudflare_fallback=True,
+            )
+        lesson = Lesson.objects.create(
+            title=story['title'][:200],
+            grade=1,
+            character_description=character_description,
+            thumbnail_image=illustrations[0],
+            generation_metadata=story.get('_generation_metadata', {}),
+            curriculum_source='AI story collection — CAPS aligned',
+            source_attribution=(
+                'Original AI-generated Grade 1 English FAL story. '
+                'Generation used retrieved Grade 1 CAPS guidance and existing Grade 1 workbook stories as level references; '
+                'the assessment follows the existing Grade 1 three-group, three-question structure. '
+                'Illustrations are AI-generated to match.'
+            ),
+            is_ai_generated=True,
+            generated_for=child,
+        )
+        for page_number, page in enumerate(story['pages'], start=1):
+            StoryPage.objects.create(
+                lesson=lesson, page_number=page_number, text=page['text'],
+                image_url=illustrations[page_number - 1],
+                audio_url=f'voiceover:ai-story-{lesson.id}-page-{page_number}',
+                highlighted_words=','.join(str(word) for word in page.get('highlighted_words', [])),
+            )
+        save_grade1_activities(lesson, story, illustrations, vocabulary_images)
+        return lesson
+
     illustrations = [
-        generate_illustration(page.get('illustration_prompt', page['text']), character_description, seed)
+        generate_illustration(
+            page.get('illustration_prompt', page['text']), character_description, seed,
+            cloudflare_fallback=child.grade == 4,
+        )
         for page in story['pages']
     ]
 
@@ -1636,10 +1941,16 @@ def create_ai_story_for_grade(child):
         title=story['title'][:200],
         grade=child.grade,
         thumbnail_image=cover_image_url,
+        generation_metadata=story.get('_generation_metadata', {}),
         curriculum_source='AI story collection — CAPS aligned',
         source_attribution=(
-            'AI-generated practice story. Google Gemini writes the story and activities '
-            f'to follow the Grade {child.grade} CAPS reading format; illustrations are AI-generated to match.'
+            'AI-generated practice story. '
+            + (
+                'A Grade 4 database blueprint and vocabulary bank constrain the story and validated activities to the CAPS reading length and workbook structure. '
+                if child.grade == 4 else
+                f'Google Gemini writes the story and activities to follow the Grade {child.grade} CAPS reading format; '
+            )
+            + 'Illustrations are AI-generated to match.'
         ),
         is_ai_generated=True,
         generated_for=child,
@@ -1651,6 +1962,10 @@ def create_ai_story_for_grade(child):
             audio_url=f'voiceover:ai-story-{lesson.id}-page-{page_number}',
             highlighted_words=','.join(str(word) for word in page.get('highlighted_words', [])),
         )
+
+    if child.grade == 4:
+        save_grade4_activities(lesson, story)
+        return lesson
 
     for item in story['questions']:
         options = list(item['options'])
@@ -1705,6 +2020,7 @@ def run_ai_story_job(job_id):
         job.error_message = str(error)
         job.save(update_fields=['status', 'error_message', 'updated_at'])
     except Exception:  # noqa: BLE001 — a background thread must never crash silently
+        logger.exception('AI story job %s failed before the lesson was saved.', job_id)
         job.status = AIStoryJob.STATUS_ERROR
         job.error_message = 'Something went wrong creating the story. Please try again.'
         job.save(update_fields=['status', 'error_message', 'updated_at'])
@@ -1726,40 +2042,6 @@ def start_ai_story_job(child, grade):
     return job
 
 
-def check_ai_story_eligibility(child, grade):
-    """Shared gate used by both the manual 'explore more stories' button and the
-    automatic post-lesson trigger.
-
-    Returns (eligible, error_message, redirect_hint) where redirect_hint is only set
-    when the learner should be sent somewhere specific (e.g. back to an unfinished story).
-    """
-    if grade not in (1, 2, 3, 4):
-        return False, 'AI practice stories are available for Grades 1 to 4.', f'/grade/{grade}'
-
-    all_lessons = Lesson.objects.filter(grade=grade)
-    required_lessons = list(all_lessons.filter(is_ai_generated=False)) + list(all_lessons.filter(
-        is_ai_generated=True, generated_for__isnull=True, curriculum_source='AI story collection — CAPS aligned',
-    ))
-    if not required_lessons or not all(lesson_passed(child, lesson) for lesson in required_lessons):
-        return (
-            False,
-            f'Score at least {AI_STORY_PASS_THRESHOLD}% on every workbook story before creating an AI story.',
-            f'/grade/{grade}',
-        )
-
-    current_ai_lesson = Lesson.objects.filter(
-        grade=grade, is_ai_generated=True, generated_for=child,
-    ).order_by('-created_at').first()
-    if current_ai_lesson and not lesson_passed(child, current_ai_lesson):
-        return (
-            False,
-            f'Finish your current story with at least {AI_STORY_PASS_THRESHOLD}% before unlocking a new one.',
-            f'/lessons/{current_ai_lesson.id}/story',
-        )
-
-    return True, None, None
-
-
 def maybe_start_ai_story_job(child, grade):
     """Called right after a learner finishes a lesson at pass-threshold or above.
 
@@ -1768,7 +2050,7 @@ def maybe_start_ai_story_job(child, grade):
     every results-page render: check_ai_story_eligibility and start_ai_story_job both
     no-op if a story isn't actually due yet or a job is already in flight.
     """
-    if not settings.GEMINI_API_KEY:
+    if not story_text_provider_configured(grade):
         return
     try:
         eligible, _, _ = check_ai_story_eligibility(child, grade)
@@ -1795,10 +2077,11 @@ def generate_ai_story_ajax(request, grade):
     if not eligible:
         return JsonResponse({'success': False, 'error': error_message, 'redirect_url': redirect_hint}, status=400)
 
-    if not settings.GEMINI_API_KEY:
+    if not story_text_provider_configured(grade):
+        key_name = 'GROQ_API_KEY' if grade == 4 else 'GEMINI_API_KEY'
         return JsonResponse({
             'success': False,
-            'error': 'AI stories are not configured yet. Ask an adult to add the GEMINI_API_KEY setting.',
+            'error': f'AI stories are not configured yet. Ask an adult to add the {key_name} setting.',
         }, status=503)
 
     job = start_ai_story_job(child, grade)
@@ -1833,9 +2116,20 @@ def grade3_activities_page(request, lesson_id):
     if response:
         return response
     lesson = get_object_or_404(Lesson, id=lesson_id, grade=3)
+    paused_entry = (child.paused_activities or {}).get(str(lesson.id))
+    resume_score = {'score': 0, 'total': 0}
+    if isinstance(paused_entry, dict) and paused_entry.get('url') == request.get_full_path():
+        try:
+            resume_score = {
+                'score': max(int(paused_entry.get('score', 0)), 0),
+                'total': max(int(paused_entry.get('total', 0)), 0),
+            }
+        except (TypeError, ValueError):
+            pass
     return render(request, 'grade3_activities.html', {
         'lesson': lesson,
         'child': child,
+        'resume_score': resume_score,
     })
 
 
@@ -1853,30 +2147,55 @@ def complete_grade3_activities(request, lesson_id):
         '5': 'grade3_listen_spell',
         '6': 'grade3_word_balloon',
     }
+    existing_record = Progress.objects.filter(child=child, lesson=lesson).first()
+    existing_scores = (
+        existing_record.assessment_scores
+        if existing_record and isinstance(existing_record.assessment_scores, dict)
+        else {}
+    )
     try:
         scores = json.loads(request.body or '{}')
         if not isinstance(scores, dict):
             raise ValueError
         activity_scores = scores.get('activity_scores')
         if activity_scores is None:
-            total_score = int(scores.get('total_score', 0))
-            total_possible = int(scores.get('total_possible', 24))
             assessment_scores = {
-                'grade3_activities': {'score': total_score, 'total': total_possible},
+                key: dict(values or {})
+                for key, values in existing_scores.items()
+                if key.startswith('grade3_') and key != 'grade3_activities'
             }
+            if assessment_scores:
+                total_score = sum(int(item.get('score', 0)) for item in assessment_scores.values())
+                total_possible = sum(int(item.get('total', 0)) for item in assessment_scores.values())
+            else:
+                total_score = int(scores.get('total_score', 0))
+                total_possible = int(scores.get('total_possible', 24))
+                assessment_scores = {
+                    'grade3_activities': {'score': total_score, 'total': total_possible},
+                }
         else:
-            if not isinstance(activity_scores, list) or len(activity_scores) != len(activity_keys):
+            if (
+                not isinstance(activity_scores, list)
+                or not activity_scores
+                or len(activity_scores) > len(activity_keys)
+            ):
                 raise ValueError
-            assessment_scores = {}
+            new_assessment_scores = {}
             for activity in activity_scores:
                 activity_key = activity_keys.get(str(activity.get('number')))
                 score = int(activity.get('score'))
                 possible = int(activity.get('total'))
-                if not activity_key or activity_key in assessment_scores or possible <= 0 or not 0 <= score <= possible:
+                if not activity_key or activity_key in new_assessment_scores or possible <= 0 or not 0 <= score <= possible:
                     raise ValueError
-                assessment_scores[activity_key] = {'score': score, 'total': possible}
-            if len(assessment_scores) != len(activity_keys):
+                new_assessment_scores[activity_key] = {'score': score, 'total': possible}
+            if len(new_assessment_scores) != len(activity_scores):
                 raise ValueError
+            assessment_scores = {
+                key: dict(values or {})
+                for key, values in existing_scores.items()
+                if key.startswith('grade3_') and key != 'grade3_activities'
+            }
+            assessment_scores.update(new_assessment_scores)
             total_score = sum(item['score'] for item in assessment_scores.values())
             total_possible = sum(item['total'] for item in assessment_scores.values())
     except (TypeError, ValueError, json.JSONDecodeError):
@@ -1885,9 +2204,15 @@ def complete_grade3_activities(request, lesson_id):
         child=child,
         lesson=lesson,
         defaults={
-            'comprehension_score': int(scores.get('comprehension_score', 0)),
-            'visual_score': int(scores.get('visual_score', 0)),
-            'spelling_score': int(scores.get('spelling_score', 0)),
+            'comprehension_score': sum(
+                int(assessment_scores.get(key, {}).get('score', 0))
+                for key in ('grade3_comprehension_check', 'grade3_true_false')
+            ),
+            'visual_score': sum(
+                int(assessment_scores.get(key, {}).get('score', 0))
+                for key in ('grade3_visual_match', 'grade3_word_detective')
+            ),
+            'spelling_score': int(assessment_scores.get('grade3_listen_spell', {}).get('score', 0)),
             'total_score': total_score,
             'total_possible': total_possible,
             'stars_earned': 3 if total_score / max(total_possible, 1) >= .9 else 2 if total_score / max(total_possible, 1) >= .7 else 1,
@@ -1930,10 +2255,9 @@ def grade_home(request, grade):
         is_ai_generated=True,
         generated_for__isnull=True,
         curriculum_source='AI story collection — CAPS aligned',
-    ).order_by('id'))
-    # Only the most recent personal AI story is ever shown — once a new one is
-    # generated, the previous one quietly drops off this list (it's kept in the
-    # database for progress history, just not shown as a lesson card any more).
+    ).order_by('id')) if grade != 4 else []
+    # Show only the newest personal story. Older stories and their progress stay
+    # in the database for reporting and history.
     latest_ai_lesson = all_lessons.filter(
         is_ai_generated=True, generated_for=child,
     ).order_by('-created_at').first()
@@ -1984,9 +2308,9 @@ def grade_home(request, grade):
             'title': lesson.title,
             'grade': lesson.grade,
             'thumbnail_image': lesson.thumbnail_image,
-            'completed': completed,
-            'in_progress': not completed and (
-                bool(resume_url) or has_session_attempt or has_saved_response
+            'completed': (
+                grade3_completed if lesson.grade == 3
+                else (lesson_passed(child, lesson) if lesson.grade == 4 and lesson.is_ai_generated else bool(record))
             ),
             'stars': range(record.stars_earned) if record else range(0),
             'is_current_ai_story': lesson.is_ai_generated and lesson.id == getattr(latest_ai_lesson, 'id', None),
@@ -2002,8 +2326,9 @@ def grade_home(request, grade):
     )
     # The "explore more stories" offer only opens once the workbook is mastered AND,
     # if a personal AI story already exists, once that one is mastered too.
-    ai_story_available = workbook_complete and (
-        latest_ai_lesson is None or lesson_passed(child, latest_ai_lesson)
+    ai_thresholds_enabled = are_story_thresholds_enabled()
+    ai_story_available = not ai_thresholds_enabled or (
+        workbook_complete and (latest_ai_lesson is None or lesson_passed(child, latest_ai_lesson))
     )
     active_ai_job = AIStoryJob.objects.filter(
         child=child, grade=grade, status__in=[AIStoryJob.STATUS_PENDING, AIStoryJob.STATUS_RUNNING],
@@ -2017,6 +2342,7 @@ def grade_home(request, grade):
         'completed_count': records.count(),
         'total_stars': sum(r.stars_earned for r in records),
         'ai_story_available': ai_story_available,
+        'ai_story_thresholds_enabled': ai_thresholds_enabled,
         'ai_story_job_id': active_ai_job.id if active_ai_job else None,
         'grades_with_ai': (1, 2, 3, 4),
     })
@@ -2049,14 +2375,42 @@ def activity_pause(request, lesson_id):
         }
         if parsed_resume_url.path not in allowed_paths or parsed_resume_url.fragment:
             return JsonResponse({'error': 'Invalid activity to resume.'}, status=400)
-        if parsed_resume_url.path.endswith('/questions'):
+        if parsed_resume_url.path.endswith('/questions') or parsed_resume_url.path.endswith('/activities'):
             query = urllib.parse.parse_qs(parsed_resume_url.query)
             indexes = query.get('activity_index', [])
-            activity_index = int(indexes[0]) if len(indexes) == 1 and indexes[0].isdigit() else -1
-            activity_total = lesson.reading_activities.count() or lesson.questions.count()
-            if activity_index < 0 or activity_index >= activity_total:
-                return JsonResponse({'error': 'Invalid activity to resume.'}, status=400)
-            resume_url = f'{parsed_resume_url.path}?activity_index={activity_index}'
+            if not indexes:
+                if parsed_resume_url.path.endswith('/activities'):
+                    activity_index = 0
+                else:
+                    resume_url = parsed_resume_url.path
+            else:
+                if len(indexes) != 1 or not indexes[0].isdigit():
+                    return JsonResponse({'error': 'Invalid activity to resume.'}, status=400)
+                activity_index = int(indexes[0])
+                if parsed_resume_url.path.endswith('/questions'):
+                    activity_total = lesson.reading_activities.count() or lesson.questions.count()
+                    if activity_index < 0 or activity_index >= activity_total:
+                        return JsonResponse({'error': 'Invalid activity to resume.'}, status=400)
+                elif parsed_resume_url.path.endswith('/activities'):
+                    activity_total = 6 if lesson.grade == 3 else 1
+                    if activity_index < 0 or activity_index >= activity_total:
+                        return JsonResponse({'error': 'Invalid activity to resume.'}, status=400)
+            if parsed_resume_url.path.endswith('/activities'):
+                if set(query) - {'activity_index', 'question_index'}:
+                    return JsonResponse({'error': 'Invalid activity to resume.'}, status=400)
+                question_indexes = query.get('question_index', [])
+                resume_url = f'{parsed_resume_url.path}?activity_index={activity_index}'
+                if question_indexes:
+                    if (
+                        lesson.grade != 3
+                        or len(question_indexes) != 1
+                        or not question_indexes[0].isdigit()
+                        or int(question_indexes[0]) >= 6
+                    ):
+                        return JsonResponse({'error': 'Invalid activity to resume.'}, status=400)
+                    resume_url += f'&question_index={int(question_indexes[0])}'
+            elif indexes:
+                resume_url = f'{parsed_resume_url.path}?activity_index={activity_index}'
         elif parsed_resume_url.query:
             return JsonResponse({'error': 'Invalid activity to resume.'}, status=400)
 
@@ -2491,7 +2845,7 @@ def legacy_results_page(request, lesson_id):
             },
         )
 
-        if percentage >= AI_STORY_PASS_THRESHOLD:
+        if are_story_thresholds_enabled() and percentage >= AI_STORY_PASS_THRESHOLD:
             maybe_start_ai_story_job(child, lesson.grade)
 
         breakdown = [
@@ -2594,7 +2948,7 @@ def legacy_results_page(request, lesson_id):
         },
     )
 
-    if percentage >= AI_STORY_PASS_THRESHOLD:
+    if are_story_thresholds_enabled() and percentage >= AI_STORY_PASS_THRESHOLD:
         maybe_start_ai_story_job(child, lesson.grade)
 
     for suffix in score_keys:
@@ -2841,15 +3195,35 @@ def legacy_build_dashboard_row(child):
 
 def subscription_page(request):
     """
-    Shown right after registration (and reachable any time from the
-    dashboard). Parents see individual/family/enterprise plan options; teachers/schools see
-    the enterprise plan, framed as a government/district-funded package
-    request rather than an instant card checkout.
+    Every plan SGILA sells — Individual, Family and Enterprise — shown right
+    after registration, from the dashboard's "Plan" link, and from the signed-out
+    homepage nav so a visitor can read the pricing before creating an account.
+
+    Signed-out visitors get the same three cards read-only, with the
+    call-to-action pointing at registration. Enterprise is always activated with
+    a package code on /subscription/redeem-package; Individual and Family are
+    card-paid by both parents and teachers, and hand off to /subscription/payment.
     """
     role = request.session.get('account_role')
+
     if role not in ('parent', 'teacher'):
-        messages.error(request, 'Please sign in first.')
-        return redirect('/login')
+        # A plan choice is an account action, so it still needs a sign-in...
+        if request.method == 'POST':
+            messages.error(request, 'Please sign in first.')
+            return redirect('/login')
+        # ...but browsing the plans is not.
+        return render(request, 'subscription.html', {
+            'role': 'guest',
+            'account': None,
+            'subscription': None,
+            'can_choose_plans': False,
+            # Enterprise card + pricing dialog read every figure from config via
+            # lessons.pricing, so nothing below is hard-coded in the template.
+            'plan_prices': pricing.plan_prices(),
+            **pricing.card_context(),
+            **pricing.modal_context(),
+            **school_context.finder_context(instance='dialog'),
+        })
 
     account_id = request.session['account_id']
     if role == 'parent':
@@ -2867,127 +3241,287 @@ def subscription_page(request):
         )
 
     if request.method == 'POST':
-        if role == 'parent':
-            plan = request.POST.get('plan', 'individual')
-            skip = request.POST.get('skip') == '1'
-
-            if skip:
-                subscription.status = 'trial'
-                subscription.save(update_fields=['status', 'updated_at'])
+        # A teacher's Subscription is created in 'trial' status and their
+        # dashboard is gated on that trial lapsing, so "continue with a free
+        # trial" is a real outcome here too — same as the parent's skip.
+        if request.POST.get('skip') == '1':
+            subscription.status = 'trial'
+            subscription.save(update_fields=['status', 'updated_at'])
+            if role == 'parent':
                 messages.success(request, "No problem — you're on a free trial. You can subscribe any time from your dashboard.")
-                return redirect('/parent/dashboard')
-
-            if plan == 'family':
-                subscription.plan_type = 'family'
-                subscription.billing_cycle = 'monthly'
-                # No live payment gateway is wired up yet — this marks the
-                # choice as pending until payment details are captured next.
-                subscription.status = 'pending'
-                subscription.save()
-                return redirect('/subscription/payment')
-
-            elif plan == 'enterprise':
-                # Parent is redeeming an enterprise/school package code —
-                # accept school name + package code and activate immediately
-                school_name = request.POST.get('school_name', '').strip() or account.school_name
-                code_value = request.POST.get('package_code', '').strip().upper()
-
-                if not school_name or not code_value:
-                    messages.error(request, 'Please enter both your school name and package code.')
-                    return render(request, 'subscription.html', {'role': role, 'account': account, 'subscription': subscription})
-
-                try:
-                    code_obj = PackageCode.objects.get(code=code_value)
-                except PackageCode.DoesNotExist:
-                    code_obj = None
-
-                if not code_obj or not code_obj.is_redeemable:
-                    messages.error(request, "That package code isn't valid or has already been fully used. Please check the code from your district/government contact.")
-                    return render(request, 'subscription.html', {'role': role, 'account': account, 'subscription': subscription})
-
-                subscription.plan_type = 'enterprise'
-                subscription.school_name = school_name
-                subscription.package_code = code_obj
-                subscription.status = 'active'
-                subscription.save()
-
-                code_obj.redemptions_count += 1
-                code_obj.save(update_fields=['redemptions_count'])
-
-                messages.success(request, f"Your school's package is active! {school_name} now has full SGILA access.")
-                return redirect('/parent/dashboard')
-
             else:
-                subscription.plan_type = 'individual'
-                subscription.billing_cycle = 'monthly'
-                # No live payment gateway is wired up yet — this marks the
-                # choice as pending until payment details are captured next.
-                subscription.status = 'pending'
-                subscription.save()
-                return redirect('/subscription/payment')
+                messages.success(
+                    request,
+                    "No problem — you're on a free trial. You can activate a "
+                    "package any time from your dashboard.",
+                )
+            return redirect(f'/{role}/dashboard')
 
-        else:  # teacher / school — redeem a government-issued package code
-            school_name = request.POST.get('school_name', '').strip() or account.school_name
-            code_value = request.POST.get('package_code', '').strip().upper()
+        plan = request.POST.get('plan', 'individual')
 
-            if not school_name or not code_value:
-                messages.error(request, 'Please enter both your school name and package code.')
-                return render(request, 'subscription.html', {'role': role, 'account': account, 'subscription': subscription})
+        # Enterprise is redeemed with a package code rather than a card, on its
+        # own screen where the school name and code are entered.
+        if plan == 'enterprise':
+            return redirect('/subscription/redeem-package')
 
-            try:
-                code_obj = PackageCode.objects.get(code=code_value)
-            except PackageCode.DoesNotExist:
-                code_obj = None
+        # Individual and Family are card-paid and identical for both roles: mark
+        # the choice pending, then collect payment details on the next screen.
+        # No live payment gateway is wired up yet — 'pending' is what carries
+        # the choice across to subscription_payment_page.
+        subscription.plan_type = 'family' if plan == 'family' else 'individual'
+        subscription.billing_cycle = 'monthly'
+        subscription.status = 'pending'
+        subscription.save()
+        return redirect('/subscription/payment')
 
-            if not code_obj or not code_obj.is_redeemable:
-                messages.error(request, "That package code isn't valid or has already been fully used. Please check the code from your district/government contact.")
-                return render(request, 'subscription.html', {'role': role, 'account': account, 'subscription': subscription})
-
-            subscription.plan_type = 'enterprise'
-            subscription.school_name = school_name
-            subscription.package_code = code_obj
-            subscription.status = 'active'
-            subscription.save()
-
-            code_obj.redemptions_count += 1
-            code_obj.save(update_fields=['redemptions_count'])
-
-            messages.success(request, f"Your school's package is active! {school_name} now has full SGILA access.")
-            return redirect('/teacher/dashboard')
-
-    return render(request, 'subscription.html', {
+    context = {
         'role': role,
         'account': account,
         'subscription': subscription,
-    })
+        'can_choose_plans': True,
+        # Enterprise card + pricing dialog read every figure from config via
+        # lessons.pricing, so nothing below is hard-coded in the template.
+        'plan_prices': pricing.plan_prices(),
+        **pricing.card_context(),
+        **pricing.modal_context(),
+        # The school finder (province -> school search -> quintile and price)
+        # shown inside the pricing dialog.
+        **school_context.finder_context(instance='dialog'),
+    }
+    return render(request, 'subscription.html', context)
+
+
+def enquiry_from_request(request, source=None):
+    """
+    Carry the pricing calculator's choices (school type and learner count) from
+    the Enterprise dialog into the package-code screen, so a school's quote
+    survives the hand-off into activation.
+
+    Purely informational — redemption itself still only needs a school name and
+    a package code. Nothing is echoed back unless the school actually came from
+    the calculator; a partially-present or unusable set of values falls back to
+    the default school type and the minimum learner count rather than rendering
+    a broken quote.
+    """
+    getter = request.POST.get if source == 'post' else request.GET.get
+    school_type = (getter('school_type') or '').strip()
+    learners = pricing.parse_learners(getter('learners'))
+
+    if not school_type and learners is None:
+        return {'enquiry_school_type': '', 'enquiry_learners': None, 'enquiry_quote': None}
+
+    if not pricing.is_valid_school_type(school_type):
+        school_type = pricing.school_types()[0]['value']
+    if learners is None:
+        learners = pricing.minimum_learners()
+
+    return {
+        'enquiry_school_type': school_type,
+        'enquiry_learners': learners,
+        'enquiry_quote': pricing.quote(school_type, learners),
+    }
+
+
+def preselected_school(request):
+    """
+    The school chosen in the pricing dialog, identified by its id rather than its
+    name so the activation page can look the record back up instead of trusting
+    a typed string. Returns ``None`` for a missing, non-numeric or unknown id.
+    """
+    raw = (request.GET.get('school_id') or '').strip()
+    if not raw.isdigit():
+        return None
+    return School.objects.filter(pk=int(raw), status='open').first()
+
+
+@require_http_methods(['GET'])
+def enterprise_pricing_quote(request):
+    """
+    JSON quote behind the "See full pricing details" calculator on
+    /subscription.
+
+    The dialog deliberately does no arithmetic of its own: it posts the chosen
+    school type and learner count here and renders the strings that come back,
+    which keeps ``lessons.pricing`` the single place prices are calculated and
+    formatted. Responds 400 for an unknown school type so a stale or hand-
+    edited request can't silently produce a nonsense quote.
+    """
+    school_type = request.GET.get('school_type', '').strip()
+    if not pricing.is_valid_school_type(school_type):
+        return JsonResponse({'error': 'Unknown school type.'}, status=400)
+
+    learners = pricing.parse_learners(request.GET.get('learners'))
+    return JsonResponse(pricing.quote(school_type, learners))
+
+
+@require_http_methods(['GET', 'POST'])
+def redeem_package_page(request):
+    """
+    School-side redemption of a government/district-issued package code.
+
+    A school buys a package from its district or the DBE, is issued a
+    PackageCode (created by SGILA staff via admin), and enters it here with
+    just their school name — no card, no per-family payment. That flips their
+    Subscription to plan_type='enterprise' / status='active', linked to the
+    PackageCode, which is what actually unlocks story access:
+
+      * school-linked learners (no parent account, added via a class code)
+        follow the school's subscription instead of a parent's trial —
+        see learner_trial_expired;
+      * the school account itself stops being trial-expired, which is what
+        teacher_dashboard gates on — see account_trial_expired;
+      * for a parent redeeming on behalf of a school, the uncapped
+        enterprise plan (PLAN_CHILD_CAPS) lifts the active-learner limit,
+        so learners paused purely for plan capacity come back on.
+
+    The code row is locked while redeeming so two schools racing for the last
+    single-use code can't both get through.
+    """
+    role = request.session.get('account_role')
+    if role not in ('parent', 'teacher'):
+        messages.error(request, 'Please sign in first.')
+        return redirect('/login')
+
+    account_id = request.session['account_id']
+    if role == 'parent':
+        account = get_object_or_404(Parent, id=account_id)
+        subscription, _ = Subscription.objects.get_or_create(
+            parent=account, defaults={'plan_type': 'enterprise'}
+        )
+        dashboard_url = '/parent/dashboard'
+    else:
+        account = get_object_or_404(Teacher, id=account_id)
+        subscription, _ = Subscription.objects.get_or_create(
+            teacher=account, defaults={'plan_type': 'enterprise'}
+        )
+        dashboard_url = '/teacher/dashboard'
+
+    # A quote handed over from the pricing dialog identifies its school by id, so
+    # the finder can show the real record instead of a typed-in name.
+    chosen_school = preselected_school(request)
+    school_name = subscription.school_name or getattr(account, 'school_name', '')
+    if chosen_school is not None:
+        school_name = chosen_school.name
+
+    context = {
+        'role': role,
+        'account': account,
+        'subscription': subscription,
+        'school_name': school_name,
+        'package_code': '',
+        # Optional figures handed over by the pricing calculator on
+        # /subscription. Purely informational — redemption still only needs the
+        # school name and package code below.
+        'enterprise_start_price': pricing.format_rand(pricing.start_price_per_learner_month()),
+        'enterprise_minimum_learners': pricing.minimum_learners(),
+        **enquiry_from_request(request),
+        # The school finder itself, with the chosen school preselected and its
+        # name auto-filled into the School name field below.
+        **school_context.finder_context(
+            instance='redeem',
+            school=chosen_school,
+            autofill_name=True,
+        ),
+    }
+
+    if request.method != 'POST':
+        return render(request, 'redeem_package.html', context)
+
+    school_name = request.POST.get('school_name', '').strip() or getattr(account, 'school_name', '')
+    code_value = request.POST.get('package_code', '').strip().upper()
+
+    if not school_name or not code_value:
+        messages.error(request, 'Please enter both your school name and package code.')
+        context['school_name'] = school_name
+        context['package_code'] = code_value
+        context.update(enquiry_from_request(request, source='post'))
+        return render(request, 'redeem_package.html', context)
+
+    with transaction.atomic():
+        code_obj = PackageCode.objects.select_for_update().filter(code=code_value).first()
+        if not code_obj or not code_obj.is_redeemable:
+            messages.error(request, "This code is not valid or has already reached its limit. Please check the code from your district/government contact.")
+            context['school_name'] = school_name
+            context['package_code'] = code_value
+            return render(request, 'redeem_package.html', context)
+
+        subscription.plan_type = 'enterprise'
+        subscription.status = 'active'
+        subscription.school_name = school_name
+        subscription.package_code = code_obj
+        # Annual billing to the school is the norm for enterprise packages, and
+        # the seat/cap fields only mean something for individual/family plans.
+        subscription.billing_cycle = 'annual'
+        subscription.extra_active_seats = 0
+        subscription.pending_seat_quantity = 0
+        subscription.save()
+
+        code_obj.redemptions_count += 1
+        code_obj.save(update_fields=['redemptions_count'])
+
+        # Enterprise has no active-learner cap, so anything paused only because
+        # a family plan ran out of seats can come straight back on. Learners the
+        # parent paused deliberately (DEACTIVATED_MANUAL) stay paused.
+        resumed = 0
+        if role == 'parent':
+            capacity_paused = Child.objects.filter(
+                parent=account,
+                is_active=False,
+                deactivated_reason=Child.DEACTIVATED_PLAN_CAPACITY,
+            )
+            for child in capacity_paused:
+                child.reactivate()
+                resumed += 1
+
+    detail = f" {resumed} learner(s) paused for the plan limit are active again." if resumed else ""
+    messages.success(request, f"Your school's package is active! {school_name} now has full SGILA access.{detail}")
+    return redirect(dashboard_url)
 
 
 def subscription_payment_page(request):
     """
-    Payment-details step for the individual (parent) plan, shown right
-    after a plan is chosen on /subscription. Only parents with a pending
-    individual subscription land here.
+    Payment-details step for the Individual or Family plan, shown right after a
+    plan is chosen on /subscription. Both parents and teachers buy these two
+    plans by card; only the dashboard they land on afterwards differs.
 
     SECURITY NOTE: this view intentionally does NOT persist a full card
     number, CVV, or full bank account number anywhere — only a masked
-    summary (last 4 digits, expiry, name) is saved, purely so the parent
-    and support team can recognise which payment method is on file. A
+    summary (last 4 digits, expiry, name) is saved, purely so the account
+    owner and support team can recognise which payment method is on file. A
     production deployment must swap this out for a PCI-compliant gateway
     (e.g. PayFast) using their hosted/tokenised checkout, so raw card data
     is sent straight to the gateway and never touches this server at all.
     """
-    if request.session.get('account_role') != 'parent':
-        messages.error(request, 'Please sign in as a parent first.')
-        return redirect('/login?role=parent')
+    role = request.session.get('account_role')
+    if role not in ('parent', 'teacher'):
+        messages.error(request, 'Please sign in first.')
+        return redirect('/login')
 
-    parent = get_object_or_404(Parent, id=request.session['account_id'])
-    subscription, _ = Subscription.objects.get_or_create(
-        parent=parent, defaults={'plan_type': 'individual'}
-    )
+    account_id = request.session['account_id']
+    if role == 'parent':
+        account = get_object_or_404(Parent, id=account_id)
+        subscription, _ = Subscription.objects.get_or_create(
+            parent=account, defaults={'plan_type': 'individual'}
+        )
+    else:
+        account = get_object_or_404(Teacher, id=account_id)
+        subscription, _ = Subscription.objects.get_or_create(
+            teacher=account, defaults={'plan_type': 'individual'}
+        )
 
     # Only makes sense once a plan has actually been chosen.
     if subscription.plan_type not in ('individual', 'family') or not subscription.billing_cycle:
         return redirect('/subscription')
+
+    def payment_context():
+        """The re-render after a validation error needs the same context as
+        the first render, or the summary line and back link disappear."""
+        return {
+            'subscription': subscription,
+            'role': role,
+            'account': account,
+            'plan_price': pricing.format_rand(pricing.plan_price(subscription.plan_type)),
+        }
 
     if request.method == 'POST':
         method = request.POST.get('payment_method', 'card')
@@ -3000,7 +3534,7 @@ def subscription_payment_page(request):
 
             if not name_on_card or len(card_number) < 12 or not expiry:
                 messages.error(request, 'Please fill in all card details correctly.')
-                return render(request, 'subscription_payment.html', {'subscription': subscription})
+                return render(request, 'subscription_payment.html', payment_context())
 
             subscription.payer_name = name_on_card
             subscription.card_last4 = card_number[-4:]
@@ -3016,7 +3550,7 @@ def subscription_payment_page(request):
 
             if not account_holder or not bank_name or len(account_number) < 6:
                 messages.error(request, 'Please fill in all bank details correctly.')
-                return render(request, 'subscription_payment.html', {'subscription': subscription})
+                return render(request, 'subscription_payment.html', payment_context())
 
             subscription.payer_name = account_holder
             subscription.bank_name = bank_name
@@ -3026,9 +3560,9 @@ def subscription_payment_page(request):
         subscription.status = 'active'
         subscription.save()
         messages.success(request, "You're all set! Your SGILA subscription is active.")
-        return redirect('/parent/dashboard')
+        return redirect(f'/{role}/dashboard')
 
-    return render(request, 'subscription_payment.html', {'subscription': subscription})
+    return render(request, 'subscription_payment.html', payment_context())
 
 
 @require_http_methods(['GET', 'POST'])

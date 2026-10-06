@@ -19,6 +19,7 @@ handler404 = 'sgila_project.urls.custom_404'
 
 urlpatterns = [
     path('admin/', admin.site.urls),
+    path('', include('schools.urls')),  # /api/schools/search/ - school finder
     path('api/', include('api.urls')),
     path('', include('lessons.urls')),  # Frontend HTML pages
 ] + static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT) + [
