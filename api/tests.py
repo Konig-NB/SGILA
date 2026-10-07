@@ -52,30 +52,41 @@ from api.models import (
     current_school_year,
 )
 from api.story_eligibility import check_ai_story_eligibility
+from schools.models import School
 
 
 class SchoolDirectorySearchTests(TestCase):
-    @patch('api.views.school_directory_records', return_value=(
-        {'school_name': 'BIZANA PRIMARY SCHOOL', 'location': 'BIZANA', 'quantile': 'Q1'},
-        {'school_name': 'BIZANA SECONDARY SCHOOL', 'location': 'BIZANA', 'quantile': 'Q3'},
-        {'school_name': 'OTHER SCHOOL', 'location': 'OTHER TOWN', 'quantile': ''},
-    ))
-    def test_search_returns_matching_school_and_public_quantile_fields(self, _directory):
-        response = self.client.get('/api/schools/search/', {'q': 'bizana primary'})
+    def test_search_returns_matching_school_and_public_quantile_fields(self):
+        school = School.objects.create(
+            emis_number='200500001',
+            name='BIZANA PRIMARY SCHOOL',
+            province='Eastern Cape',
+            district='Alfred Nzo East',
+            town='Bizana',
+            quintile=1,
+            sector='public',
+            status='open',
+        )
+        response = self.client.get('/api/schools/search/', {
+            'province': 'Eastern Cape',
+            'q': 'bizana primary',
+        })
 
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json()['results'], [{
-            'school_name': 'BIZANA PRIMARY SCHOOL',
-            'location': 'BIZANA',
-            'quantile': 'Q1',
-        }])
+        result = response.json()['results'][0]
+        self.assertEqual(result['id'], school.id)
+        self.assertEqual(result['name'], 'BIZANA PRIMARY SCHOOL')
+        self.assertEqual(result['town'], 'Bizana')
+        self.assertEqual(result['quintile'], 1)
 
-    @patch('api.views.school_directory_records')
-    def test_short_search_term_does_not_load_directory(self, directory):
-        response = self.client.get('/api/schools/search/', {'q': 'B'})
+    def test_short_search_term_is_rejected_before_searching(self):
+        response = self.client.get('/api/schools/search/', {
+            'province': 'Eastern Cape',
+            'q': 'B',
+        })
 
-        self.assertEqual(response.json(), {'results': []})
-        directory.assert_not_called()
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.json()['code'], 'query_too_short')
 
 
 class HelpCenterApiTests(TestCase):
@@ -401,7 +412,7 @@ class HelpCenterApiTests(TestCase):
         self.assertContains(help_page, 'Help and Feedback')
         self.assertContains(help_page, 'Back to Homepage')
         self.assertContains(help_page, 'Report a bug or share a suggestion')
-        self.assertContains(help_page, 'Contact the Sgila team')
+        self.assertContains(help_page, 'Contact the SGILA team')
         self.assertNotContains(help_page, 'What do you need help with?')
         self.assertContains(help_page, 'Send feedback')
         self.assertContains(help_page, "Please don't include sensitive information in your message.")
@@ -417,8 +428,25 @@ class HelpCenterApiTests(TestCase):
         self.assertContains(homepage, 'Help and Feedback')
         self.assertNotContains(homepage, '/help/#contact')
         self.assertNotContains(homepage, '/help/#feedback')
-        self.assertNotContains(homepage, 'For families')
-        self.assertNotContains(homepage, 'For schools')
+        self.assertContains(homepage, 'For families')
+        self.assertContains(homepage, 'For schools')
+
+        login_page = self.client.get('/login')
+        self.assertContains(login_page, 'href="/help/"')
+
+        parent = Parent.objects.create(
+            full_name='Help Link Parent',
+            email='help-link-parent@example.com',
+            password=make_password('password123'),
+        )
+        session = self.client.session
+        session['account_role'] = 'parent'
+        session['account_id'] = parent.id
+        session['account_name'] = parent.full_name
+        session.save()
+
+        signed_in_homepage = self.client.get('/')
+        self.assertContains(signed_in_homepage, 'href="/help/"')
 
 
 class SgilaFlowTests(TestCase):

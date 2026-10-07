@@ -377,25 +377,13 @@ function renderActivityMedia(activity, questionText, instructionText) {
     listen.className = 'btn btn-light activity-listen';
     listen.textContent = 'Listen';
     const isPhonicsWord = config.presentation === 'grade1_phonics';
-    if (isPhonicsWord) {
-      const spokenText = config.audio_text;
-      listen.addEventListener('click', () => speakActivityText(
-        spokenText,
-        listen,
-        null,
-      ));
-    } else {
-      const instructionEl = document.getElementById('activity-instruction');
-      const instruction = instructionText || typeInstructions[activity.activity_type] || '';
-      const question = activity.question;
-      const spokenText = instruction;
-      const highlightElements = instructionEl ? [instructionEl, questionText] : [questionText];
-      listen.addEventListener('click', () => speakActivityText(
-        spokenText,
-        listen,
-        highlightElements,
-      ));
-    }
+    const spokenText = isPhonicsWord ? config.audio_text : activity.question;
+    const highlightElements = isPhonicsWord ? null : [questionText];
+    listen.addEventListener('click', () => speakActivityText(
+      spokenText,
+      listen,
+      highlightElements,
+    ));
     actions.appendChild(listen);
   }
   media.appendChild(actions);
@@ -1442,6 +1430,19 @@ function markMatchingAnswers(data) {
   const expectedAnswers = data.correct_answer;
   if (!expectedAnswers || typeof expectedAnswers !== 'object') return;
 
+  const activeConfig = activityConfig(activities[current] || {});
+  const answerLabel = (value) => (
+    (activeConfig.choices || []).find((choice) => String(choice.key) === String(value))?.text
+    || String(value)
+  );
+  const appendCorrection = (container, isCorrect, correctValue) => {
+    if (isCorrect) return;
+    const correction = document.createElement('span');
+    correction.className = 'matching-correction';
+    correction.textContent = `Correct match: ${answerLabel(correctValue)}`;
+    container.appendChild(correction);
+  };
+
   responseArea.querySelectorAll('.drag-match-target').forEach((target) => {
     const promptKey = target.dataset.prompt;
     if (!promptKey) return;
@@ -1451,6 +1452,7 @@ function markMatchingAnswers(data) {
     badge.className = 'matching-result-badge';
     badge.textContent = isCorrect ? 'Correct' : 'Incorrect';
     target.appendChild(badge);
+    appendCorrection(target, isCorrect, expectedAnswers[promptKey]);
   });
 
   const gradeFourCards = responseArea.querySelectorAll('.matching-prompt-card');
@@ -1467,6 +1469,16 @@ function markMatchingAnswers(data) {
       badge.className = 'matching-result-badge';
       badge.textContent = isCorrect ? 'Correct' : 'Incorrect';
       card.appendChild(badge);
+      appendCorrection(card, isCorrect, correctValue);
+
+      responseArea.querySelectorAll('.matching-choice-card').forEach((choiceCard) => {
+        if (choiceCard.dataset.choice === choiceKey) {
+          choiceCard.classList.add(isCorrect ? 'match-correct' : 'match-wrong');
+        }
+        if (!isCorrect && choiceCard.dataset.choice === correctValue) {
+          choiceCard.classList.add('match-correct');
+        }
+      });
     });
     return;
   }
@@ -1479,6 +1491,7 @@ function markMatchingAnswers(data) {
     badge.className = 'matching-result-badge';
     badge.textContent = isCorrect ? 'Correct' : 'Incorrect';
     pair.appendChild(badge);
+    appendCorrection(pair, isCorrect, correctValue);
   });
 
   responseArea.querySelectorAll('.matching-word:not([hidden])').forEach((word) => {
@@ -1489,6 +1502,7 @@ function markMatchingAnswers(data) {
     badge.className = 'matching-result-badge';
     badge.textContent = isCorrect ? 'Correct' : 'Incorrect';
     word.appendChild(badge);
+    appendCorrection(word, isCorrect, correctValue);
   });
   responseArea.querySelectorAll('.matching-row').forEach((row) => {
     if (row.dataset.choice !== undefined) {
@@ -1499,6 +1513,7 @@ function markMatchingAnswers(data) {
       badge.className = 'matching-result-badge';
       badge.textContent = isCorrect ? 'Correct' : 'Incorrect';
       row.querySelector('strong').appendChild(badge);
+      appendCorrection(row, isCorrect, correctValue);
       return;
     }
     const select = row.querySelector('select');
@@ -1510,6 +1525,7 @@ function markMatchingAnswers(data) {
     badge.className = 'matching-result-badge';
     badge.textContent = isCorrect ? 'Correct' : 'Incorrect';
     row.querySelector('strong').appendChild(badge);
+    appendCorrection(row, isCorrect, correctValue);
   });
 }
 

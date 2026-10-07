@@ -341,20 +341,21 @@ class Command(BaseCommand):
             raise ValueError(f'{lesson.title} must have at least five lesson words.')
 
         english_words = [word for word, _isizulu, _image in lesson_words]
-        for word, isizulu_word, image_source in lesson_words:
-            image_url = (
-                f'/static/img/vocab_sheets/{vocab_sheet}#panel-{image_source}'
-                if isinstance(image_source, int)
-                else image_source
-            )
-            options = english_words.copy()
-            random.Random(f'{lesson.title}:{word}').shuffle(options)
-            VisualActivityItem.objects.create(
-                lesson=lesson,
-                image_url=image_url,
-                correct_word=word,
-                word_options=','.join(options),
-            )
+        if lesson.grade != 3:
+            for word, isizulu_word, image_source in lesson_words:
+                image_url = (
+                    f'/static/img/vocab_sheets/{vocab_sheet}#panel-{image_source}'
+                    if isinstance(image_source, int)
+                    else image_source
+                )
+                options = english_words.copy()
+                random.Random(f'{lesson.title}:{word}').shuffle(options)
+                VisualActivityItem.objects.create(
+                    lesson=lesson,
+                    image_url=image_url,
+                    correct_word=word,
+                    word_options=','.join(options),
+                )
         for word, isizulu_word, image_source in pronunciation_words:
             image_url = (
                 f'/static/img/vocab_sheets/{vocab_sheet}#panel-{image_source}'

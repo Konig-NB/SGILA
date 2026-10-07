@@ -241,7 +241,6 @@
       message.textContent = form.dataset.confirmMessage || 'Are you sure you want to continue?';
       const isBlocked = form.dataset.blocked === 'true';
       continueButton.hidden = isBlocked;
-      continueButton.style.display = isBlocked ? 'none' : '';
       cancelButton.textContent = isBlocked ? 'Close' : 'Cancel';
       continueButton.classList.toggle('is-reactivate', !isBlocked && form.action.endsWith('/reactivate'));
       if (typeof dialog.showModal === 'function') dialog.showModal();
