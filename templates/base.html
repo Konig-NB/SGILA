@@ -34,6 +34,9 @@
         <span class="theme-toggle-icon" aria-hidden="true"></span>
         <span class="theme-toggle-label">Dark Mode</span>
       </button>
+      {% if request.path != '/' or request.session.account_role %}
+        <a href="/help/">Help</a>
+      {% endif %}
       {% if request.session.account_role == 'learner' %}
         <span>{{ request.session.child_name }}</span>
         <a href="/grade/{{ request.session.child_grade }}">Lessons</a>
@@ -160,7 +163,6 @@
 
     function closeModal() {
       modal.classList.add('hidden');
-      modal.style.display = 'none';
     }
 
     async function refreshScore() {
@@ -186,7 +188,6 @@
 
     function openModal() {
       modal.classList.remove('hidden');
-      modal.style.display = 'grid';
       continueButton.focus();
       refreshScore();
     }

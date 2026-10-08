@@ -2476,6 +2476,7 @@ def story_page(request, lesson_id):
         'child': child,
         'activity_resume_url': activity_resume_url(request, child, lesson),
         'first_activity_url': first_activity_url,
+        'activity_choices': activity_choices_for(lesson)[1:] if lesson.grade != 3 else [],
     })
 
 

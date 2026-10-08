@@ -303,12 +303,9 @@ SCHOOLS_SEARCH_RATE_LIMIT = 60
 SCHOOLS_SEARCH_RATE_WINDOW = 60
 
 # ─── AI story generation (Gemini text + Pollinations illustrations) ────────────
-# Leave GEMINI_API_KEY blank to keep the feature disabled — the "Explore more
-# stories" button will show a friendly "not configured yet" message instead
-# of failing. No SDK/pip dependency needed; both providers are called with
-# plain HTTPS requests (see lessons/views.py).
-from google import genai
-client = genai.Client()  # Automatically reads GEMINI_API_KEY from environment
+# Leave GEMINI_API_KEY blank to keep the feature disabled. The request path
+# creates a provider client only when a configured AI feature is actually used,
+# so ordinary startup and test runs never require an API key.
 # ─── AI story generation ─────────────────────────────────────────────────────
 # Grade 4 uses Groq for text and Pollinations with Cloudflare Workers AI as an
 # image fallback. Other grades retain their existing Gemini/Pollinations path.

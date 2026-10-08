@@ -662,7 +662,7 @@ body:not(.diagram-body) .learner-modal {
   backdrop-filter: blur(4px);
 }
 
-body:not(.diagram-body) .learner-modal.hidden { display: none !important; }
+body:not(.diagram-body) .learner-modal.hidden { display: none; }
 
 body:not(.diagram-body) .learner-modal-card {
   position: relative;
@@ -787,6 +787,33 @@ body:not(.diagram-body) .activity-pause-button { margin-left: auto; }
   gap: 14px;
   margin-top: 20px;
   flex-wrap: wrap;
+}
+
+.story-activity-choices {
+  display: grid;
+  flex: 1 1 100%;
+  gap: 12px;
+  width: min(100%, 820px);
+  margin-top: 10px;
+  text-align: left;
+}
+
+.story-activity-choices h2 {
+  margin: 0;
+  font-size: 1.15rem;
+}
+
+.story-activity-choice-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 10px;
+}
+
+.story-activity-choice-list .btn {
+  width: 100%;
+  min-height: 48px;
+  justify-content: flex-start;
+  text-align: left;
 }
 
 .hidden { display: none; }
@@ -6324,16 +6351,16 @@ body:not(.diagram-body) .gc-confirm-row .lr-btn {
 
 body:not(.diagram-body) .gc-btn-primary,
 body:not(.diagram-body) .gc-confirm-btn {
-  border: 1px solid #35b88e !important;
-  color: #103d3c !important;
-  background: #68d8bd !important;
+  border: 1px solid #35b88e;
+  color: #103d3c;
+  background: #68d8bd;
   box-shadow: 0 2px 0 rgba(16, 61, 60, .16);
 }
 
 body:not(.diagram-body) .gc-btn-secondary {
-  border: 1px solid #d4a72c !important;
-  color: #493408 !important;
-  background: #f4c547 !important;
+  border: 1px solid #d4a72c;
+  color: #493408;
+  background: #f4c547;
   box-shadow: 0 2px 0 rgba(73, 52, 8, .16);
 }
 
@@ -6569,7 +6596,7 @@ body:not(.diagram-body):has(.parent-picker-page) {
   background:
     linear-gradient(rgba(255, 248, 239, .62), rgba(255, 248, 239, .74)),
     url("../img/welcome_back/page08_img01.png") center top / cover fixed,
-    #fff8ef !important;
+    #fff8ef;
 }
 
 body:not(.diagram-body):has(.parent-picker-page) .app-navbar {
@@ -6585,7 +6612,7 @@ body:not(.diagram-body) .parent-picker-page {
   padding: clamp(22px, 3vw, 34px) clamp(22px, 3vw, 34px) clamp(22px, 3vw, 34px) clamp(116px, 10vw, 152px);
   border: 0;
   border-radius: 30px;
-  background: transparent !important;
+  background: transparent;
   box-shadow: none;
 }
 
@@ -6615,7 +6642,7 @@ body:not(.diagram-body) .pd-hero {
   padding: clamp(28px, 3.5vw, 48px);
   border-radius: 22px;
   color: #4e5d73;
-  background: linear-gradient(135deg, var(--sun-soft), var(--mint-soft)) !important;
+  background: linear-gradient(135deg, var(--sun-soft), var(--mint-soft));
   box-shadow: none;
 }
 
@@ -6792,11 +6819,11 @@ body:not(.diagram-body) .lr-btn {
   background:
     linear-gradient(rgba(18, 52, 72, .88), rgba(12, 37, 55, .94)),
     url("../img/welcome_back/page08_img01.png") center top / cover fixed,
-    var(--paper) !important;
+    var(--paper);
 }
 
 [data-theme="dark"] body:not(.diagram-body) .parent-picker-page {
-  background: rgba(24, 59, 78, .78) !important;
+  background: rgba(24, 59, 78, .78);
   box-shadow: 0 30px 70px rgba(0, 0, 0, .28);
 }
 
@@ -6809,7 +6836,7 @@ body:not(.diagram-body) .lr-btn {
 }
 
 [data-theme="dark"] body:not(.diagram-body) .pd-section-hdr {
-  color: var(--ink) !important;
+  color: var(--ink);
 }
 
 [data-theme="dark"] body:not(.diagram-body) .lr-row,
@@ -6817,26 +6844,26 @@ body:not(.diagram-body) .lr-btn {
 [data-theme="dark"] body:not(.diagram-body) .lr-row.c2,
 [data-theme="dark"] body:not(.diagram-body) .lr-row.c3,
 [data-theme="dark"] body:not(.diagram-body) .lr-row.c4 {
-  background: linear-gradient(135deg, #1d4d63 0%, #173b52 100%) !important;
+  background: linear-gradient(135deg, #1d4d63 0%, #173b52 100%);
   box-shadow: 0 16px 34px rgba(0, 0, 0, .22);
 }
 
 [data-theme="dark"] body:not(.diagram-body) .lr-name,
 [data-theme="dark"] body:not(.diagram-body) .lr-stars {
-  color: var(--ink) !important;
+  color: var(--ink);
 }
 
 [data-theme="dark"] body:not(.diagram-body) .lr-username,
 [data-theme="dark"] body:not(.diagram-body) .lr-sub,
 [data-theme="dark"] body:not(.diagram-body) .lr-bar-top,
 [data-theme="dark"] body:not(.diagram-body) .lr-class-tag.muted {
-  color: var(--muted) !important;
+  color: var(--muted);
 }
 
 [data-theme="dark"] body:not(.diagram-body) .lr-avatar,
 [data-theme="dark"] body:not(.diagram-body) .lr-btn {
-  background: var(--surface) !important;
-  color: var(--ink) !important;
+  background: var(--surface);
+  color: var(--ink);
 }
 
 [data-theme="dark"] body:not(.diagram-body) .gc-banner {
@@ -6866,14 +6893,14 @@ body:not(.diagram-body) .lr-btn {
 
 [data-theme="dark"] body:not(.diagram-body) .gc-btn-primary,
 [data-theme="dark"] body:not(.diagram-body) .gc-confirm-btn {
-  color: #111111 !important;
-  background: #68d8bd !important;
+  color: #111111;
+  background: #68d8bd;
 }
 
 [data-theme="dark"] body:not(.diagram-body) .gc-btn-secondary {
-  border: 1px solid #d6aa32 !important;
-  color: #ffc83d !important;
-  background: rgba(14, 52, 69, .86) !important;
+  border: 1px solid #d6aa32;
+  color: #ffc83d;
+  background: rgba(14, 52, 69, .86);
   box-shadow: inset 0 0 0 1px rgba(214, 170, 50, .12);
 }
 
@@ -6965,13 +6992,13 @@ body:not(.diagram-body) .gc-dialog-confirm {
 
 [data-theme="dark"] body:not(.diagram-body) .gc-dialog-cancel {
   border: 1px solid rgba(153, 181, 190, .4);
-  color: #eaf1f2 !important;
-  background: rgba(14, 52, 69, .86) !important;
+  color: #eaf1f2;
+  background: rgba(14, 52, 69, .86);
 }
 
 [data-theme="dark"] body:not(.diagram-body) .gc-dialog-confirm {
-  color: #103d3c !important;
-  background: #68d8bd !important;
+  color: #103d3c;
+  background: #68d8bd;
 }
 
 [data-theme="dark"] body:not(.diagram-body) .gc-confirm-dialog::backdrop {
@@ -8223,7 +8250,7 @@ body:not(.diagram-body) .activity-instruction {
   margin: 0 0 10px;
   color: var(--auto-5d6678-t);
   font-size: 1.35rem;
-  font-weight: 900 !important;
+  font-weight: 900;
   line-height: 1.4;
 }
 
@@ -13156,37 +13183,37 @@ body:not(.diagram-body) .learner-access-badge {
 }
 
 body:not(.diagram-body) .learner-activation-btn:not(.learner-activation-btn--reactivate) {
-  border: 1px solid #c93b49 !important;
-  color: #fff !important;
-  background: #c93b49 !important;
+  border: 1px solid #c93b49;
+  color: #fff;
+  background: #c93b49;
 }
 
 body:not(.diagram-body) .learner-activation-btn:not(.learner-activation-btn--reactivate):hover {
-  background: #a92d3b !important;
+  background: #a92d3b;
 }
 
 [data-theme="dark"] body:not(.diagram-body) .learner-activation-dialog {
-  border-color: var(--line) !important;
-  color: var(--ink) !important;
-  background: var(--surface) !important;
-  box-shadow: 0 28px 80px rgba(0, 0, 0, .42) !important;
+  border-color: var(--line);
+  color: var(--ink);
+  background: var(--surface);
+  box-shadow: 0 28px 80px rgba(0, 0, 0, .42);
 }
 
 [data-theme="dark"] body:not(.diagram-body) .learner-activation-dialog::backdrop {
-  background: rgba(5, 17, 25, .76) !important;
+  background: rgba(5, 17, 25, .76);
 }
 
 [data-theme="dark"] body:not(.diagram-body) .learner-activation-dialog .account-dialog-heading h2 {
-  color: var(--ink) !important;
+  color: var(--ink);
 }
 
 [data-theme="dark"] body:not(.diagram-body) .learner-activation-dialog .account-dialog-form > p {
-  color: var(--muted) !important;
+  color: var(--muted);
 }
 
 [data-theme="dark"] body:not(.diagram-body) .learner-activation-dialog .account-dialog-icon {
-  background: var(--sun) !important;
-  color: #12323f !important;
+  background: var(--sun);
+  color: #12323f;
 }
 
 [data-theme="dark"] body:not(.diagram-body) .cooldown-notice-dialog {
@@ -13977,11 +14004,6 @@ body:not(.diagram-body) .truth-card > img {
   .listen-spell-row .audio-assist, .listen-spell-row .spelling-input { grid-column: 2; }
   .listen-spell-row .spelling-result { grid-column: 3; grid-row: 1 / span 2; }
 }
-/* Hide the bottom "Story activities" section on stories */
-body:not(.diagram-body) .story-activity-choices {
-    display: none !important;
-}
-
 .help-center-page { width: 100%; margin: 0; padding: 2rem 1rem 4rem; color: var(--auto-374151-t); }
 .help-center-container { max-width: 940px; }
 .help-center-header { flex-wrap: wrap; justify-content: space-between; }
