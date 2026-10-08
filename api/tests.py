@@ -472,6 +472,31 @@ class SgilaFlowTests(TestCase):
         session['child_grade'] = child.grade
         session.save()
 
+    def test_grade_home_shows_new_in_progress_and_completed_lesson_statuses(self):
+        child = Child.objects.create(
+            name='Status learner',
+            age=8,
+            grade=1,
+            parent_email='lesson-status@example.com',
+            password='hash',
+        )
+        started_lesson = Lesson.objects.create(title='Started story', grade=1)
+        completed_lesson = Lesson.objects.create(title='Finished story', grade=1)
+        Progress.objects.create(child=child, lesson=completed_lesson)
+        self.sign_in_child(child)
+        session = self.client.session
+        session[f'lesson_{started_lesson.id}_comprehension_score'] = 0
+        session.save()
+
+        response = self.client.get('/grade/1')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'New lesson')
+        self.assertContains(response, 'Started story')
+        self.assertContains(response, 'Paused')
+        self.assertContains(response, 'Finished story')
+        self.assertContains(response, 'Completed')
+        self.assertContains(response, 'badge-progress')
     @override_settings(ENABLE_STORY_THRESHOLDS=False)
     def test_ai_story_eligibility_does_not_require_95_percent_when_disabled(self):
         child = Child.objects.create(
@@ -768,32 +793,6 @@ class SgilaFlowTests(TestCase):
         payload = json.loads(request.data)
         self.assertEqual(result, (image_bytes, 'image/jpeg'))
         self.assertEqual(payload, {'prompt': 'A simple test image', 'steps': 4})
-
-    def test_grade_home_shows_new_in_progress_and_completed_lesson_statuses(self):
-        child = Child.objects.create(
-            name='Status learner',
-            age=8,
-            grade=1,
-            parent_email='lesson-status@example.com',
-            password='hash',
-        )
-        started_lesson = Lesson.objects.create(title='Started story', grade=1)
-        completed_lesson = Lesson.objects.create(title='Finished story', grade=1)
-        Progress.objects.create(child=child, lesson=completed_lesson)
-        self.sign_in_child(child)
-        session = self.client.session
-        session[f'lesson_{started_lesson.id}_comprehension_score'] = 0
-        session.save()
-
-        response = self.client.get('/grade/1')
-
-        self.assertEqual(response.status_code, 200)
-        self.assertContains(response, 'New lesson')
-        self.assertContains(response, 'Started story')
-        self.assertContains(response, 'Paused')
-        self.assertContains(response, 'Finished story')
-        self.assertContains(response, 'Completed')
-        self.assertContains(response, 'badge-progress')
 
     def test_terrible_twins_extra_activity_is_marked_as_comprehension(self):
         self.assertEqual(
