@@ -720,8 +720,6 @@ body:not(.diagram-body) .learner-modal-card h2 {
   font-size: clamp(1.35rem, 4vw, 1.8rem);
 }
 
-body:not(.diagram-body) #activity-picker-title { color: #000; }
-
 body:not(.diagram-body) .learner-modal-card p { color: #56617a; font-weight: 700; }
 [data-theme="dark"] body:not(.diagram-body) .learner-modal-card {
   background: #0f172a;
@@ -10788,6 +10786,9 @@ body:not(.diagram-body) .story-diary-signature {
     font-size: 1.35rem;
     font-weight: 800;
     line-height: 1.4;
+  }
+  .subscription-parent-section > .epic-cards {
+    margin: clamp(24px, 3vw, 36px) auto 0;
   }
   .epic-cards {
     display: flex;

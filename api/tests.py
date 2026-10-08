@@ -2467,6 +2467,82 @@ class ChildReassignmentCooldownTests(TestCase):
         self.assertNotContains(response, 'class="alert alert-cooldown-popup error"')
 
 
+class PublicPlansPageTests(TestCase):
+    def test_public_plans_are_informational_and_subscription_redirects_there(self):
+        response = self.client.get('/plans')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'This page is for information only')
+        self.assertContains(response, 'sign in to')
+        self.assertContains(response, 'See full pricing details')
+        self.assertNotContains(response, 'Start with a free trial')
+        self.assertNotContains(response, 'Activate Enterprise Package')
+        self.assertNotContains(response, 'data-pricing-activate')
+        self.assertNotContains(response, 'href="/subscription/redeem-package"')
+        self.assertNotContains(response, 'Choose Individual Plan')
+        self.assertNotContains(response, 'Choose Family Plan')
+
+        subscription_response = self.client.get('/subscription')
+        self.assertRedirects(subscription_response, '/plans')
+
+    def test_signed_in_subscription_selection_and_enterprise_activation_remain(self):
+        parent = Parent.objects.create(
+            full_name='Plans Test Parent',
+            email='plans-parent@example.com',
+            password=make_password('password123'),
+            accepted_popia=True,
+        )
+        Subscription.objects.create(parent=parent, plan_type='family', status='trial')
+        session = self.client.session
+        session['account_role'] = 'parent'
+        session['account_id'] = parent.id
+        session.save()
+
+        response = self.client.get('/subscription')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Choose Family Plan')
+        self.assertContains(response, 'Activate Enterprise Package')
+        self.assertContains(response, 'data-pricing-activate')
+
+        response = self.client.post('/subscription', {'plan': 'family'})
+        self.assertRedirects(response, '/subscription/payment')
+
+    def test_signed_in_subscription_pages_hide_trial_skip_and_keep_controls(self):
+        parent = Parent.objects.create(
+            full_name='Subscription Page Parent',
+            email='subscription-parent@example.com',
+            password=make_password('password123'),
+            accepted_popia=True,
+        )
+        teacher = Teacher.objects.create(
+            full_name='Subscription Page Teacher',
+            email='subscription-teacher@example.com',
+            password=make_password('password123'),
+            school_name='Test School',
+            accepted_popia=True,
+        )
+
+        for role, account in (('parent', parent), ('teacher', teacher)):
+            with self.subTest(role=role):
+                session = self.client.session
+                session['account_role'] = role
+                session['account_id'] = account.id
+                session.save()
+
+                response = self.client.get('/subscription')
+
+                self.assertEqual(response.status_code, 200)
+                self.assertNotContains(response, 'Not right now')
+                self.assertContains(response, 'Choose Individual Plan')
+                self.assertContains(response, 'Choose Family Plan')
+                self.assertContains(response, 'Activate Enterprise Package')
+                self.assertContains(response, 'Cancel subscription')
+                if role == 'teacher':
+                    self.assertContains(response, 'Activate school package')
+                    self.assertContains(response, 'action="/subscription/redeem-package"')
+
+
 class CurriculumSeedTests(TestCase):
     def test_seeded_curriculum_content_is_limited_to_grades_one_to_four(self):
         call_command('seed_data', verbosity=0)

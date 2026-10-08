@@ -3194,37 +3194,35 @@ def legacy_build_dashboard_row(child):
         'g4_worst2': g4_worst2,
     }
 
+
+def public_plans_page(request):
+    """Show plan pricing without exposing account activation actions."""
+    return render(request, 'subscription.html', {
+        'role': 'guest',
+        'account': None,
+        'subscription': None,
+        'can_choose_plans': False,
+        'plan_prices': pricing.plan_prices(),
+        **pricing.card_context(),
+        **pricing.modal_context(),
+        **school_context.finder_context(instance='dialog'),
+    })
+
+
 def subscription_page(request):
     """
-    Every plan SGILA sells — Individual, Family and Enterprise — shown right
-    after registration, from the dashboard's "Plan" link, and from the signed-out
-    homepage nav so a visitor can read the pricing before creating an account.
-
-    Signed-out visitors get the same three cards read-only, with the
-    call-to-action pointing at registration. Enterprise is always activated with
-    a package code on /subscription/redeem-package; Individual and Family are
-    card-paid by both parents and teachers, and hand off to /subscription/payment.
+    Signed-in parents and teachers manage subscription choices here. Public
+    pricing is on /plans; signed-out visitors to this route are redirected there.
+    Enterprise is activated with a package code on /subscription/redeem-package;
+    Individual and Family hand off to /subscription/payment.
     """
     role = request.session.get('account_role')
 
     if role not in ('parent', 'teacher'):
-        # A plan choice is an account action, so it still needs a sign-in...
         if request.method == 'POST':
             messages.error(request, 'Please sign in first.')
             return redirect('/login')
-        # ...but browsing the plans is not.
-        return render(request, 'subscription.html', {
-            'role': 'guest',
-            'account': None,
-            'subscription': None,
-            'can_choose_plans': False,
-            # Enterprise card + pricing dialog read every figure from config via
-            # lessons.pricing, so nothing below is hard-coded in the template.
-            'plan_prices': pricing.plan_prices(),
-            **pricing.card_context(),
-            **pricing.modal_context(),
-            **school_context.finder_context(instance='dialog'),
-        })
+        return redirect('/plans')
 
     account_id = request.session['account_id']
     if role == 'parent':
