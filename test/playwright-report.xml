@@ -1,0 +1,94 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="1" skipped="0" tests="12" time="84.464" timestamp="2026-10-04T19:55:49.829698+02:00" hostname="Nazo"><testcase classname="test_ui" name="test_login_page_loads[chromium]" time="5.335" /><testcase classname="test_ui" name="test_public_entry_pages_render[chromium]" time="5.711" /><testcase classname="test_ui" name="test_ui_flow_downloads_pdf[chromium]" time="1.031" /><testcase classname="test_ui" name="test_help_search_support_ticket_and_feedback[chromium]" time="0.963" /><testcase classname="test_ui" name="test_parent_can_sign_in_and_invalid_password_is_rejected[chromium]" time="3.694" /><testcase classname="test_ui" name="test_parent_trial_child_learning_and_ai_story_journey[chromium]" time="11.690" /><testcase classname="test_ui" name="test_parent_password_recovery_and_new_password_login[chromium]" time="12.811"><failure message="AssertionError: Locator expected to have attribute 're.compile('school_id=\\d+')'&#10;Actual value: /subscription/redeem-package?school_type=quintile_1&amp;learners=100 &#10;Call log:&#10;  - Expect &quot;to_have_attribute&quot; locator(&quot;[data-pricing-activate]&quot;) with timeout 5000ms&#10;  - waiting for locator(&quot;[data-pricing-activate]&quot;)&#10;    14 × locator resolved to &lt;a class=&quot;btn btn-primary&quot; data-pricing-activate=&quot;&quot; href=&quot;/subscription/redeem-package?school_type=quintile_1&amp;learners=100&quot;&gt;Activate Enterprise Package&lt;/a&gt;&#10;       - unexpected value &quot;/subscription/redeem-package?school_type=quintile_1&amp;learners=100&quot;&#10;&#10;Aria snapshot:&#10;- link &quot;Activate Enterprise Package&quot;:&#10;  - /url: /subscription/redeem-package?school_type=quintile_1&amp;learners=100">live_server = &lt;LiveServer listening at http://localhost:55117&gt;
+page = &lt;Page url='http://localhost:55117/subscription'&gt;
+monkeypatch = &lt;_pytest.monkeypatch.MonkeyPatch object at 0x0000022D486AE210&gt;
+
+    @pytest.mark.django_db(transaction=True)
+    def test_parent_password_recovery_and_new_password_login(live_server, page: Page, monkeypatch):
+        School.objects.create(
+            emis_number="PW-ENT-001",
+            name="Playwright Primary School",
+            province="Gauteng",
+            quintile=3,
+            sector="public",
+            learners_2025=120,
+            status="open",
+        )
+        parent = Parent.objects.create(
+            full_name="Recovery Parent",
+            email="recovery@example.test",
+            password=hash_password("Old-Password-42!"),
+        )
+        Subscription.objects.create(parent=parent, plan_type="family", status="trial")
+    
+        page.goto(f"{live_server.url}/forgot-password?role=parent")
+        page.get_by_label("Email").fill(parent.email)
+        page.get_by_role("button", name="Send reset link").click()
+        expect(page.get_by_role("heading", name="Check your inbox")).to_be_visible()
+        token = PasswordResetToken.objects.get(email=parent.email, role="parent", is_used=False)
+    
+        page.goto(f"{live_server.url}/reset-password?token={token.token}&amp;role=parent")
+        page.get_by_label("New password").fill("New-Password-52!")
+        page.get_by_label("Confirm password").fill("New-Password-52!")
+        page.get_by_role("button", name="Set new password").click()
+        expect(page).to_have_url(f"{live_server.url}/login?role=parent")
+        assert PasswordResetToken.objects.get(pk=token.pk).is_used
+    
+        page.get_by_label("Email").fill(parent.email)
+        page.get_by_label("Password").fill("New-Password-52!")
+        page.get_by_role("button", name="Sign in").click()
+        expect(page).to_have_url(f"{live_server.url}/parent/dashboard")
+    
+        page.get_by_role("link", name="Plan", exact=True).click()
+        page.get_by_role("button", name="Choose Family Plan").click()
+        expect(page).to_have_url(f"{live_server.url}/subscription/payment")
+        page.get_by_label("Name on card").fill("Recovery Parent")
+        page.get_by_label("Card number").fill("4111111111111111")
+        page.get_by_label("Expiry (MM/YYYY)").fill("08/2028")
+        page.get_by_label("CVV").fill("123")
+        page.get_by_role("button", name="Confirm and go to my dashboard").click()
+        expect(page).to_have_url(f"{live_server.url}/parent/dashboard")
+        subscription = Subscription.objects.get(parent=parent)
+        assert subscription.status == "active"
+        assert subscription.card_last4 == "1111"
+    
+        page.goto(f"{live_server.url}/subscription/add-seat")
+        page.get_by_label("Number of extra seats").fill("2")
+        page.get_by_role("button", name="Continue to payment").click()
+        expect(page.get_by_role("heading", name="Confirm your extra seats")).to_be_visible()
+        page.get_by_role("button", name="Use a different payment method").click()
+        page.get_by_role("link", name="Bank debit order").click()
+        page.get_by_label("Account holder name").fill("Recovery Parent")
+        page.get_by_label("Bank name").fill("Test Bank")
+        page.get_by_label("Account number").fill("1234567890")
+        page.get_by_label("Branch code").fill("123456")
+        page.get_by_role("button", name="Confirm and add 2 seats").click()
+        subscription.refresh_from_db()
+        assert subscription.extra_active_seats == 2
+        assert subscription.payment_method == "debit_order"
+        assert subscription.account_last4 == "7890"
+    
+        package_code = PackageCode.objects.create(code="PLAYWRIGHT-ENTERPRISE", label="Playwright test")
+        page.goto(f"{live_server.url}/subscription")
+        page.get_by_role("button", name="See full pricing details").click()
+        expect(page.get_by_role("dialog").get_by_role("heading", name="Full school pricing details")).to_be_visible()
+        finder = page.locator("#enterprise-pricing-dialog")
+        finder.locator("[data-sf-province]").select_option("Gauteng")
+        finder.locator("[data-sf-query]").fill("Playwright Primary")
+        school_option = finder.locator('[data-sf-suggestions] [role="option"]')
+        expect(school_option).to_be_visible()
+        school_option.click()
+        expect(finder.locator("[data-sf-selected-name]")).to_contain_text("Playwright Primary School")
+&gt;       expect(page.locator("[data-pricing-activate]")).to_have_attribute("href", re.compile(r"school_id=\d+"))
+E       AssertionError: Locator expected to have attribute 're.compile('school_id=\\d+')'
+E       Actual value: /subscription/redeem-package?school_type=quintile_1&amp;learners=100 
+E       Call log:
+E         - Expect "to_have_attribute" locator("[data-pricing-activate]") with timeout 5000ms
+E         - waiting for locator("[data-pricing-activate]")
+E           14 × locator resolved to &lt;a class="btn btn-primary" data-pricing-activate="" href="/subscription/redeem-package?school_type=quintile_1&amp;learners=100"&gt;Activate Enterprise Package&lt;/a&gt;
+E              - unexpected value "/subscription/redeem-package?school_type=quintile_1&amp;learners=100"
+E       
+E       Aria snapshot:
+E       - link "Activate Enterprise Package":
+E         - /url: /subscription/redeem-package?school_type=quintile_1&amp;learners=100
+
+test\test_ui.py:357: AssertionError</failure></testcase><testcase classname="test_ui" name="test_enterprise_package_redemption_and_cancellation[chromium]" time="3.373" /><testcase classname="test_ui" name="test_grade_four_activity_interactions_and_results[chromium]" time="5.725" /><testcase classname="test_ui" name="test_visual_pronunciation_and_all_spelling_types[chromium]" time="4.818" /><testcase classname="test_ui" name="test_all_grade_lesson_and_activity_screens_render_for_the_matching_learner[chromium]" time="13.067" /><testcase classname="test_ui" name="test_teacher_signup_verification_trial_and_dashboard[chromium]" time="14.357" /></testsuite></testsuites>
