@@ -2,15 +2,7 @@ import json
 
 from django.test import Client, TestCase
 
-from api.models import (
-	Child,
-	Lesson,
-	Parent,
-	Progress,
-	PronunciationWord,
-	ReadingActivity,
-	SpellingActivity,
-)
+from api.models import Child, Lesson, Parent, Progress, ReadingActivity
 from api.reporting import rows_for_record
 from lessons.views import activity_choices_for
 
@@ -130,40 +122,30 @@ class ActivityMenuLabelTests(TestCase):
 
 	def test_grade_three_activity_labels_match_the_story_sections(self):
 		lesson = Lesson.objects.create(title='Grade Three Story', grade=3)
-		ReadingActivity.objects.create(
-			lesson=lesson,
-			order=1,
-			group_number=1,
-			group_title='Comprehension Questions',
-			activity_type=ReadingActivity.MULTIPLE_CHOICE,
-			skill='literal_comprehension',
-			question='What happened?',
-		)
-		PronunciationWord.objects.create(lesson=lesson, word='Story')
-		SpellingActivity.objects.create(
-			lesson=lesson,
-			activity_type=SpellingActivity.FILL_VOWEL,
-			display_text='st_ry',
-			answer='story',
-		)
 
 		choices = activity_choices_for(lesson)
 		self.assertEqual(
 			[choice['label'] for choice in choices],
 			[
 				'Read the Story',
-				'Comprehension Questions',
-				'Pronunciation: Listen and Say Words',
-				'Spelling: Build Words',
+				'Comprehension Questions - Remember the story',
+				'Sequencing - Put events in order',
+				'True or False - Think carefully',
+				'Word Detective - Find the missing words',
+				'Spelling Questions - Build the story words',
+				'Word Balloon Pop',
 			],
 		)
 		self.assertEqual(
 			[choice['url'] for choice in choices],
 			[
 				f'/lessons/{lesson.id}/story',
-				f'/lessons/{lesson.id}/questions?activity_index=0',
-				f'/lessons/{lesson.id}/pronunciation',
-				f'/lessons/{lesson.id}/spelling',
+				f'/lessons/{lesson.id}/activities?activity_index=0',
+				f'/lessons/{lesson.id}/activities?activity_index=1',
+				f'/lessons/{lesson.id}/activities?activity_index=2',
+				f'/lessons/{lesson.id}/activities?activity_index=3',
+				f'/lessons/{lesson.id}/activities?activity_index=4',
+				f'/lessons/{lesson.id}/activities?activity_index=5',
 			],
 		)
 
@@ -182,14 +164,6 @@ class ActivityMenuLabelTests(TestCase):
 			password='not-a-real-password',
 		)
 		lesson = Lesson.objects.create(title='Paused Grade Three Story', grade=3)
-		ReadingActivity.objects.create(
-			lesson=lesson,
-			order=1,
-			group_number=1,
-			activity_type=ReadingActivity.MULTIPLE_CHOICE,
-			skill='literal_comprehension',
-			question='What happened?',
-		)
 		client = Client()
 		session = client.session
 		session['account_role'] = 'learner'
@@ -201,7 +175,7 @@ class ActivityMenuLabelTests(TestCase):
 		response = client.post(
 			f'/lessons/{lesson.id}/activity-pause',
 			json.dumps({
-				'resume_url': f'/lessons/{lesson.id}/questions?activity_index=0',
+				'resume_url': f'/lessons/{lesson.id}/activities?activity_index=3&question_index=2',
 				'score': {'score': 2, 'total': 5},
 			}),
 			content_type='application/json',
@@ -214,7 +188,7 @@ class ActivityMenuLabelTests(TestCase):
 		refreshed_child = Child.objects.get(pk=child.pk)
 		self.assertEqual(
 			refreshed_child.paused_activities[str(lesson.id)]['url'],
-			f'/lessons/{lesson.id}/questions?activity_index=0',
+			f'/lessons/{lesson.id}/activities?activity_index=3&question_index=2',
 		)
 		self.assertEqual(refreshed_child.paused_activities[str(lesson.id)]['score'], 2)
 		self.assertEqual(refreshed_child.paused_activities[str(lesson.id)]['total'], 5)
@@ -326,6 +300,8 @@ class ActivityScoreReportingTests(TestCase):
 			{row['key']: row['score'] for row in rows_for_record(record)},
 			{
 				'grade3_comprehension_check': 4,
+				'grade3_visual_match': 3,
+				'grade3_true_false': 2,
 				'grade3_word_detective': 5,
 				'grade3_listen_spell': 1,
 				'grade3_word_balloon': 4,

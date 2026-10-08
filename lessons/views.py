@@ -282,19 +282,14 @@ def activity_choices_for(lesson):
         choices.extend(groups.values())
     elif lesson.grade == 3:
         choices = [{'label': 'Read the Story', 'url': f'{base}/story'}]
-        ordered_activities = list(lesson.reading_activities.order_by('group_number', 'order', 'id'))
-        groups = {}
-        for index, activity in enumerate(ordered_activities):
-            group_number = activity.group_number or activity.order
-            groups.setdefault(group_number, {
-                'label': activity.group_title or learner_activity_label(activity),
-                'url': f'{base}/questions?activity_index={index}',
-            })
-        choices.extend(groups.values())
-        if lesson.pronunciation_words.exists():
-            choices.append({'label': 'Pronunciation: Listen and Say Words', 'url': f'{base}/pronunciation'})
-        if lesson.spelling_activities.exists():
-            choices.append({'label': 'Spelling: Build Words', 'url': f'{base}/spelling'})
+        choices.extend([
+            {'label': 'Comprehension Questions - Remember the story', 'url': f'{base}/activities?activity_index=0'},
+            {'label': 'Sequencing - Put events in order', 'url': f'{base}/activities?activity_index=1'},
+            {'label': 'True or False - Think carefully', 'url': f'{base}/activities?activity_index=2'},
+            {'label': 'Word Detective - Find the missing words', 'url': f'{base}/activities?activity_index=3'},
+            {'label': 'Spelling Questions - Build the story words', 'url': f'{base}/activities?activity_index=4'},
+            {'label': 'Word Balloon Pop', 'url': f'{base}/activities?activity_index=5'},
+        ])
     elif lesson.grade == 4 and (
         lesson.vocabulary_questions.exists()
         or lesson.sequencing_activities.exists()
@@ -367,13 +362,7 @@ def activity_next_url(lesson, current):
         ('pronunciation', lesson.pronunciation_words.exists()),
         ('spelling', lesson.spelling_activities.exists()),
     ]
-    if lesson.grade == 3:
-        routes = [
-            ('questions', lesson.reading_activities.exists() or lesson.questions.exists()),
-            ('pronunciation', lesson.pronunciation_words.exists()),
-            ('spelling', lesson.spelling_activities.exists()),
-        ]
-    elif lesson.grade == 4:
+    if lesson.grade == 4:
         routes = [
             ('questions', lesson.reading_activities.exists() or lesson.questions.exists()),
             ('vocabulary', lesson.vocabulary_questions.exists()),
@@ -2279,6 +2268,21 @@ def grade_home(request, grade):
     lesson_data = []
     for lesson in lessons:
         record = progress_by_lesson.get(lesson.id)
+        assessment_scores = record.assessment_scores if record and isinstance(record.assessment_scores, dict) else {}
+        grade3_completed = bool(
+            lesson.grade == 3
+            and (
+                assessment_scores.get('grade3_activities', {}).get('total') == 24
+                or all(key in assessment_scores for key in (
+                    'grade3_comprehension_check',
+                    'grade3_visual_match',
+                    'grade3_true_false',
+                    'grade3_word_detective',
+                    'grade3_listen_spell',
+                    'grade3_word_balloon',
+                ))
+            )
+        )
         group_sizes = {}
         for group_number in lesson.reading_activities.values_list('group_number', flat=True):
             if group_number:
@@ -2305,7 +2309,8 @@ def grade_home(request, grade):
             'grade': lesson.grade,
             'thumbnail_image': lesson.thumbnail_image,
             'completed': (
-                lesson_passed(child, lesson) if lesson.grade == 4 and lesson.is_ai_generated else bool(record)
+                grade3_completed if lesson.grade == 3
+                else (lesson_passed(child, lesson) if lesson.grade == 4 and lesson.is_ai_generated else bool(record))
             ),
             'stars': range(record.stars_earned) if record else range(0),
             'is_current_ai_story': lesson.is_ai_generated and lesson.id == getattr(latest_ai_lesson, 'id', None),
@@ -2461,14 +2466,17 @@ def story_page(request, lesson_id):
         'audio_url': p.audio_url,
         'highlighted_words': p.get_highlighted_words(),
     } for p in lesson.pages.all()]
-    first_activity_url = f'/lessons/{lesson_id}/questions'
+    if lesson.grade == 3:
+        first_activity_url = f'/lessons/{lesson_id}/activities'
+    else:
+        first_activity_url = f'/lessons/{lesson_id}/questions'
     return render(request, 'story.html', {
         'lesson': lesson,
         'pages': pages,
         'child': child,
         'activity_resume_url': activity_resume_url(request, child, lesson),
         'first_activity_url': first_activity_url,
-        'activity_choices': activity_choices_for(lesson)[1:],
+        'activity_choices': activity_choices_for(lesson)[1:] if lesson.grade != 3 else [],
     })
 
 
@@ -2478,6 +2486,8 @@ def questions_page(request, lesson_id):
     if response:
         return response
     lesson = get_object_or_404(Lesson, id=lesson_id, grade=child.grade)
+    if lesson.grade == 3:
+        return redirect(f'/lessons/{lesson_id}/activities')
     total_questions = lesson.reading_activities.count() or ComprehensionQuestion.objects.filter(lesson=lesson).count()
     next_activity_url = activity_next_url(lesson, 'questions')
     return render(request, 'questions.html', {
@@ -2495,6 +2505,12 @@ def visual_activity_page(request, lesson_id):
     if response:
         return response
     lesson = get_object_or_404(Lesson, id=lesson_id, grade=child.grade)
+    if lesson.grade == 3 and not lesson.visual_items.exists():
+        if lesson.pronunciation_words.exists():
+            return redirect(f'/lessons/{lesson_id}/pronunciation')
+        if lesson.spelling_activities.exists():
+            return redirect(f'/lessons/{lesson_id}/spelling')
+        return redirect(f'/lessons/{lesson_id}/results')
     return render(request, 'visual_activity.html', {
         'lesson': lesson,
         'child': child,

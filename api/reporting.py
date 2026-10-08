@@ -84,18 +84,11 @@ def scores_for_record(record):
             for key, values in record.assessment_scores.items()
         }
         if record.lesson.grade == 3:
-            for retired_skill in (
-                'grade3_visual_match',
-                'grade3_true_false',
-                'sequencing',
-                'visual_literacy',
-            ):
-                scores.pop(retired_skill, None)
-        else:
-            if not record.lesson.sequencing_activities.exists():
-                scores.pop('sequencing', None)
-            if not record.lesson.visual_items.exists():
-                scores.pop('visual_literacy', None)
+            return {key: values for key, values in scores.items() if key.startswith('grade3_')}
+        if not record.lesson.sequencing_activities.exists():
+            scores.pop('sequencing', None)
+        if not record.lesson.visual_items.exists():
+            scores.pop('visual_literacy', None)
         return scores
 
     lesson = record.lesson
