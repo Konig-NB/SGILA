@@ -1,48 +1,33 @@
 {% extends 'base.html' %}
 {% load static %}
-{% block title %}Choose your plan - SGILA{% endblock %}
+{% block title %}{% if role == 'guest' %}Plans &amp; pricing{% else %}Choose your plan{% endif %} - SGILA{% endblock %}
 {% block content %}
 
 {% if role == 'guest' %}
 
 <section class="epic-band">
   <img class="auth-koaly-peek subscription-koaly-peek" src="{% static 'img/koaly_cutout.png' %}" alt="" aria-hidden="true">
-  <h1>Every SGILA plan, in one place</h1>
+  <h1>Plans &amp; pricing</h1>
   <h2 class="subscription-parent-summary">
-    Every plan includes a <strong>30-day free trial</strong> — parents, teachers
-    and schools. Create a free account to start yours, and compare anything
-    below first.
+    This page is for information only. To activate or manage a plan, sign in to
+    your SGILA account.
   </h2>
 
   {% include 'includes/plan_cards.html' %}
 
   <p class="subscription-add-seat-hint">
-    Ready to start? <a href="/register">Create your free account</a>
-    or <a href="/login">sign in</a> if you already have one.
+    <a href="/login">Sign in to your account</a> to activate or manage your plan.
   </p>
 </section>
 
 {% elif role == 'parent' %}
-<section class="epic-band">
+<section class="epic-band subscription-parent-section">
   <img class="auth-koaly-peek subscription-koaly-peek" src="{% static 'img/koaly_cutout.png' %}" alt="" aria-hidden="true">
   <h1>Choose the best SGILA plan for your child</h1>
   <h2 class="subscription-parent-summary">
     All parent plans include a <strong>30-day trial</strong> so you can start learning before committing.
   </h2>
-  {% if subscription.plan_type == 'individual' or subscription.plan_type == 'family' %}
-    <p class="subscription-add-seat-hint">
-      Already on a plan and need more active learners?
-      <a href="/subscription/add-seat">Add a seat</a>
-    </p>
-  {% endif %}
-
   {% include 'includes/plan_cards.html' %}
-
-  <form method="POST" class="epic-skip">
-    {% csrf_token %}
-    <input type="hidden" name="skip" value="1">
-    <button type="submit">Not right now — continue with a free trial</button>
-  </form>
 
   <div class="subscription-cancel-wrap">
     <a href="/subscription/cancel" class="epic-cta epic-cta-red subscription-cancel-link">Cancel subscription</a>
@@ -70,10 +55,8 @@
 
   {% include 'includes/plan_cards.html' %}
 
-  <form method="POST" class="epic-skip">
+  <form method="POST" action="/subscription/redeem-package" class="epic-skip">
     {% csrf_token %}
-    <input type="hidden" name="skip" value="1">
-    <button type="submit">Not right now — continue with a free trial</button>
     <span class="badge badge-done subscription-tier-badge">School, sponsor, or government-funded</span>
     <h2 class="epic-plan-name subscription-package-heading">Activate your package</h2>
     <p class="epic-billed subscription-activation-description">Have a code? Redeem it here</p>

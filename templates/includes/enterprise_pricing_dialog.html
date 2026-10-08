@@ -22,8 +22,8 @@ dialog's open/close and focus behaviour.
         {% include 'includes/school_finder.html' %}
 
         <p class="pricing-note">
-          Not sure yet? The table below shows every school type's price, and the
-          buttons below will take you to activation.
+          Not sure yet? The table below shows every school type's price.
+          {% if can_choose_plans %}Use your account to continue to activation when you're ready.{% else %}This pricing information does not activate a package; sign in to your account to manage activation.{% endif %}
         </p>
 
         <div class="pricing-result" data-pricing-result{% if not pricing_initial.valid %} hidden{% endif %}>
@@ -97,8 +97,10 @@ dialog's open/close and focus behaviour.
 
       <div class="account-dialog-actions">
         <button type="button" class="btn btn-light" data-close-enterprise-pricing>Close</button>
-        <a class="btn btn-primary" data-pricing-activate
-           href="{{ pricing_redeem_url }}?school_type={{ pricing_initial.school_type }}&amp;learners={{ pricing_initial.learners }}">Activate Enterprise Package</a>
+        {% if can_choose_plans %}
+          <a class="btn btn-primary" data-pricing-activate
+             href="{{ pricing_redeem_url }}?school_type={{ pricing_initial.school_type }}&amp;learners={{ pricing_initial.learners }}">Activate Enterprise Package</a>
+        {% endif %}
       </div>
     </div>
   </dialog>

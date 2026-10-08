@@ -74,12 +74,35 @@ def test_public_entry_pages_render(live_server, page: Page):
         "/login?role=parent",
         "/login?role=teacher",
         "/forgot-password?role=parent",
-        "/subscription",
+        "/plans",
     ]
     for path in paths:
         response = page.goto(f"{live_server.url}{path}")
         assert response is not None and response.status == 200, f"{path} returned {getattr(response, 'status', None)}"
         expect(page.locator("main").first).to_be_visible()
+
+
+@pytest.mark.django_db
+def test_parent_subscription_page_hides_add_seat_hint_and_keeps_controls(client):
+    parent = Parent.objects.create(
+        full_name="Subscription Parent",
+        email="subscription-parent@example.test",
+        password="test-password",
+    )
+    Subscription.objects.create(parent=parent, plan_type="family", status="active")
+    session = client.session
+    session["account_role"] = "parent"
+    session["account_id"] = parent.id
+    session.save()
+
+    response = client.get("/subscription")
+
+    assert response.status_code == 200
+    assert b"Already on a plan and need more active learners?" not in response.content
+    assert b"Add a seat" not in response.content
+    assert b"Choose Individual Plan" in response.content
+    assert b"Choose Family Plan" in response.content
+    assert b"Cancel subscription" in response.content
 
 
 def test_ui_flow_downloads_pdf(live_server, page: Page):
