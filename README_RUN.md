@@ -1,5 +1,49 @@
 # SGILA Clean-Machine Run Guide
 
+## Deploying on Render
+
+The repository includes a Render Blueprint (`render.yaml`) for the Django web
+service. It installs the requirements and collects static files during the
+build; each web-service start runs database migrations before starting Gunicorn.
+The Blueprint does not create a database or choose a paid service plan. Before
+the first deploy, provide `DJANGO_SECRET_KEY` and `DATABASE_URL` in Render's
+environment settings. Connect an existing PostgreSQL database and use its
+connection URL for `DATABASE_URL`; production deliberately refuses to start
+without both a secret key and a database URL. Do not use the local SQLite file
+for a hosted deployment.
+
+Render's `RENDER_EXTERNAL_HOSTNAME` is automatically allowed as a host and
+trusted HTTPS origin. If you add a custom domain, add its hostname to
+`DJANGO_ALLOWED_HOSTS` and its HTTPS origin (for example,
+`https://app.example.org`) to `DJANGO_CSRF_TRUSTED_ORIGINS`. Set `SITE_URL` to
+the public HTTPS URL if email links should use a custom domain. Configure email
+and any optional AI provider credentials separately in the service environment;
+never put production credentials in this repository.
+
+The DBE schools master-list CSV/XLSX is external data and is not included in the
+repository or the deployment. After the database is connected, make the source
+file available to the running service using an authorized runtime file-transfer
+method, then run the importer once from the service environment, for example:
+
+```sh
+python manage.py import_schools /path/to/National-schools.csv
+```
+
+The command accepts the DBE semicolon-delimited CSV and the normalized CSV/XLSX
+formats described in the Enterprise School Search section below. A fresh
+database also needs the curriculum content loaded once; run
+`python manage.py load_curriculum_content` followed by
+`python manage.py sync_grade2_activities` from the service environment. Do not
+run the local demo-account seeder on a production database. Confirm the selected
+Render service/database plans and their costs in Render before creating or
+connecting services. This repository change does not create Render resources.
+
+Render's local filesystem is ephemeral by default. Child profile photos and
+generated story images saved under `media/` can be lost when the service is
+replaced or redeployed. Configure persistent media storage before relying on
+those uploads in production; this Blueprint intentionally does not attach a
+paid disk or provision a storage service.
+
 ## Requirements
 
 - Windows 10 or Windows 11
