@@ -56,6 +56,43 @@ from schools.models import School
 
 
 class SchoolDirectorySearchTests(TestCase):
+    @patch('api.views.school_directory_records')
+    def test_teacher_search_uses_its_own_csv_endpoint(self, records):
+        records.return_value = (
+            {
+                'school_name': 'BALENI PRIMARY SCHOOL',
+                'location': 'Bizana',
+                'quantile': 'Q1',
+            },
+            {
+                'school_name': 'BIZANA HIGH SCHOOL',
+                'location': 'Baleni',
+                'quantile': 'Q2',
+            },
+        )
+
+        response = self.client.get(
+            '/api/teacher/schools/search/',
+            {'q': 'bal'},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            response.json()['results'],
+            [
+                {
+                    'school_name': 'BALENI PRIMARY SCHOOL',
+                    'location': 'Bizana',
+                    'quantile': 'Q1',
+                },
+                {
+                    'school_name': 'BIZANA HIGH SCHOOL',
+                    'location': 'Baleni',
+                    'quantile': 'Q2',
+                },
+            ],
+        )
+
     def test_search_returns_matching_school_and_public_quantile_fields(self):
         school = School.objects.create(
             emis_number='200500001',
@@ -274,7 +311,8 @@ class HelpCenterApiTests(TestCase):
         self.assertEqual(ticket.email, user.email)
 
     @override_settings(EMAIL_BACKEND='django.core.mail.backends.console.EmailBackend')
-    def test_console_backend_reports_email_as_not_delivered(self):
+    @patch('api.help_center_views.EmailMessage.send')
+    def test_console_backend_reports_email_as_not_delivered(self, mock_send):
         response = self.client.post(
             '/api/help/tickets/',
             json.dumps({
@@ -290,6 +328,7 @@ class HelpCenterApiTests(TestCase):
         self.assertFalse(response.json()['support_notification_sent'])
         self.assertFalse(response.json()['confirmation_email_sent'])
         self.assertEqual(SupportTicket.objects.count(), 1)
+        mock_send.assert_not_called()
 
     @patch('api.help_center_views.EmailMessage.send', side_effect=[1, RuntimeError('client mailbox rejected')])
     def test_support_delivery_is_reported_when_confirmation_fails(self, mock_send):

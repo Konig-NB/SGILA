@@ -204,7 +204,7 @@
       schoolStatus.textContent = 'Searching the national school directory...';
       searchTimer = window.setTimeout(async () => {
         try {
-          const response = await fetch(`/api/schools/search/?q=${encodeURIComponent(query)}`, {
+          const response = await fetch(`/api/teacher/schools/search/?q=${encodeURIComponent(query)}`, {
             headers: { Accept: 'application/json' },
           });
           if (!response.ok) throw new Error('School search is unavailable.');

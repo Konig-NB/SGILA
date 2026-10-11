@@ -16,6 +16,7 @@ carries them, are ignored and never stored.
 
 import csv
 import hashlib
+import io
 import re
 from collections import Counter
 from pathlib import Path
@@ -27,6 +28,34 @@ from django.db.models import Count
 from schools.models import School
 
 QUINTILE_RANGE = range(1, 6)
+
+SOURCE_FIELDS = {
+    'emis_number': ('emis_number', 'NatEmis'),
+    'name': ('name', 'Official_Institution_Name'),
+    'province': ('province', 'Province'),
+    'district': ('district', 'EIDistrict'),
+    'town': ('town', 'Town_City'),
+    'township_village': ('township_village', 'Township_Village'),
+    'quintile': ('quintile', 'Quintile'),
+    'sector': ('sector', 'Sector'),
+    'status': ('status', 'Status'),
+    'school_type': ('school_type', 'Type_DoE'),
+    'urban_rural': ('urban_rural', 'Urban_Rural'),
+    'learners_2025': ('learners_2025', 'Learners2025'),
+}
+
+PROVINCE_CODES = {
+    'ec': 'Eastern Cape',
+    'fs': 'Free State',
+    'gt': 'Gauteng',
+    'gp': 'Gauteng',
+    'kzn': 'KwaZulu-Natal',
+    'lp': 'Limpopo',
+    'mp': 'Mpumalanga',
+    'nc': 'Northern Cape',
+    'nw': 'North West',
+    'wc': 'Western Cape',
+}
 
 SECTOR_MAP = {
     'public': 'public',
@@ -117,6 +146,8 @@ def clean_province(value):
     raw = text(value)
     if not raw:
         return ''
+    if raw.lower() in PROVINCE_CODES:
+        return PROVINCE_CODES[raw.lower()]
     canonical = {province.lower(): province for province in settings.PROVINCES}
     key = squash(raw).lower()
     if key in canonical:
@@ -170,8 +201,31 @@ def build_record(row):
 
 
 def read_csv_rows(path):
-    with path.open('r', encoding='utf-8-sig', newline='') as handle:
-        yield from csv.DictReader(handle)
+    data = path.read_bytes()
+    try:
+        contents = data.decode('utf-8-sig')
+    except UnicodeDecodeError:
+        contents = data.decode('cp1252')
+
+    header = contents.splitlines()[0] if contents else ''
+    delimiter = ';' if header.count(';') > header.count(',') else ','
+    for row in csv.DictReader(io.StringIO(contents, newline=''), delimiter=delimiter):
+        normalised = {
+            re.sub(r'[^a-z0-9]', '', key.lstrip('\ufeff').lower()): value
+            for key, value in row.items()
+            if key is not None
+        }
+        yield {
+            field: next(
+                (
+                    normalised[re.sub(r'[^a-z0-9]', '', alias.lower())]
+                    for alias in aliases
+                    if re.sub(r'[^a-z0-9]', '', alias.lower()) in normalised
+                ),
+                '',
+            )
+            for field, aliases in SOURCE_FIELDS.items()
+        }
 
 
 def read_xlsx_rows(path, sheet=None):

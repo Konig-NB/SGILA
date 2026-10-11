@@ -726,6 +726,34 @@ def test_all_grade_lesson_and_activity_screens_render_for_the_matching_learner(l
             question.locator(".text-option").first.click()
             question.get_by_role("button", name="Check answer").click()
             expect(question.locator(".answer-review")).to_be_visible()
+            for _ in range(4):
+                page.get_by_role("button", name="Next activity").click()
+            spelling_check = page.locator(
+                '.grade3-activity-section[data-activity-number="5"] .listen-spell-row .question-check'
+            ).first
+            check_answers = page.locator(
+                '.grade3-activity-section[data-activity-number="5"] > button.btn-full'
+            )
+            expect(spelling_check).to_be_visible()
+            expect(check_answers).to_be_visible()
+            assert check_answers.evaluate(
+                "(button) => button.getBoundingClientRect().width < button.parentElement.getBoundingClientRect().width"
+            )
+            assert spelling_check.evaluate("(button) => getComputedStyle(button).backgroundColor") == "rgb(255, 210, 46)"
+            assert spelling_check.evaluate("(button) => getComputedStyle(button).borderRadius") == "10px"
+            page.set_viewport_size({"width": 390, "height": 844})
+            assert spelling_check.evaluate("(button) => getComputedStyle(button).gridRowStart") == "3"
+            assert spelling_check.evaluate("(button) => getComputedStyle(button).gridColumnStart") == "1"
+            assert spelling_check.evaluate(
+                "(button) => button.getBoundingClientRect().top > button.parentElement.querySelector('.audio-assist').getBoundingClientRect().bottom"
+            )
+            assert spelling_check.evaluate(
+                "(button) => button.getBoundingClientRect().width < button.closest('.listen-spell-row').querySelector('.spelling-input').getBoundingClientRect().width"
+            )
+            spelling_check.click()
+            answer_prompt = spelling_check.locator("xpath=..").get_by_role("status")
+            expect(answer_prompt).to_be_visible()
+            assert answer_prompt.evaluate("(message) => getComputedStyle(message).writingMode") == "horizontal-tb"
             completion = page.evaluate(
                 """async (path) => {
                   const csrf = decodeURIComponent((document.cookie.match(/(?:^|; )csrftoken=([^;]*)/) || [])[1] || '');
