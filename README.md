@@ -108,4 +108,16 @@ templates/           HTML templates
 static/css/          App styling
 static/img/          Koaly, Lerato, and lesson assets
 static/diagrams/     UI flow diagrams and PDFs
+scripts/grade2/      Legacy one-off Grade 2 content maintenance scripts
+scripts/diagnostics/ Standalone checks and diagnostic probes
+artifacts/           Retained generated code dumps and a test log
 ```
+
+Run relocated Python utilities from the repository root as modules, for
+example: `python -m scripts.diagnostics.check_activities`. Run the JavaScript
+diagnostic with `node scripts/diagnostics/simulate.js`; API probes require the
+local server to be running. Grade 2 maintenance scripts are in `scripts/grade2/`;
+see
+[README_GRADE2_ACTIVITIES.md](README_GRADE2_ACTIVITIES.md) for their invocation
+and the recommended management command. The files in `artifacts/` are retained
+snapshots/log output, not Django source or runtime inputs.

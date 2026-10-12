@@ -2672,6 +2672,24 @@ class PublicPlansPageTests(TestCase):
         subscription_response = self.client.get('/subscription')
         self.assertRedirects(subscription_response, '/plans')
 
+    def test_public_enterprise_plan_is_presented_as_a_school_advertisement(self):
+        response = self.client.get('/plans')
+
+        self.assertContains(response, 'epic-card-enterprise enterprise-ad')
+        self.assertContains(response, 'Bring CAPS-aligned reading adventures to your school')
+        self.assertContains(response, 'Available to public and independent schools')
+        self.assertContains(response, 'Billed to the school or a funder, never families')
+        self.assertContains(response, 'Minimum 100 learners')
+        self.assertContains(response, '/month per learner')
+        self.assertContains(response, 'data-open-enterprise-pricing')
+        self.assertContains(response, 'See full pricing details')
+        self.assertContains(response, 'How Enterprise pricing works')
+        self.assertNotContains(response, 'Final pricing is confirmed on activation.')
+        self.assertNotContains(response, 'School name')
+        self.assertNotContains(response, 'Search by school name or town')
+        self.assertNotContains(response, 'Search the national school directory')
+        self.assertNotContains(response, 'Number of learners')
+
     def test_signed_in_subscription_selection_and_enterprise_activation_remain(self):
         parent = Parent.objects.create(
             full_name='Plans Test Parent',
