@@ -8,13 +8,21 @@ from django.utils.html import escape
 from schools.resolution import NO_QUINTILE_MESSAGE, serialise
 from schools.views import MAX_RESULTS, MIN_QUERY_LENGTH
 
-FOOTNOTE = (
-    "School quintiles are from the Department of Basic Education's National "
-    'Master List of Schools and may be updated. Final pricing is confirmed on '
-    'activation.'
-)
+FOOTNOTE = "Final pricing is confirmed on activation."
 
 NOT_FOUND_PROMPT = "Can't find your school? Select your school type manually"
+
+
+def _display_school_types():
+    """User-facing school types without quintile references."""
+    return [
+        ('school_type_1', 'School type 1'),
+        ('school_type_2', 'School type 2'),
+        ('school_type_3', 'School type 3'),
+        ('school_type_4', 'School type 4'),
+        ('school_type_5', 'School type 5'),
+        ('private', 'Private / independent school'),
+    ]
 
 
 def finder_context(
@@ -41,7 +49,7 @@ def finder_context(
             'minimum_learners': settings.MINIMUM_LEARNERS,
             'min_query_length': MIN_QUERY_LENGTH,
             'max_results': MAX_RESULTS,
-            'school_types': settings.SCHOOL_TYPES,
+            'school_types': _display_school_types(),
             'no_quintile_message': NO_QUINTILE_MESSAGE,
             'not_found_prompt': NOT_FOUND_PROMPT,
             'footnote': FOOTNOTE,

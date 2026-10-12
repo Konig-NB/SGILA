@@ -1,17 +1,420 @@
 {% extends 'base.html' %}
 {% load static %}
-{% block title %}{% if role == 'guest' %}Plans &amp; pricing{% else %}Choose your plan{% endif %} - SGILA{% endblock %}
+{% block title %}{% if role == 'guest' %}Plans & pricing{% else %}Choose your plan{% endif %} - SGILA{% endblock %}
 {% block content %}
+
+{% if role == 'teacher' %}
+<style>
+/* Teacher Plans page polish */
+.subscription-teacher-hero--polished {
+  padding: clamp(28px, 4vw, 40px);
+  min-height: auto;
+  background: linear-gradient(135deg, var(--auto-d6f7f5-bg), var(--surface));
+}
+.subscription-teacher-hero__content { display: grid; gap: 10px; }
+.subscription-teacher-hero__title { margin: 0; font-size: clamp(2rem, 5vw, 3.25rem); line-height: 1.1; font-weight: 900; }
+.subscription-teacher-hero__subtitle { margin: 0; color: var(--muted); font-size: clamp(1rem, 2.5vw, 1.25rem); line-height: 1.5; max-width: 60ch; }
+.subscription-teacher-hero__koala { max-width: min(260px, 55vw); filter: drop-shadow(0 20px 30px rgba(36, 48, 68, .15)); }
+.subscription-teacher-section { padding-top: 0; padding-bottom: clamp(24px, 4vw, 40px); }
+.subscription-teacher-cards { display: flex; justify-content: center; margin: 0 auto; }
+.subscription-teacher-cards .epic-card-enterprise { width: 100%; max-width: 420px; gap: 10px; padding: clamp(32px, 5vw, 44px) clamp(28px, 4vw, 40px); }
+.subscription-teacher-cards .epic-plan-name { margin-top: 0; font-size: 1.6rem; color: #5bdad4; }
+.subscription-teacher-cards .epic-billed-tight { margin-bottom: 6px; }
+.subscription-teacher-cards .epic-price { margin: 4px 0 0; }
+.subscription-teacher-cards .subscription-details-link { margin-top: 4px; margin-bottom: 8px; padding: 8px 16px; background: transparent; border: 1px solid var(--line); border-radius: 999px; color: var(--muted); font-size: .9rem; font-weight: 700; cursor: pointer; transition: background .15s ease, border-color .15s ease, color .15s ease; }
+.subscription-teacher-cards .subscription-details-link:hover { background: var(--auto-eef3ff-bg); border-color: #5bdad4; color: #5bdad4; }
+.subscription-teacher-cards .epic-cta-enterprise { margin-top: 12px; padding: 16px 28px; font-size: 1.05rem; font-weight: 800; background: #5bdad4; color: #111111; border: none; border-radius: 999px; cursor: pointer; transition: transform .15s ease, box-shadow .15s ease; }
+.subscription-teacher-cards .epic-cta-enterprise:hover { transform: translateY(-1px); box-shadow: 0 10px 24px rgba(91, 218, 212, .38); }
+@media (max-width: 720px) {
+  .subscription-teacher-hero--polished { padding: clamp(24px, 6vw, 32px); text-align: center; }
+  .subscription-teacher-hero__content { text-align: center; }
+  .subscription-teacher-hero__subtitle { margin-left: auto; margin-right: auto; }
+  .subscription-teacher-hero__koala { max-width: min(200px, 60vw); margin-top: 16px; }
+  .subscription-teacher-cards .epic-card-enterprise { max-width: 100%; padding: 28px 20px; }
+}
+</style>
+{% endif %}
+
+{% if role == 'guest' %}
+<style>
+/* Guest Plans page polish */
+.guest-plans-hero {
+  padding: clamp(20px, 4vw, 32px) clamp(20px, 4vw, 32px) 0;
+  text-align: center;
+}
+
+.guest-plans-hero h1 {
+  margin: 0 0 16px;
+  font-size: clamp(2rem, 4.5vw, 3rem);
+  line-height: 1.1;
+  font-weight: 900;
+  color: var(--ink);
+}
+
+.guest-plans-summary {
+  margin: 0 auto clamp(40px, 6vw, 48px);
+  max-width: 620px;
+  font-size: clamp(1.05rem, 2.2vw, 1.15rem);
+  font-weight: 500;
+  line-height: 1.6;
+  color: var(--muted);
+}
+
+.guest-plans-koala {
+  max-width: min(220px, 50vw);
+  filter: drop-shadow(0 16px 24px rgba(36, 48, 68, .12));
+  margin-top: -12px;
+}
+
+/* Cards */
+.guest-plans-hero + .epic-cards,
+.guest-plans-section .epic-cards {
+  gap: 30px;
+  margin-top: 0;
+}
+
+.guest-plans-hero ~ .epic-cards .epic-card,
+.guest-plans-section .epic-cards .epic-card {
+  transition: transform .18s ease, box-shadow .18s ease;
+}
+
+.guest-plans-hero ~ .epic-cards .epic-card:hover,
+.guest-plans-section .epic-cards .epic-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 24px 40px rgba(20, 40, 50, .2);
+}
+
+/* Enterprise title - mint/teal like parent and teacher pages */
+.guest-plans-hero .epic-cards .epic-card-enterprise .epic-plan-name,
+.guest-plans-section .epic-cards .epic-card-enterprise .epic-plan-name {
+  color: #5bdad4;
+}
+
+/* Ribbon fix - sit on top edge */
+.guest-plans-hero .epic-cards .epic-ribbon,
+.guest-plans-section .epic-cards .epic-ribbon {
+  top: 0;
+  left: 0;
+  border-radius: 20px 20px 0 0;
+  clip-path: polygon(0 0, 100% 0, 100% 100%, 0 100%);
+  padding: 10px 24px;
+}
+
+/* See full pricing details - pill link (match teacher page) */
+.guest-plans-hero .epic-cards .subscription-details-link {
+  margin-top: 4px;
+  margin-bottom: 8px;
+  padding: 8px 16px;
+  background: transparent;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--muted);
+  font-size: .9rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background .15s ease, border-color .15s ease, color .15s ease;
+  text-decoration: none;
+  display: inline-block;
+}
+
+.guest-plans-hero .epic-cards .subscription-details-link:hover {
+  background: var(--auto-eef3ff-bg);
+  border-color: #5bdad4;
+  color: #5bdad4;
+}
+
+/* Sign in line */
+.guest-plans-hero ~ .subscription-add-seat-hint,
+.guest-plans-section .subscription-add-seat-hint {
+  margin-top: 36px;
+  text-align: center;
+  font-size: 1rem;
+  color: var(--muted);
+}
+
+.guest-plans-hero ~ .subscription-add-seat-hint a,
+.guest-plans-section .subscription-add-seat-hint a {
+  color: #5bdad4;
+  font-weight: 600;
+  text-decoration: none;
+  transition: color .15s ease;
+}
+
+.guest-plans-hero ~ .subscription-add-seat-hint a:hover,
+.guest-plans-section .subscription-add-seat-hint a:hover {
+  color: #48c4be;
+  text-decoration: underline;
+}
+
+/* Koala image */
+.guest-plans-koala {
+  max-width: min(220px, 50vw);
+  filter: drop-shadow(0 16px 24px rgba(36, 48, 68, .12));
+  margin-top: -12px;
+}
+
+/* Responsive */
+@media (max-width: 720px) {
+  .guest-plans-hero {
+    padding: clamp(16px, 4vw, 24px) 16px 0;
+  }
+  
+  .guest-plans-koala {
+    max-width: min(180px, 55vw);
+    margin-top: -8px;
+  }
+  
+  .guest-plans-hero ~ .epic-cards,
+  .guest-plans-section .epic-cards {
+    flex-direction: column;
+    align-items: center;
+    gap: 24px;
+  }
+  
+  .guest-plans-hero ~ .epic-cards .epic-card,
+  .guest-plans-section .epic-cards .epic-card {
+    width: 100%;
+    max-width: 360px;
+  }
+}
+</style>
+{% endif %}
+
+{% if role == 'parent' %}
+<style>
+/* Parent Plans page - compact aligned cards */
+.subscription-parent-section {
+  padding: clamp(28px, 4vw, 40px) clamp(20px, 4vw, 32px);
+  text-align: center;
+}
+
+.subscription-parent-section h1 {
+  margin: 0 0 16px;
+  font-size: clamp(2rem, 4vw, 3rem);
+  line-height: 1.1;
+  font-weight: 900;
+  color: var(--ink);
+}
+
+.subscription-parent-summary {
+  margin: 0 auto clamp(40px, 6vw, 48px);
+  max-width: 620px;
+  font-size: clamp(1.25rem, 2.8vw, 1.4rem);
+  font-weight: 700;
+  line-height: 1.6;
+  color: var(--muted);
+}
+
+/* Cards grid - 3 equal columns, aligned */
+.subscription-parent-section .epic-cards {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 32px;
+  justify-content: center;
+  align-items: stretch;
+  max-width: 1300px;
+  margin: 0 auto;
+}
+
+/* Compact card sizing - ~400px wide, ~400px tall */
+.subscription-parent-section .epic-card {
+  width: 100%;
+  max-width: 400px;
+  min-height: 400px;
+  padding: 36px 28px 32px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  box-sizing: border-box;
+  transition: transform .18s ease, box-shadow .18s ease;
+}
+
+.subscription-parent-section .epic-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 24px 40px rgba(20, 40, 50, .2);
+}
+
+/* Remove margin-top: auto from buttons - we control spacing explicitly */
+.subscription-parent-section .epic-cta,
+.subscription-parent-section .epic-cta-link {
+  margin-top: 0;
+}
+
+/* Card content spacing - increased font sizes for readability */
+.subscription-parent-section .epic-plan-name {
+  margin: 6px 0 0;
+  font-size: clamp(1.7rem, 3vw, 2rem);
+}
+
+.subscription-parent-section .epic-billed-tight {
+  margin: 4px 0 0;
+  font-size: clamp(1.05rem, 2vw, 1.2rem);
+  font-weight: 600;
+}
+
+.subscription-parent-section .epic-price {
+  margin: 4px 0 0;
+}
+
+.subscription-parent-section .epic-price span {
+  font-size: clamp(1.1rem, 2vw, 1.3rem);
+  font-weight: 700;
+}
+
+.subscription-parent-section .epic-billed {
+  margin: 0 0 22px;
+  font-size: clamp(1rem, 1.8vw, 1.15rem);
+  font-weight: 600;
+}
+
+/* "From" in Enterprise price slightly larger */
+.subscription-parent-section .epic-card-enterprise .epic-price > span:first-child {
+  font-size: clamp(0.95rem, 1.8vw, 1.1rem);
+}
+
+/* Gap between "Minimum 100 learners" and button ~50px (reduced slightly for larger text) */
+.subscription-parent-section .epic-card-enterprise .epic-billed-tight:last-of-type {
+  margin-bottom: 44px;
+}
+
+/* Enterprise title - teal like teacher page */
+.subscription-parent-section .epic-card-enterprise .epic-plan-name {
+  color: #5bdad4;
+}
+
+/* All buttons identical: ~320px wide, ~66px tall, pill, bold, shadow */
+.subscription-parent-section .epic-cta-individual,
+.subscription-parent-section .epic-cta-family,
+.subscription-parent-section .epic-cta-enterprise {
+  width: 320px;
+  max-width: 100%;
+  height: 66px;
+  padding: 0 28px;
+  font-size: clamp(1.05rem, 1.8vw, 1.15rem);
+  font-weight: 800;
+  border-radius: 999px;
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 10px 20px rgba(91, 218, 212, .38);
+  transition: transform .15s ease, box-shadow .15s ease;
+  white-space: nowrap;
+}
+
+/* Individual button - gold */
+.subscription-parent-section .epic-cta-individual {
+  color: #111111;
+  background: #ffd22e;
+  box-shadow: 0 10px 20px rgba(255, 210, 46, .38);
+}
+
+.subscription-parent-section .epic-cta-individual:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 12px 24px rgba(255, 210, 46, .45);
+}
+
+/* Family button - blue (reference style) */
+.subscription-parent-section .epic-cta-family {
+  color: #111111;
+  background: #83a8f6;
+  box-shadow: 0 10px 20px rgba(131, 168, 246, .38);
+}
+
+.subscription-parent-section .epic-cta-family:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 12px 28px rgba(131, 168, 246, .45);
+}
+
+/* Enterprise button - teal like teacher page, link not form submit */
+.subscription-parent-section .epic-cta-enterprise {
+  color: #111111;
+  background: #5bdad4;
+  box-shadow: 0 10px 20px rgba(91, 218, 212, .38);
+}
+
+.subscription-parent-section .epic-cta-enterprise:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 12px 28px rgba(91, 218, 212, .45);
+}
+
+/* Ribbon on Family card - sits on top edge, space before title */
+.subscription-parent-section .epic-ribbon {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  padding: 10px 24px;
+  border-radius: 20px 20px 0 0;
+  clip-path: polygon(0 0, 100% 0, 100% 100%, 0 100%);
+  background: var(--sun);
+  color: var(--ink);
+  font-size: .82rem;
+  font-weight: 800;
+  letter-spacing: .02em;
+  text-transform: uppercase;
+  text-align: center;
+}
+
+/* Push Family title down to make room for ribbon */
+.subscription-parent-section .epic-card-family .epic-plan-name {
+  margin-top: 36px;
+}
+
+/* Koala image */
+.subscription-parent-section .subscription-koaly-peek {
+  max-width: min(220px, 50vw);
+  filter: drop-shadow(0 16px 24px rgba(36, 48, 68, .12));
+  margin-top: -12px;
+}
+
+/* Responsive */
+@media (max-width: 1100px) {
+  .subscription-parent-section .epic-cards {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 28px;
+  }
+}
+
+@media (max-width: 720px) {
+  .subscription-parent-section {
+    padding: clamp(24px, 5vw, 32px) 16px;
+  }
+  
+  .subscription-parent-section .subscription-koaly-peek {
+    max-width: min(180px, 55vw);
+    margin-top: -8px;
+  }
+  
+  .subscription-parent-section .epic-cards {
+    grid-template-columns: 1fr;
+    gap: 24px;
+  }
+  
+  .subscription-parent-section .epic-card {
+    max-width: 100%;
+    min-height: auto;
+  }
+  
+  .subscription-parent-section .epic-cta-individual,
+  .subscription-parent-section .epic-cta-family,
+  .subscription-parent-section .epic-cta-enterprise {
+    width: 100%;
+    max-width: 320px;
+  }
+}
+</style>
+{% endif %}
 
 {% if role == 'guest' %}
 
-<section class="epic-band">
-  <img class="auth-koaly-peek subscription-koaly-peek" src="{% static 'img/koaly_cutout.png' %}" alt="" aria-hidden="true">
-  <h1>Plans &amp; pricing</h1>
-  <h2 class="subscription-parent-summary">
+<section class="epic-band guest-plans-hero">
+  <img class="auth-koaly-peek subscription-koaly-peek guest-plans-koala" src="{% static 'img/koaly_cutout.png' %}" alt="" aria-hidden="true">
+  <h1>Plans & pricing</h1>
+  <p class="guest-plans-summary">
     This page is for information only. To activate or manage a plan, sign in to
     your SGILA account.
-  </h2>
+  </p>
 
   {% include 'includes/plan_cards.html' %}
 
@@ -36,41 +439,28 @@
 
 {% else %}
 
-<section class="dashboard-hero teacher-hero subscription-teacher-hero">
-  <div>
+<section class="dashboard-hero teacher-hero subscription-teacher-hero subscription-teacher-hero--polished">
+  <div class="subscription-teacher-hero__content">
     <p class="eyebrow">School / district setup</p>
-    <h1>Plans for teachers and schools</h1>
-    <p>Pay by card for your own class, or bring SGILA to your whole school, district or province — funded through your government education budget.</p>
+    <h1 class="subscription-teacher-hero__title">Plans for teachers and schools</h1>
+    <p class="subscription-teacher-hero__subtitle">Bring SGILA to your whole school, district or province. Available to public and independent schools.</p>
   </div>
-  <img class="auth-koaly-peek" src="{% static 'img/koaly_cutout.png' %}" alt="" aria-hidden="true">
+  <img class="auth-koaly-peek subscription-teacher-hero__koala" src="{% static 'img/koaly_cutout.png' %}" alt="" aria-hidden="true">
 </section>
 
-<section class="epic-band">
-  <h2 class="subscription-parent-summary">
-    All teacher plans include a <strong>30-day trial</strong> so you can start
-    before committing. Enterprise is billed to your school, not to families —
-    funded through your government education budget, a DBE partnership or a CSI
-    grant. No cards, no per-family cost.
-  </h2>
+<section class="epic-band subscription-teacher-section">
+  <div class="epic-cards subscription-teacher-cards">
+    <div class="epic-card epic-card-enterprise">
+      <h2 class="epic-plan-name">Enterprise</h2>
+      <p class="epic-billed epic-billed-tight">For schools & shared accounts</p>
+      <p class="epic-price"><span>From</span> {{ enterprise_start_price }}<span>/month per learner</span></p>
+      <p class="epic-billed epic-billed-tight">Minimum {{ enterprise_minimum_learners_display }} learners</p>
+      <button type="button" class="subscription-details-link" data-open-enterprise-pricing>See full pricing details</button>
+      <button class="epic-cta epic-cta-enterprise" onclick="window.location.href='/subscription/redeem-package'">Activate Enterprise Package</button>
+    </div>
+  </div>
 
-  {% include 'includes/plan_cards.html' %}
-
-  <form method="POST" action="/subscription/redeem-package" class="epic-skip">
-    {% csrf_token %}
-    <span class="badge badge-done subscription-tier-badge">School, sponsor, or government-funded</span>
-    <h2 class="epic-plan-name subscription-package-heading">Activate your package</h2>
-    <p class="epic-billed subscription-activation-description">Have a code? Redeem it here</p>
-
-    <label class="subscription-field">School name
-      <input type="text" name="school_name" value="{{ subscription.school_name|default:account.school_name }}" required placeholder="e.g. Ntuzuma Primary School">
-    </label>
-
-    <label class="subscription-field subscription-field-spaced">Package code
-      <input class="uppercase-field" type="text" name="package_code" required placeholder="Code from your school, sponsor, or district contact">
-    </label>
-
-    <button class="epic-cta epic-cta-green subscription-action-large" type="submit">Activate school package</button>
-  </form>
+  {% include 'includes/enterprise_pricing_dialog.html' %}
 
   <div class="subscription-cancel-wrap">
     <a href="/subscription/cancel" class="epic-cta epic-cta-red subscription-cancel-link">Cancel subscription</a>
