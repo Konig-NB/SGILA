@@ -14,13 +14,13 @@ NOT_FOUND_PROMPT = "Can't find your school? Select your school type manually"
 
 
 def _display_school_types():
-    """User-facing school types without quintile references."""
+    """User-facing quantile options mapped to the existing pricing keys."""
     return [
-        ('school_type_1', 'School type 1'),
-        ('school_type_2', 'School type 2'),
-        ('school_type_3', 'School type 3'),
-        ('school_type_4', 'School type 4'),
-        ('school_type_5', 'School type 5'),
+        ('school_type_1', 'School quantile Q1'),
+        ('school_type_2', 'School quantile Q2'),
+        ('school_type_3', 'School quantile Q3'),
+        ('school_type_4', 'School quantile Q4'),
+        ('school_type_5', 'School quantile Q5'),
         ('private', 'Private / independent school'),
     ]
 
@@ -42,7 +42,6 @@ def finder_context(
     return {
         'school_finder': {
             'instance': instance,
-            'provinces': settings.PROVINCES,
             'search_endpoint': '/api/schools/search/',
             'quote_endpoint': '/subscription/enterprise-pricing',
             'redeem_url': '/subscription/redeem-package',

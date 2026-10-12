@@ -1,7 +1,7 @@
 /*
  * Enterprise school finder.
  *
- * Choose a province, search the DBE master list for your school, and get the
+ * Search the national school directory for your school, and get the
  * price without picking anything by hand. Shared by the pricing
  * dialog on /subscription and /subscription/redeem-package.
  *
@@ -36,7 +36,6 @@
     this.minimum = parseInt(root.getAttribute('data-sf-minimum'), 10) || 100;
     this.minChars = parseInt(root.getAttribute('data-sf-min-chars'), 10) || MIN_QUERY;
 
-    this.province = root.querySelector('[data-sf-province]');
     this.query = root.querySelector('[data-sf-query]');
     this.suggestions = root.querySelector('[data-sf-suggestions]');
     this.status = root.querySelector('[data-sf-status]');
@@ -82,19 +81,6 @@
   SchoolFinder.prototype.bind = function () {
     var self = this;
 
-    this.province.addEventListener('change', function () {
-      self.reset();
-      if (self.province.value) {
-        self.query.disabled = false;
-        self.query.placeholder =
-          'Type at least ' + self.minChars + ' letters of your school name';
-        self.setStatus('Now type your school name to search.');
-        self.query.focus();
-      } else {
-        self.setStatus('Choose your province to begin.');
-      }
-    });
-
     this.query.addEventListener('input', function () {
       self.onQueryChanged();
     });
@@ -139,7 +125,7 @@
     if (this.searchRequest) this.searchRequest.abort();
     this.searchRequest = null;
     this.query.value = '';
-    this.query.disabled = !this.province.value;
+    this.query.disabled = false;
     this.school = null;
     this.schoolType = '';
     this.closeSuggestions();
@@ -180,6 +166,8 @@
     var self = this;
     var query = this.query.value.trim();
 
+    if (this.school) this.clearSelectedSchool();
+
     if (this.searchTimer) window.clearTimeout(this.searchTimer);
     this.searchTimer = null;
     if (this.searchRequest) this.searchRequest.abort();
@@ -206,14 +194,28 @@
     }, DEBOUNCE_MS);
   };
 
+  SchoolFinder.prototype.clearSelectedSchool = function () {
+    this.school = null;
+    this.schoolType = '';
+    if (this.quoteRequest) this.quoteRequest.abort();
+    this.quoteRequest = null;
+    this.selectedName.textContent = '';
+    this.selectedMeta.textContent = '';
+    this.selectedNote.textContent = '';
+    this.selectedPrice.textContent = '';
+    this.selectedPanel.hidden = true;
+    this.totals.hidden = true;
+    this.errorBox.hidden = true;
+    this.hideManual();
+    if (this.schoolNameInput) this.schoolNameInput.value = '';
+    this.notifyActivation();
+  };
+
   SchoolFinder.prototype.runSearch = function (query) {
     var self = this;
     var url =
       this.searchUrl +
-      '?province=' +
-      encodeURIComponent(this.province.value) +
-      '&q=' +
-      encodeURIComponent(query);
+      '?q=' + encodeURIComponent(query);
 
     if (this.searchRequest) this.searchRequest.abort();
     var pending = new XMLHttpRequest();
@@ -249,7 +251,7 @@
       var empty = el(
         'li',
         'sf-suggestion sf-suggestion-empty',
-        'No matching school in this province.'
+        'No matching school in the national directory.'
       );
       this.suggestions.appendChild(empty);
       this.suggestions.hidden = false;
@@ -387,7 +389,8 @@
   };
 
   SchoolFinder.prototype.describeSchool = function (school) {
-    var parts = [school.province];
+    var parts = [];
+    if (school.province) parts.push(school.province);
     if (school.learners_2025) {
       parts.push(
         school.learners_2025.toLocaleString('en-ZA') +
@@ -510,7 +513,6 @@
       return;
     }
     if (!school || !school.id) return;
-    this.province.value = school.province;
     this.query.disabled = false;
     this.selectSchool(school);
     this.setStatus('');
