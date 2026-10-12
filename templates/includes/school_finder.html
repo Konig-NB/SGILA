@@ -1,10 +1,10 @@
 {% comment %}
-Shared Enterprise school finder: pick a province, search for the school, and get
+Shared Enterprise school finder: search the national directory and get
 its price automatically. Included by both the pricing dialog on
 /subscription and /subscription/redeem-package so the two cannot drift apart.
 
-Every price shown here comes from lessons.pricing via schools.resolution; this
-template contains no numbers. Behaviour lives in static/js/school_finder.js.
+Every price shown here comes from lessons.pricing; this template contains no
+numbers. Behaviour lives in static/js/school_finder.js.
 {% endcomment %}
 <div class="school-finder"
      data-school-finder
@@ -20,16 +20,6 @@ template contains no numbers. Behaviour lives in static/js/school_finder.js.
      {% endif %}>
 
   <div class="pricing-calculator-fields">
-    <label class="pricing-field" for="sf-province-{{ school_finder.instance }}">
-      Province
-      <select id="sf-province-{{ school_finder.instance }}" data-sf-province>
-        <option value="">Choose your province&hellip;</option>
-        {% for province in school_finder.provinces %}
-          <option value="{{ province }}">{{ province }}</option>
-        {% endfor %}
-      </select>
-    </label>
-
     <div class="pricing-field">
       <label for="sf-query-{{ school_finder.instance }}">School name</label>
       <div class="sf-combobox">
@@ -42,8 +32,7 @@ template contains no numbers. Behaviour lives in static/js/school_finder.js.
           aria-autocomplete="list"
           aria-expanded="false"
           aria-controls="sf-list-{{ school_finder.instance }}"
-          placeholder="Type at least {{ school_finder.min_query_length }} letters of your school name"
-          disabled
+          placeholder="Search by school name or town"
         >
         <ul
           class="sf-suggestions"
@@ -58,7 +47,8 @@ template contains no numbers. Behaviour lives in static/js/school_finder.js.
   </div>
 
   <p class="pricing-note">
-    Search for your school and we will look up its price for you.
+    Search the national school directory by school name or town. Province is not
+    included in this directory, so it cannot be used to filter results.
   </p>
 
   <p class="sf-status" data-sf-status role="status" hidden></p>

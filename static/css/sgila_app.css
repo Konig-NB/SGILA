@@ -11027,7 +11027,7 @@ body:not(.diagram-body) .story-diary-signature {
     text-align: left;
   }
   body:not(.diagram-body) .enterprise-pricing-dialog .pricing-field select,
-  body:not(.diagram-body) .enterprise-pricing-dialog .pricing-field input {
+  body:not(.diagram-body) .enterprise-pricing-dialog .pricing-field input:not([type="checkbox"]) {
     width: 100%;
     min-height: 48px;
     padding: 10px 13px;
@@ -11043,6 +11043,37 @@ body:not(.diagram-body) .story-diary-signature {
   body:not(.diagram-body) .enterprise-pricing-dialog .pricing-field select:focus-visible {
     outline: 3px solid #5bdad4;
     outline-offset: 1px;
+  }
+  body:not(.diagram-body) .enterprise-pricing-dialog [data-sf-manual-fields] {
+    padding: 12px;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    background: var(--paper);
+  }
+  body:not(.diagram-body) .enterprise-pricing-dialog .sf-not-sure {
+    display: flex;
+    flex-direction: row;
+    gap: 9px;
+    align-items: flex-start;
+    margin-top: 10px;
+    color: var(--muted);
+    font-size: .84rem;
+    font-weight: 600;
+    line-height: 1.45;
+    cursor: pointer;
+  }
+  body:not(.diagram-body) .enterprise-pricing-dialog .sf-not-sure input {
+    flex: 0 0 17px;
+    width: 17px;
+    min-width: 17px;
+    height: 17px;
+    min-height: 17px;
+    margin: 1px 0 0;
+    padding: 0;
+    border: 0;
+    border-radius: 3px;
+    background: transparent;
+    accent-color: #5bdad4;
   }
   body:not(.diagram-body) .enterprise-pricing-dialog .pricing-note {
     color: #566176;
@@ -13197,6 +13228,51 @@ body:not(.diagram-body) .teacher-grade-picker input {
   accent-color: #ffd22e;
 }
 
+body:not(.diagram-body) .teacher-grade-picker label {
+  gap: 8px;
+  padding: 8px 12px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--ink);
+  background: var(--surface);
+  cursor: pointer;
+  transition: border-color .15s ease, background-color .15s ease, box-shadow .15s ease;
+}
+
+body:not(.diagram-body) .teacher-grade-picker label:hover {
+  border-color: var(--mint);
+}
+
+body:not(.diagram-body) .teacher-grade-picker label:has(input:checked) {
+  border-color: var(--success);
+  background: var(--mint-soft);
+  font-weight: 850;
+}
+
+body:not(.diagram-body) .teacher-grade-picker label:focus-within {
+  outline: 3px solid #176b87;
+  outline-offset: 2px;
+}
+
+body:not(.diagram-body) .teacher-grade-picker input[type="checkbox"] {
+  flex: 0 0 18px;
+  min-height: 18px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+body:not(.diagram-body) .teacher-grade-picker input[type="checkbox"]:focus {
+  outline: none;
+}
+
+[data-theme="dark"] body:not(.diagram-body) .teacher-grade-picker label:focus-within {
+  outline-color: #8be9ff;
+}
+
 body:not(.diagram-body) .teacher-school-header-picker .btn {
   justify-self: start;
 }
@@ -13488,6 +13564,74 @@ body:not(.diagram-body) .learner-activation-btn:not(.learner-activation-btn--rea
 
 [data-theme="dark"] body:not(.diagram-body) .cooldown-notice-dialog .btn-light:hover {
   background: #365f6c;
+}
+
+[data-theme="dark"] body:not(.diagram-body) .enterprise-pricing-dialog {
+  border-color: var(--line);
+  color: var(--ink);
+  background: var(--surface);
+  box-shadow: 0 28px 80px rgba(0, 0, 0, .42);
+}
+
+[data-theme="dark"] body:not(.diagram-body) .enterprise-pricing-dialog::backdrop {
+  background: rgba(5, 17, 25, .76);
+}
+
+[data-theme="dark"] body:not(.diagram-body) .enterprise-pricing-dialog .account-dialog-heading h2,
+[data-theme="dark"] body:not(.diagram-body) .enterprise-pricing-dialog .pricing-field {
+  color: var(--ink);
+}
+
+[data-theme="dark"] body:not(.diagram-body) .enterprise-pricing-dialog .pricing-field select,
+[data-theme="dark"] body:not(.diagram-body) .enterprise-pricing-dialog .pricing-field input:not([type="checkbox"]) {
+  border-color: var(--line);
+  color: var(--ink);
+  background: #142b35;
+}
+
+[data-theme="dark"] body:not(.diagram-body) .enterprise-pricing-dialog .sf-not-sure,
+[data-theme="dark"] body:not(.diagram-body) .enterprise-pricing-dialog .pricing-note,
+[data-theme="dark"] body:not(.diagram-body) .enterprise-pricing-dialog .pricing-plain {
+  color: var(--muted);
+}
+
+[data-theme="dark"] body:not(.diagram-body) .enterprise-pricing-dialog .pricing-plain-heading,
+[data-theme="dark"] body:not(.diagram-body) .enterprise-pricing-dialog .pricing-plain-subheading {
+  color: var(--ink);
+}
+
+[data-theme="dark"] body:not(.diagram-body) .enterprise-pricing-dialog .pricing-result {
+  border-color: var(--line);
+  background: #142b35;
+}
+
+[data-theme="dark"] body:not(.diagram-body) .enterprise-pricing-dialog .pricing-result-label,
+[data-theme="dark"] body:not(.diagram-body) .enterprise-pricing-dialog .pricing-breakdown,
+[data-theme="dark"] body:not(.diagram-body) .enterprise-pricing-dialog .pricing-breakdown-note {
+  color: var(--muted);
+}
+
+[data-theme="dark"] body:not(.diagram-body) .enterprise-pricing-dialog .pricing-result-value {
+  color: var(--ink);
+}
+
+[data-theme="dark"] body:not(.diagram-body) .enterprise-pricing-dialog .pricing-result-row-prepay {
+  border-color: var(--line);
+}
+
+[data-theme="dark"] body:not(.diagram-body) .school-finder .sf-selected-name,
+[data-theme="dark"] body:not(.diagram-body) .school-finder .sf-selected-price strong {
+  color: var(--ink);
+}
+
+[data-theme="dark"] body:not(.diagram-body) .school-finder .sf-selected-meta,
+[data-theme="dark"] body:not(.diagram-body) .school-finder .sf-selected-note,
+[data-theme="dark"] body:not(.diagram-body) .school-finder .sf-selected-price span {
+  color: var(--muted);
+}
+
+[data-theme="dark"] body:not(.diagram-body) .school-finder .sf-selected-price {
+  border-top-color: var(--line);
 }
 
 /* Grade 3 activity workbook layout. */

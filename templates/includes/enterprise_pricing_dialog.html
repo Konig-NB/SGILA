@@ -90,7 +90,7 @@ dialog's open/close and focus behaviour.
     if (!dialog) return;
     var openers = document.querySelectorAll('[data-open-enterprise-pricing]');
     var closers = dialog.querySelectorAll('[data-close-enterprise-pricing]');
-    var firstField = dialog.querySelector('[data-sf-province]');
+    var firstField = dialog.querySelector('[data-sf-query]');
     var lastFocused = null;
 
     function openDialog(event) {
