@@ -1,6 +1,6 @@
 {% comment %}
 Shared Enterprise school finder: pick a province, search for the school, and get
-its quintile and price automatically. Included by both the pricing dialog on
+its price automatically. Included by both the pricing dialog on
 /subscription and /subscription/redeem-package so the two cannot drift apart.
 
 Every price shown here comes from lessons.pricing via schools.resolution; this
@@ -58,10 +58,7 @@ template contains no numbers. Behaviour lives in static/js/school_finder.js.
   </div>
 
   <p class="pricing-note">
-    Search your school in the Department of Basic Education's National Master List
-    of Schools and we will look up its quintile and price for you. Quintiles are
-    the Department of Basic Education's school poverty ranking: Quintile 1 is the
-    poorest, Quintile 5 the least poor.
+    Search for your school and we will look up its price for you.
   </p>
 
   <p class="sf-status" data-sf-status role="status" hidden></p>
@@ -93,7 +90,7 @@ template contains no numbers. Behaviour lives in static/js/school_finder.js.
       </select>
       <label class="sf-not-sure">
         <input type="checkbox" data-sf-not-sure>
-        <span>Not sure &mdash; {{ school_finder.no_quintile_message|default:"we will confirm the price on activation." }}</span>
+        <span>Not sure &mdash; we will confirm the price on activation.</span>
       </label>
     </div>
   </div>

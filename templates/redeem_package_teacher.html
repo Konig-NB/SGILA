@@ -1,0 +1,353 @@
+{% extends 'base.html' %}
+{% load static %}
+{% block title %}Activate your school package - SGILA{% endblock %}
+{% block content %}
+
+<section class="epic-band redeem-hero">
+  <img class="auth-koaly-peek subscription-koaly-peek redeem-koala" src="{% static 'img/koaly_cutout.png' %}" alt="" aria-hidden="true">
+  <h1 class="redeem-heading">Activate your school package</h1>
+  <p class="redeem-subtitle">
+    Find your school, check your price and activate the Enterprise plan to unlock story access for your learners.
+    Enter the code from your district, funder or school administrator.
+  </p>
+</section>
+
+<section class="epic-cards redeem-cards">
+  <form method="POST" class="epic-card form-card subscription-activation-card redeem-form-card">
+    {% csrf_token %}
+
+    {% include 'includes/school_finder.html' %}
+
+    <label class="subscription-field redeem-field">
+      School name
+      <input type="text" name="school_name" value="{{ school_name }}" required placeholder="Start typing your school name">
+      <span class="field-hint">Type at least 3 letters</span>
+    </label>
+
+    <label class="subscription-field redeem-field">
+      Number of learners
+      <input type="number" name="learners" value="{{ school_finder.minimum_learners|default:100 }}" min="{{ school_finder.minimum_learners|default:100 }}" step="1" inputmode="numeric" required>
+    </label>
+
+    {% if enquiry_quote.valid %}
+      <input type="hidden" name="school_type" value="{{ enquiry_school_type }}">
+      <div class="pricing-result redeem-price-box" data-pricing-result>
+        <div class="pricing-result-row">
+          <span class="pricing-result-label">Per learner, per month</span>
+          <strong class="pricing-result-value" data-pricing-per-learner>{{ enquiry_quote.per_learner_month }}</strong>
+        </div>
+        <div class="pricing-result-row">
+          <span class="pricing-result-label">Total per month</span>
+          <strong class="pricing-result-value" data-pricing-total-month>{{ enquiry_quote.total_month }}</strong>
+        </div>
+        <div class="pricing-result-row">
+          <span class="pricing-result-label">Total per year (12 months)</span>
+          <strong class="pricing-result-value" data-pricing-total-year>{{ enquiry_quote.total_year }}</strong>
+        </div>
+        <p class="pricing-breakdown" data-pricing-breakdown>{{ enquiry_quote.breakdown }}</p>
+      </div>
+    {% endif %}
+
+    <label class="subscription-field redeem-field">
+      Package code
+      <input class="uppercase-field" type="text" name="package_code" value="{{ package_code }}" required placeholder="Enter your package code">
+    </label>
+
+    <p class="subscription-field-hint redeem-hint">
+      Search for your school and we will look up its price for you.
+    </p>
+
+    <button class="epic-cta epic-cta-blue subscription-action-large redeem-submit-btn" type="submit">Activate school package</button>
+  </form>
+</section>
+
+<div class="subscription-cancel-wrap redeem-back-wrap">
+  <a href="/subscription" class="subscription-back-link redeem-back-link">Back to plans</a>
+</div>
+
+<script src="{% static 'js/school_finder.js' %}"></script>
+
+<style>
+/* Redeem page specific styles */
+.redeem-hero {
+  padding: clamp(20px, 4vw, 32px) clamp(20px, 4vw, 32px) clamp(24px, 4vw, 40px);
+  text-align: center;
+  background: transparent;
+}
+
+.redeem-heading {
+  margin: 0 0 12px;
+  font-size: clamp(2rem, 4.5vw, 3rem);
+  line-height: 1.15;
+  font-weight: 900;
+  color: var(--ink);
+  text-shadow: 0 2px 8px rgba(255, 255, 255, 0.7);
+}
+
+.redeem-subtitle {
+  margin: 0 auto clamp(28px, 5vw, 40px);
+  max-width: 640px;
+  font-size: clamp(1.05rem, 2.2vw, 1.15rem);
+  font-weight: 500;
+  line-height: 1.6;
+  color: var(--muted);
+  text-shadow: 0 1px 4px rgba(255, 255, 255, 0.5);
+}
+
+.redeem-koala {
+  max-width: min(220px, 50vw);
+  filter: drop-shadow(0 16px 24px rgba(36, 48, 68, .12));
+  margin-top: -12px;
+}
+
+/* Form card */
+.redeem-cards {
+  display: flex;
+  justify-content: center;
+  padding: 0 clamp(16px, 3vw, 24px);
+}
+
+.redeem-form-card {
+  width: 100%;
+  max-width: 560px;
+  padding: clamp(32px, 5vw, 40px) clamp(28px, 4vw, 36px);
+  gap: 16px;
+  box-shadow: 0 12px 32px rgba(36, 48, 68, .08);
+  border-radius: 20px;
+  background: var(--surface);
+}
+
+.redeem-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+}
+
+.redeem-field label {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.redeem-field input,
+.redeem-field select {
+  height: 48px;
+  padding: 0 16px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  font-size: 1rem;
+  font-weight: 400;
+  color: var(--ink);
+  background: var(--surface);
+  transition: border-color .15s ease, box-shadow .15s ease;
+}
+
+.redeem-field input::placeholder {
+  color: var(--muted);
+  opacity: 0.7;
+}
+
+.redeem-field input:focus,
+.redeem-field select:focus {
+  outline: none;
+  border-color: #5bdad4;
+  box-shadow: 0 0 0 3px rgba(91, 218, 212, .25);
+}
+
+/* Province dropdown styling to match inputs */
+.school-finder .pricing-calculator-fields {
+  display: grid;
+  gap: 16px;
+}
+
+.school-finder .pricing-field label {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.school-finder .pricing-field select,
+.school-finder .sf-combobox input {
+  height: 48px;
+  padding: 0 16px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  font-size: 1rem;
+  font-weight: 400;
+  color: var(--ink);
+  background: var(--surface);
+  transition: border-color .15s ease, box-shadow .15s ease;
+}
+
+.school-finder .pricing-field select:focus,
+.school-finder .sf-combobox input:focus {
+  outline: none;
+  border-color: #5bdad4;
+  box-shadow: 0 0 0 3px rgba(91, 218, 212, .25);
+}
+
+.school-finder .sf-combobox {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.school-finder .sf-combobox input {
+  padding-right: 44px;
+}
+
+.field-hint {
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+
+/* Search suggestions dropdown */
+.sf-suggestions {
+  margin-top: 4px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  box-shadow: 0 10px 24px rgba(36, 48, 68, .12);
+  background: var(--surface);
+  max-height: 260px;
+  overflow-y: auto;
+  z-index: 10;
+}
+
+.sf-suggestions [role="option"] {
+  padding: 12px 16px;
+  cursor: pointer;
+  transition: background .1s ease;
+}
+
+.sf-suggestions [role="option"]:hover,
+.sf-suggestions [role="option"].is-active {
+  background: var(--auto-eef3ff-bg);
+}
+
+.sf-suggestions .sf-suggestion-name {
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.sf-suggestions .sf-suggestion-place {
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+/* Helper text */
+.redeem-hint,
+.pricing-note {
+  margin: 4px 0 8px;
+  font-size: 0.9rem;
+  line-height: 1.5;
+  color: var(--muted);
+  text-align: left;
+}
+
+/* Price box - match popup style */
+.redeem-price-box {
+  margin: 8px 0 16px;
+  padding: 20px 24px;
+  background: var(--auto-eef3ff-bg);
+  border-radius: 14px;
+  border: 1px solid var(--auto-b8d9ff-bd);
+}
+
+.redeem-price-box .pricing-result-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  padding: 6px 0;
+}
+
+.redeem-price-box .pricing-result-label {
+  font-size: 0.95rem;
+  color: var(--muted);
+  font-weight: 500;
+}
+
+.redeem-price-box .pricing-result-value {
+  font-size: 1.1rem;
+  font-weight: 800;
+  color: var(--ink);
+  white-space: nowrap;
+}
+
+.redeem-price-box .pricing-breakdown {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--auto-d7deea-bd);
+  font-size: 0.85rem;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+/* Submit button */
+.redeem-submit-btn {
+  width: 100%;
+  margin-top: 8px;
+  padding: 16px 28px;
+  font-size: 1.05rem;
+  font-weight: 800;
+  background: #5bdad4;
+  color: #111111;
+  border: none;
+  border-radius: 999px;
+  cursor: pointer;
+  box-shadow: 0 8px 20px rgba(91, 218, 212, .35);
+  transition: transform .15s ease, box-shadow .15s ease;
+}
+
+.redeem-submit-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 12px 28px rgba(91, 218, 212, .4);
+}
+
+/* Back link */
+.redeem-back-wrap {
+  padding: 16px 0 32px;
+  text-align: center;
+}
+
+.redeem-back-link {
+  display: inline-block;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--muted);
+  text-decoration: none;
+  transition: color .15s ease;
+}
+
+.redeem-back-link:hover {
+  color: var(--ink);
+}
+
+/* Responsive */
+@media (max-width: 720px) {
+  .redeem-hero {
+    padding: clamp(24px, 6vw, 36px) 16px clamp(16px, 4vw, 24px);
+  }
+  
+  .redeem-koala {
+    max-width: min(180px, 55vw);
+    margin-top: -12px;
+  }
+  
+  .redeem-form-card {
+    max-width: 100%;
+    padding: 24px 20px;
+    border-radius: 16px;
+  }
+  
+  .redeem-field input,
+  .redeem-field select,
+  .school-finder .pricing-field select,
+  .school-finder .sf-combobox input {
+    height: 44px;
+  }
+}
+</style>
+
+{% endblock %}
