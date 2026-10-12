@@ -18,10 +18,11 @@ dialog's open/close and focus behaviour.
         </div>
       </div>
 
+{% if role != 'guest' %}
 <div class="pricing-calculator">
-        {% include 'includes/school_finder.html' %}
+  {% include 'includes/school_finder.html' %}
 
-        <p class="pricing-note">
+  <p class="pricing-note">
           Ready to get started? Click Activate Enterprise Package below.
         </p>
 
@@ -51,6 +52,7 @@ dialog's open/close and focus behaviour.
         </div>
 
       </div>
+{% endif %}
 
       <div class="pricing-plain">
         <h3 class="pricing-plain-heading">How Enterprise pricing works</h3>

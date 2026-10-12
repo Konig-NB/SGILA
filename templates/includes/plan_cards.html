@@ -51,7 +51,25 @@ package code on /subscription/redeem-package.
   </div>
   {% endif %}
 
-<div class="epic-card epic-card-enterprise">
+<div class="epic-card epic-card-enterprise{% if role == 'guest' %} enterprise-ad{% endif %}">
+  {% if role == 'guest' %}
+  <div class="enterprise-ad-copy">
+    <p class="enterprise-ad-eyebrow">SGILA for schools</p>
+    <h2 class="epic-plan-name">Enterprise</h2>
+    <p class="epic-billed epic-billed-tight">For schools & shared accounts</p>
+    <p class="enterprise-ad-message">Bring CAPS-aligned reading adventures to your school with pricing designed for larger learner groups.</p>
+    <ul class="enterprise-ad-benefits">
+      <li>Available to public and independent schools</li>
+      <li>Billed to the school or a funder, never families</li>
+      <li>One package for a minimum of {{ enterprise_minimum_learners_display }} learners</li>
+    </ul>
+  </div>
+  <div class="enterprise-ad-offer">
+    <p class="epic-price"><span>From</span> {{ enterprise_start_price }}<span>/month per learner</span></p>
+    <p class="epic-billed epic-billed-tight">Minimum {{ enterprise_minimum_learners_display }} learners</p>
+    <button type="button" class="subscription-details-link" data-open-enterprise-pricing>See full pricing details</button>
+  </div>
+  {% else %}
     <h2 class="epic-plan-name">Enterprise</h2>
     <p class="epic-billed epic-billed-tight">For schools & shared accounts</p>
     <p class="epic-price"><span>From</span> {{ enterprise_start_price }}<span>/month per learner</span></p>
@@ -61,11 +79,8 @@ package code on /subscription/redeem-package.
     {% elif role == 'teacher' %}
     <button type="button" class="subscription-details-link" data-open-enterprise-pricing>See full pricing details</button>
     <a class="epic-cta epic-cta-enterprise" href="/subscription/redeem-package">Activate</a>
-    {% elif role == 'guest' %}
-    <button type="button" class="subscription-details-link" data-open-enterprise-pricing>See full pricing details</button>
     {% endif %}
-  </div>
-
+  {% endif %}
 </div>
 
 {% include 'includes/enterprise_pricing_dialog.html' %}
