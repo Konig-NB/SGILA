@@ -6,7 +6,31 @@
     <div>
       <p class="eyebrow">Teacher dashboard</p>
       <h1>Hello, {{ teacher.full_name }}</h1>
-      <p>{{ teacher.school_name }}{% if teacher.grades_taught %} - Grades {{ teacher.grades_taught }}{% endif %}</p>
+      <form method="post" action="/teacher/school" class="teacher-school-header-picker" id="teacher-school-update-form">
+        {% csrf_token %}
+        <label for="teacher-school-search">School</label>
+        <div class="teacher-school-control">
+          <input id="teacher-school-search" type="search" value="{{ teacher.school_name }}"
+                 autocomplete="off" placeholder="Search school name" role="combobox"
+                 aria-autocomplete="list" aria-expanded="false" aria-controls="teacher-school-results" required>
+          <input id="teacher-school-name" type="hidden" name="school_name" value="{{ teacher.school_name }}">
+          <div id="teacher-school-results" class="teacher-school-results" role="listbox"
+               aria-label="School search results" hidden></div>
+        </div>
+        <p id="teacher-school-status" class="teacher-school-status" role="status" aria-live="polite">
+          Search and select your school.
+        </p>
+        <fieldset class="teacher-grade-picker">
+          <legend>Grades you teach</legend>
+          {% for item in teacher_grade_choices %}
+            <label>
+              <input type="checkbox" name="grades_taught" value="{{ item.grade }}" {% if item.selected %}checked{% endif %}>
+              Grade {{ item.grade }}
+            </label>
+          {% endfor %}
+        </fieldset>
+        <button class="btn btn-primary" type="submit">Save school and grades</button>
+      </form>
     </div>
   </header>
 
@@ -207,6 +231,124 @@
     </form>
   </dialog>
 </section>
+<script>
+(function () {
+  const form = document.getElementById('teacher-school-update-form');
+  if (!form) return;
+  const search = document.getElementById('teacher-school-search');
+  const schoolName = document.getElementById('teacher-school-name');
+  const results = document.getElementById('teacher-school-results');
+  const status = document.getElementById('teacher-school-status');
+  let timer;
+  let sequence = 0;
+  let activeIndex = -1;
+
+  function closeResults() {
+    results.hidden = true;
+    search.setAttribute('aria-expanded', 'false');
+    search.removeAttribute('aria-activedescendant');
+    activeIndex = -1;
+  }
+
+  function chooseSchool(school) {
+    search.value = school.school_name;
+    schoolName.value = school.school_name;
+    status.textContent = school.location
+      ? `Selected ${school.school_name} — ${school.location}.`
+      : `Selected ${school.school_name}.`;
+    closeResults();
+  }
+
+  function showResults(schools, query) {
+    results.replaceChildren();
+    if (!schools.length) {
+      status.textContent = `No listed school matches "${query}". You can keep the name you entered.`;
+      closeResults();
+      return;
+    }
+    schools.forEach((school, index) => {
+      const option = document.createElement('button');
+      option.type = 'button';
+      option.id = `teacher-school-option-${index}`;
+      option.className = 'teacher-school-option';
+      option.setAttribute('role', 'option');
+      option.setAttribute('aria-selected', 'false');
+      option.tabIndex = -1;
+      const name = document.createElement('span');
+      name.className = 'teacher-school-option-name';
+      name.textContent = school.school_name;
+      const detail = document.createElement('span');
+      detail.className = 'teacher-school-option-detail';
+      detail.textContent = [school.location, school.quantile || 'Quantile unavailable'].filter(Boolean).join(' · ');
+      option.append(name, detail);
+      option.addEventListener('mousedown', (event) => event.preventDefault());
+      option.addEventListener('click', () => chooseSchool(school));
+      results.append(option);
+    });
+    status.textContent = 'Select the correct school from the results.';
+    search.setAttribute('aria-expanded', 'true');
+    results.hidden = false;
+  }
+
+  search.addEventListener('input', () => {
+    const query = search.value.trim();
+    schoolName.value = query;
+    const currentSequence = ++sequence;
+    window.clearTimeout(timer);
+    closeResults();
+    if (query.length < 2) {
+      status.textContent = 'Enter at least two characters to search for your school.';
+      return;
+    }
+    status.textContent = 'Searching schools...';
+    timer = window.setTimeout(async () => {
+      try {
+        const response = await fetch(`/api/teacher/schools/search/?q=${encodeURIComponent(query)}`, {
+          headers: { Accept: 'application/json' },
+        });
+        if (!response.ok) throw new Error('School search request failed.');
+        const payload = await response.json();
+        if (currentSequence !== sequence || search.value.trim() !== query) return;
+        showResults(payload.results || [], query);
+      } catch (error) {
+        if (currentSequence !== sequence) return;
+        status.textContent = 'School search is unavailable. You can still save the entered school name.';
+        console.error(error);
+      }
+    }, 180);
+  });
+
+  search.addEventListener('keydown', (event) => {
+    const options = [...results.querySelectorAll('.teacher-school-option')];
+    if (event.key === 'Escape') {
+      closeResults();
+    } else if (event.key === 'ArrowDown' && options.length) {
+      event.preventDefault();
+      activeIndex = (activeIndex + 1) % options.length;
+    } else if (event.key === 'ArrowUp' && options.length) {
+      event.preventDefault();
+      activeIndex = (activeIndex <= 0 ? options.length : activeIndex) - 1;
+    } else if (event.key === 'Enter' && activeIndex >= 0 && options[activeIndex]) {
+      event.preventDefault();
+      options[activeIndex].click();
+    } else {
+      return;
+    }
+    options.forEach((option, index) => {
+      const active = index === activeIndex;
+      option.classList.toggle('is-active', active);
+      option.setAttribute('aria-selected', String(active));
+    });
+    if (activeIndex >= 0 && options[activeIndex]) {
+      search.setAttribute('aria-activedescendant', options[activeIndex].id);
+    }
+  });
+
+  document.addEventListener('click', (event) => {
+    if (!form.contains(event.target)) closeResults();
+  });
+})();
+</script>
 <script>
 (function () {
   const dialog = document.getElementById('deactivate-dialog');

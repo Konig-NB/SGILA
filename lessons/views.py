@@ -581,6 +581,22 @@ def terms_page(request):
     return render(request, 'terms.html')
 
 
+def about_page(request):
+    return render(request, 'about.html')
+
+
+def privacy_page(request):
+    return render(request, 'privacy.html')
+
+
+def access_information_page(request):
+    return render(request, 'access_information.html')
+
+
+def testimonials_page(request):
+    return render(request, 'testimonials.html')
+
+
 def welcome(request):
     return render(request, 'welcome.html')
 
@@ -724,10 +740,25 @@ def register_teacher(request):
     data = request.POST
     email = data['email'].strip().lower()
     full_name = title_case(data.get('full_name'))
+    selected_grades = {
+        grade.strip()
+        for value in data.getlist('grades_taught')
+        for grade in value.split(',')
+        if grade.strip()
+    }
+    if not selected_grades or not selected_grades.issubset({'1', '2', '3', '4'}):
+        messages.error(request, 'Select at least one valid teaching grade from 1 to 4.')
+        return render(request, 'register.html', {
+            'role': 'teacher',
+            'selected_grades': selected_grades,
+        })
 
     if Teacher.objects.filter(email=email).exists():
         messages.error(request, 'That teacher email is already registered.')
-        return render(request, 'register.html', {'role': 'teacher'})
+        return render(request, 'register.html', {
+            'role': 'teacher',
+            'selected_grades': selected_grades,
+        })
 
     # Invalidate any previous unused OTPs for this email
     OTPToken.objects.filter(email=email, role='teacher', is_used=False).delete()
@@ -738,7 +769,7 @@ def register_teacher(request):
         'full_name': full_name,
         'email': email,
         'school_name': title_case(data.get('school_name')),
-        'grades_taught': ','.join(data.getlist('grades_taught')) or data.get('grades_taught', ''),
+        'grades_taught': ','.join(sorted(selected_grades, key=int)),
         'phone': data.get('phone', '').strip(),
         'password': data['password'],
         'accepted_popia': bool(data.get('accepted_popia')),
@@ -925,6 +956,36 @@ def teacher_deactivate_account(request):
     request.session.flush()
     messages.success(request, 'Your SGILA account is deactivated. Your records have been retained for possible reactivation.')
     return redirect('/login?role=teacher')
+
+
+@require_http_methods(['POST'])
+def update_teacher_school(request):
+    if request.session.get('account_role') != 'teacher':
+        return redirect('/login?role=teacher')
+
+    teacher = get_object_or_404(Teacher, id=request.session.get('account_id'))
+    school_name = title_case(request.POST.get('school_name'))
+    if not school_name:
+        messages.error(request, 'Enter your school name.')
+        return redirect('/teacher/dashboard')
+    if len(school_name) > Teacher._meta.get_field('school_name').max_length:
+        messages.error(request, 'The school name is too long.')
+        return redirect('/teacher/dashboard')
+
+    if 'grades_taught' in request.POST:
+        selected_grades = request.POST.getlist('grades_taught')
+        if not selected_grades or any(grade not in {'1', '2', '3', '4'} for grade in selected_grades):
+            messages.error(request, 'Select at least one valid grade from 1 to 4.')
+            return redirect('/teacher/dashboard')
+        grades_taught = ','.join(sorted(set(selected_grades), key=int))
+    else:
+        grades_taught = teacher.grades_taught
+
+    teacher.school_name = school_name
+    teacher.grades_taught = grades_taught
+    teacher.save(update_fields=['school_name', 'grades_taught'])
+    messages.success(request, 'Your school name and teaching grades have been updated.')
+    return redirect('/teacher/dashboard')
 
 
 @require_http_methods(['GET', 'POST'])
@@ -4189,6 +4250,10 @@ def teacher_dashboard(request):
     first_grade_anchor = f"grade-section-{grade_sections[0]['grade']}" if grade_sections else ''
     return render(request, 'teacher_dashboard.html', {
         'teacher': teacher,
+        'teacher_grade_choices': [
+            {'grade': grade, 'selected': grade in grades}
+            for grade in range(1, 5)
+        ],
         'learner_rows': learner_rows,
         'grade_sections': grade_sections,
         'class_average': class_average,

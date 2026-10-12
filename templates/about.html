@@ -1,0 +1,40 @@
+{% extends 'base.html' %}
+{% load static %}
+{% block title %}About Us - SGILA{% endblock %}
+{% block content %}
+<section class="terms-page info-page">
+  <div class="terms-container">
+    <header class="terms-header">
+      <img src="{% static 'img/koaly_cutout.png' %}" alt="" class="terms-koaly">
+      <div>
+        <p class="eyebrow">About SGILA</p>
+        <h1>Reading adventures for growing readers</h1>
+        <p class="terms-meta">Stories that grow with every reader.</p>
+      </div>
+    </header>
+    <div class="terms-body">
+      <h2>What is SGILA?</h2>
+      <p>SGILA is a digital reading and literacy app for learners in Grades 1–4. It brings together stories and interactive activities to help children practise reading, listening, comprehension, vocabulary, spelling and other literacy skills.</p>
+
+      <h2>What problem are we solving?</h2>
+      <p>South Africa faces a critical foundational literacy crisis. According to the Progress in International Reading Literacy Study (PIRLS 2021), approximately 81% of Grade 4 learners in South Africa cannot read for meaning — the highest illiteracy rate among all 57 participating countries. This crisis is rooted in the foundational phase (Grades 1 to 4), where children first develop reading comprehension, phonemic awareness and vocabulary.</p>
+
+      <h2>Who is it for?</h2>
+      <p>Children use the learning activities with support from a parent, guardian or teacher. Adults can create and manage learner profiles, while parents and teachers can follow learning progress through their accounts.</p>
+
+      <h2>How learning works</h2>
+      <ul>
+        <li>Learners explore age- and grade-appropriate stories.</li>
+        <li>Interactive activities provide practice and feedback.</li>
+        <li>Progress summaries help families and educators follow completed lessons and scores.</li>
+        <li>Reading and audio activities include English and isiZulu learning content where available.</li>
+      </ul>
+      <p>SGILA is intended as a supplementary learning resource. It supports, but does not replace, teaching, caregiver guidance or a learner’s school curriculum.</p>
+
+      <h2>Questions or feedback?</h2>
+      <p>Visit the <a href="/help/">Help and Feedback Centre</a> or email <a href="mailto:sgila.info@gmail.com">sgila.info@gmail.com</a>.</p>
+      <p class="terms-footer-note">SGILA Reading App · About Us</p>
+    </div>
+  </div>
+</section>
+{% endblock %}

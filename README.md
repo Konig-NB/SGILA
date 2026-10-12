@@ -16,6 +16,9 @@ Clean Django web application for SGILA foundation phase reading.
 
 ## Quick Start
 
+For clean-machine setup and Render deployment instructions, see
+[README_RUN.md](README_RUN.md).
+
 ```bash
 pip install django djangorestframework
 python manage.py migrate

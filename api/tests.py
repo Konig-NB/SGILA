@@ -56,6 +56,43 @@ from schools.models import School
 
 
 class SchoolDirectorySearchTests(TestCase):
+    @patch('api.views.school_directory_records')
+    def test_teacher_search_uses_its_own_csv_endpoint(self, records):
+        records.return_value = (
+            {
+                'school_name': 'BALENI PRIMARY SCHOOL',
+                'location': 'Bizana',
+                'quantile': 'Q1',
+            },
+            {
+                'school_name': 'BIZANA HIGH SCHOOL',
+                'location': 'Baleni',
+                'quantile': 'Q2',
+            },
+        )
+
+        response = self.client.get(
+            '/api/teacher/schools/search/',
+            {'q': 'bal'},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            response.json()['results'],
+            [
+                {
+                    'school_name': 'BALENI PRIMARY SCHOOL',
+                    'location': 'Bizana',
+                    'quantile': 'Q1',
+                },
+                {
+                    'school_name': 'BIZANA HIGH SCHOOL',
+                    'location': 'Baleni',
+                    'quantile': 'Q2',
+                },
+            ],
+        )
+
     def test_search_returns_matching_school_and_public_quantile_fields(self):
         school = School.objects.create(
             emis_number='200500001',
@@ -274,7 +311,8 @@ class HelpCenterApiTests(TestCase):
         self.assertEqual(ticket.email, user.email)
 
     @override_settings(EMAIL_BACKEND='django.core.mail.backends.console.EmailBackend')
-    def test_console_backend_reports_email_as_not_delivered(self):
+    @patch('api.help_center_views.EmailMessage.send')
+    def test_console_backend_reports_email_as_not_delivered(self, mock_send):
         response = self.client.post(
             '/api/help/tickets/',
             json.dumps({
@@ -290,6 +328,7 @@ class HelpCenterApiTests(TestCase):
         self.assertFalse(response.json()['support_notification_sent'])
         self.assertFalse(response.json()['confirmation_email_sent'])
         self.assertEqual(SupportTicket.objects.count(), 1)
+        mock_send.assert_not_called()
 
     @patch('api.help_center_views.EmailMessage.send', side_effect=[1, RuntimeError('client mailbox rejected')])
     def test_support_delivery_is_reported_when_confirmation_fails(self, mock_send):
@@ -919,7 +958,7 @@ class SgilaFlowTests(TestCase):
             "full_name": "Miss Khumalo",
             "email": "teacher@example.com",
             "school_name": "Thuthuka Primary",
-            "grades_taught": "1,2",
+            "grades_taught": ["1", "2"],
             "password": "password123",
             "accepted_popia": "on",
         })
@@ -931,9 +970,29 @@ class SgilaFlowTests(TestCase):
         })
         self.assertRedirects(teacher_response, "/teacher/dashboard")
         teacher = Teacher.objects.get(email="teacher@example.com")
+        self.assertEqual(teacher.grades_taught, "1,2")
         self.assertTrue(teacher.class_code)
         self.assertTrue(teacher.classes.exists())
         self.assertEqual(self.client.get("/teacher/dashboard").status_code, 200)
+
+    def test_teacher_registration_requires_valid_teaching_grades(self):
+        response = self.client.post("/register", {
+            "role": "teacher",
+            "full_name": "Miss Khumalo",
+            "email": "teacher-invalid-registration@example.com",
+            "school_name": "Thuthuka Primary",
+            "grades_taught": ["1", "5"],
+            "password": "password123",
+            "accepted_popia": "on",
+        })
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Select at least one valid teaching grade")
+        self.assertFalse(OTPToken.objects.filter(
+            email="teacher-invalid-registration@example.com",
+            role="teacher",
+        ).exists())
+        self.assertContains(response, 'value="1" checked')
 
     def test_parent_can_add_child_with_teacher_class_code(self):
         parent = Parent.objects.create(
@@ -1171,6 +1230,96 @@ class SgilaFlowTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertNotContains(response, "Learner At Another School")
         self.assertContains(response, "No learners found yet.")
+
+    def test_teacher_can_update_school_name_and_keep_access_to_linked_learners(self):
+        teacher = Teacher.objects.create(
+            full_name="Miss Khumalo",
+            email="teacher-edit-school@example.com",
+            school_name="Old School",
+            grades_taught="1",
+            password=make_password("StrongPass123!"),
+            accepted_popia=True,
+        )
+        child = Child.objects.create(
+            name="Linked learner",
+            age=7,
+            grade=1,
+            school_name="Old School",
+            parent_email="learner-school@example.com",
+            password=make_password("LearnerPass123!"),
+            teacher=teacher,
+        )
+        session = self.client.session
+        session['account_role'] = 'teacher'
+        session['account_id'] = teacher.id
+        session.save()
+
+        dashboard = self.client.get('/teacher/dashboard')
+        self.assertContains(dashboard, 'id="teacher-school-update-form"')
+        self.assertContains(dashboard, 'id="teacher-school-search"')
+        self.assertContains(dashboard, 'id="teacher-school-results"')
+        self.assertContains(dashboard, 'value="Old School"')
+        self.assertContains(dashboard, 'Grades you teach')
+        self.assertLess(
+            dashboard.content.index(b'id="teacher-school-update-form"'),
+            dashboard.content.index(b'class="portal-metrics"'),
+        )
+        response = self.client.post('/teacher/school', {
+            'school_name': '  new academy  ',
+            'grades_taught': ['2', '1', '2'],
+        })
+
+        self.assertRedirects(response, '/teacher/dashboard')
+        teacher.refresh_from_db()
+        child.refresh_from_db()
+        self.assertEqual(teacher.school_name, 'New Academy')
+        self.assertEqual(teacher.grades_taught, '1,2')
+        self.assertEqual(child.school_name, 'Old School')
+        self.assertEqual(self.client.get(f'/api/progress/{child.id}').status_code, 200)
+        self.assertContains(self.client.get('/teacher/dashboard'), 'Linked Learner')
+
+    def test_teacher_must_choose_at_least_one_valid_teaching_grade(self):
+        teacher = Teacher.objects.create(
+            full_name="Miss Khumalo",
+            email="teacher-invalid-grade@example.com",
+            school_name="Existing School",
+            grades_taught="1,2",
+            password=make_password("StrongPass123!"),
+            accepted_popia=True,
+        )
+        session = self.client.session
+        session['account_role'] = 'teacher'
+        session['account_id'] = teacher.id
+        session.save()
+
+        response = self.client.post('/teacher/school', {
+            'school_name': 'New School',
+            'grades_taught': ['5'],
+        })
+
+        self.assertRedirects(response, '/teacher/dashboard')
+        teacher.refresh_from_db()
+        self.assertEqual(teacher.school_name, 'Existing School')
+        self.assertEqual(teacher.grades_taught, '1,2')
+
+    def test_teacher_school_name_cannot_be_saved_blank(self):
+        teacher = Teacher.objects.create(
+            full_name="Miss Khumalo",
+            email="teacher-empty-school@example.com",
+            school_name="Existing School",
+            password=make_password("StrongPass123!"),
+            accepted_popia=True,
+        )
+        session = self.client.session
+        session['account_role'] = 'teacher'
+        session['account_id'] = teacher.id
+        session.save()
+
+        response = self.client.post('/teacher/school', {'school_name': '   '})
+
+        self.assertRedirects(response, '/teacher/dashboard')
+        teacher.refresh_from_db()
+        self.assertEqual(teacher.school_name, 'Existing School')
 
     def test_hidden_score_fields_do_not_control_saved_results(self):
         child = Child.objects.create(
@@ -2465,6 +2614,44 @@ class ChildReassignmentCooldownTests(TestCase):
         self.assertContains(response, 'class="account-dialog cooldown-notice-dialog"')
         self.assertContains(response, 'role="alertdialog"')
         self.assertNotContains(response, 'class="alert alert-cooldown-popup error"')
+
+
+class PublicInformationPagesTests(TestCase):
+    def test_homepage_has_about_and_policy_links(self):
+        response = self.client.get('/')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'class="studio-footer"')
+        self.assertContains(response, 'href="/about">About Us</a>')
+        self.assertNotContains(response, 'href="/testimonials"')
+        self.assertContains(response, 'Useful links')
+        self.assertNotContains(response, '>Policies<')
+        self.assertContains(response, 'href="/terms">Terms and Conditions</a>')
+        self.assertContains(response, 'href="/privacy">Privacy</a>')
+        self.assertContains(response, 'href="/access-information">Access Information</a>')
+        self.assertContains(response, 'SGILA app © 2026 – All rights reserved')
+
+    def test_about_privacy_and_access_information_pages_are_public(self):
+        pages = [
+            ('/about', 'What is SGILA?'),
+            ('/privacy', 'Privacy Notice'),
+            ('/access-information', 'Access Information'),
+            ('/terms', 'Terms &amp; Conditions'),
+            ('/testimonials', 'All testimonials'),
+        ]
+
+        for path, expected_text in pages:
+            with self.subTest(path=path):
+                response = self.client.get(path)
+                self.assertEqual(response.status_code, 200)
+                self.assertContains(response, expected_text)
+
+    def test_testimonials_page_has_filter_sections_for_each_audience(self):
+        response = self.client.get('/testimonials')
+
+        for category in ('All testimonials', 'Parents', 'Teachers', 'Learners'):
+            with self.subTest(category=category):
+                self.assertContains(response, f'>{category}</button>')
 
 
 class PublicPlansPageTests(TestCase):

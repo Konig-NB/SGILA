@@ -1,5 +1,6 @@
 from django.core.exceptions import ImproperlyConfigured
 from pathlib import Path
+import dj_database_url
 import os
 
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -26,16 +27,35 @@ load_local_env(dot_env_path)
 if not dot_env_path.exists():
     load_local_env(BASE_DIR / 'env')
 
-SECRET_KEY = os.environ.get(
-    'DJANGO_SECRET_KEY',
-    'sgila-local-development-key-change-before-deployment-2026',
-)
 DEBUG = os.environ.get('DJANGO_DEBUG', 'True').lower() in {'1', 'true', 'yes', 'on'}
+_secret_key = os.environ.get('DJANGO_SECRET_KEY', '').strip()
+if not DEBUG and not _secret_key:
+    raise ImproperlyConfigured('DJANGO_SECRET_KEY must be set when DJANGO_DEBUG is disabled.')
+SECRET_KEY = _secret_key or 'sgila-local-development-key-change-before-deployment-2026'
+
+_render_hostname = os.environ.get('RENDER_EXTERNAL_HOSTNAME')
+_default_allowed_hosts = '127.0.0.1,localhost,testserver' if DEBUG else ''
 ALLOWED_HOSTS = [
     host.strip()
-    for host in os.environ.get('DJANGO_ALLOWED_HOSTS', '127.0.0.1,localhost,testserver').split(',')
+    for host in os.environ.get('DJANGO_ALLOWED_HOSTS', _default_allowed_hosts).split(',')
     if host.strip()
 ]
+if _render_hostname and _render_hostname not in ALLOWED_HOSTS:
+    ALLOWED_HOSTS.append(_render_hostname)
+if not DEBUG and not ALLOWED_HOSTS:
+    raise ImproperlyConfigured(
+        'Set DJANGO_ALLOWED_HOSTS or deploy with RENDER_EXTERNAL_HOSTNAME.'
+    )
+
+CSRF_TRUSTED_ORIGINS = [
+    origin.strip()
+    for origin in os.environ.get('DJANGO_CSRF_TRUSTED_ORIGINS', '').split(',')
+    if origin.strip()
+]
+if _render_hostname:
+    _render_origin = f'https://{_render_hostname}'
+    if _render_origin not in CSRF_TRUSTED_ORIGINS:
+        CSRF_TRUSTED_ORIGINS.append(_render_origin)
 
 INSTALLED_APPS = [
     'django.contrib.admin',
@@ -52,6 +72,7 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
+    'whitenoise.middleware.WhiteNoiseMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
@@ -82,7 +103,19 @@ TEMPLATES = [
 
 WSGI_APPLICATION = 'sgila_project.wsgi.application'
 
-if os.environ.get('DB_ENGINE', 'sqlite').lower() in {'postgres', 'postgresql'}:
+_database_url = os.environ.get('DATABASE_URL')
+if _database_url:
+    DATABASES = {
+        'default': dj_database_url.parse(
+            _database_url,
+            conn_max_age=600,
+            conn_health_checks=True,
+            ssl_require=not DEBUG,
+        )
+    }
+elif not DEBUG:
+    raise ImproperlyConfigured('DATABASE_URL must be set for production deployments.')
+elif os.environ.get('DB_ENGINE', 'sqlite').lower() in {'postgres', 'postgresql'}:
     DATABASES = {
         'default': {
             'ENGINE': 'django.db.backends.postgresql',
@@ -108,6 +141,15 @@ USE_TZ = True
 
 STATIC_URL = '/static/'
 STATICFILES_DIRS = [BASE_DIR / 'static']
+STATIC_ROOT = BASE_DIR / 'staticfiles'
+STORAGES = {
+    'default': {
+        'BACKEND': 'django.core.files.storage.FileSystemStorage',
+    },
+    'staticfiles': {
+        'BACKEND': 'whitenoise.storage.CompressedManifestStaticFilesStorage',
+    },
+}
 MEDIA_URL = '/media/'
 MEDIA_ROOT = BASE_DIR / 'media'
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
@@ -117,6 +159,7 @@ ENABLE_STORY_THRESHOLDS = False
 SESSION_COOKIE_SECURE = not DEBUG
 CSRF_COOKIE_SECURE = not DEBUG
 SECURE_SSL_REDIRECT = os.environ.get('DJANGO_SECURE_SSL_REDIRECT', str(not DEBUG)).lower() in {'1', 'true', 'yes', 'on'}
+SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
 SECURE_HSTS_SECONDS = int(os.environ.get('DJANGO_SECURE_HSTS_SECONDS', '0' if DEBUG else '31536000'))
 SECURE_HSTS_INCLUDE_SUBDOMAINS = not DEBUG
 SECURE_HSTS_PRELOAD = not DEBUG
@@ -169,7 +212,10 @@ SUPPORT_EMAIL = os.environ.get('SUPPORT_EMAIL', 'sgila.info@gmail.com')
 JWT_ACCESS_TOKEN_LIFETIME_HOURS = 8  # informational; enforced in api/jwt_utils.py
 
 # Base URL used in password-reset emails
-SITE_URL = os.environ.get('SITE_URL', 'http://127.0.0.1:8000')
+SITE_URL = os.environ.get(
+    'SITE_URL',
+    f'https://{_render_hostname}' if _render_hostname else 'http://127.0.0.1:8000',
+)
 
 # ─── Individual & Family plan pricing ──────────────────────────────────────────
 # The two card-paid plans, in rand per month. Same rule as the Enterprise table

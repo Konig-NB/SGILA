@@ -1,0 +1,36 @@
+{% extends 'base.html' %}
+{% load static %}
+{% block title %}Access Information - SGILA{% endblock %}
+{% block content %}
+<section class="terms-page info-page">
+  <div class="terms-container">
+    <header class="terms-header">
+      <img src="{% static 'img/koaly_cutout.png' %}" alt="" class="terms-koaly">
+      <div>
+        <p class="eyebrow">Access and accessibility</p>
+        <h1>Access Information</h1>
+        <p class="terms-meta">Getting started and requesting assistance</p>
+      </div>
+    </header>
+    <div class="terms-body">
+      <h2>Who can use SGILA?</h2>
+      <p>SGILA is designed for learners in Grades 1–4, with parent, guardian and teacher accounts for managing learner access and following progress. Adults should register and manage accounts on behalf of children. See the <a href="/terms">Terms and Conditions</a> for account requirements.</p>
+
+      <h2>Signing in and getting help</h2>
+      <ul>
+        <li>Use the <a href="/login">Sign in</a> page with the email and password for your account.</li>
+        <li>If you cannot remember your password, use the password-reset link on the sign-in page.</li>
+        <li>For account access or technical help, visit the <a href="/help/">Help and Feedback Centre</a> or email <a href="mailto:sgila.info@gmail.com">sgila.info@gmail.com</a>.</li>
+      </ul>
+
+      <h2>Accessibility</h2>
+      <p>SGILA is intended to be usable by children and adults on common screen sizes. The app includes semantic headings, labels for many interactive controls, keyboard interaction for selected controls, and text alternatives for important images. Accessibility may vary between activities and devices, and these features do not guarantee compatibility with every assistive technology.</p>
+      <p>For the best experience, use an up-to-date browser, keep device audio available for listening activities, and ask a parent, guardian or teacher for assistance where needed. You can also use the theme control in the navigation to choose light or dark mode.</p>
+
+      <h2>Request an accessibility improvement</h2>
+      <p>If you encounter a barrier, tell us the page or activity, what you were trying to do, and (if you are comfortable sharing) the device, browser or assistive technology you use. Do not include a child's sensitive personal information. Contact us at <a href="mailto:sgila.info@gmail.com">sgila.info@gmail.com</a> or use the <a href="/help/">Help and Feedback Centre</a>.</p>
+      <p class="terms-footer-note">SGILA Reading App · Access Information</p>
+    </div>
+  </div>
+</section>
+{% endblock %}

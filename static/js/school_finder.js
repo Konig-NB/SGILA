@@ -134,6 +134,12 @@
   };
 
   SchoolFinder.prototype.reset = function () {
+    if (this.searchTimer) window.clearTimeout(this.searchTimer);
+    this.searchTimer = null;
+    if (this.searchRequest) this.searchRequest.abort();
+    this.searchRequest = null;
+    this.query.value = '';
+    this.query.disabled = !this.province.value;
     this.school = null;
     this.schoolType = '';
     this.closeSuggestions();
@@ -174,6 +180,10 @@
     var self = this;
     var query = this.query.value.trim();
 
+    if (this.searchTimer) window.clearTimeout(this.searchTimer);
+    this.searchTimer = null;
+    if (this.searchRequest) this.searchRequest.abort();
+    this.searchRequest = null;
     this.closeSuggestions();
 
     if (query.length < this.minChars) {
@@ -191,7 +201,6 @@
     this.suggestions.hidden = false;
     this.query.setAttribute('aria-expanded', 'true');
 
-    if (this.searchTimer) window.clearTimeout(this.searchTimer);
     this.searchTimer = window.setTimeout(function () {
       self.runSearch(query);
     }, DEBOUNCE_MS);

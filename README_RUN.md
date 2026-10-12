@@ -1,5 +1,49 @@
 # SGILA Clean-Machine Run Guide
 
+## Deploying on Render
+
+The repository includes a Render Blueprint (`render.yaml`) for the Django web
+service. It installs the requirements and collects static files during the
+build; each web-service start runs database migrations before starting Gunicorn.
+The Blueprint does not create a database or choose a paid service plan. Before
+the first deploy, provide `DJANGO_SECRET_KEY` and `DATABASE_URL` in Render's
+environment settings. Connect an existing PostgreSQL database and use its
+connection URL for `DATABASE_URL`; production deliberately refuses to start
+without both a secret key and a database URL. Do not use the local SQLite file
+for a hosted deployment.
+
+Render's `RENDER_EXTERNAL_HOSTNAME` is automatically allowed as a host and
+trusted HTTPS origin. If you add a custom domain, add its hostname to
+`DJANGO_ALLOWED_HOSTS` and its HTTPS origin (for example,
+`https://app.example.org`) to `DJANGO_CSRF_TRUSTED_ORIGINS`. Set `SITE_URL` to
+the public HTTPS URL if email links should use a custom domain. Configure email
+and any optional AI provider credentials separately in the service environment;
+never put production credentials in this repository.
+
+The DBE schools master-list CSV/XLSX is external data and is not included in the
+repository or the deployment. After the database is connected, make the source
+file available to the running service using an authorized runtime file-transfer
+method, then run the importer once from the service environment, for example:
+
+```sh
+python manage.py import_schools /path/to/National-schools.csv
+```
+
+The command accepts the DBE semicolon-delimited CSV and the normalized CSV/XLSX
+formats described in the Enterprise School Search section below. A fresh
+database also needs the curriculum content loaded once; run
+`python manage.py load_curriculum_content` followed by
+`python manage.py sync_grade2_activities` from the service environment. Do not
+run the local demo-account seeder on a production database. Confirm the selected
+Render service/database plans and their costs in Render before creating or
+connecting services. This repository change does not create Render resources.
+
+Render's local filesystem is ephemeral by default. Child profile photos and
+generated story images saved under `media/` can be lost when the service is
+replaced or redeployed. Configure persistent media storage before relying on
+those uploads in production; this Blueprint intentionally does not attach a
+paid disk or provision a storage service.
+
 ## Requirements
 
 - Windows 10 or Windows 11
@@ -29,6 +73,18 @@ python -m venv .venv
 Alternatively, double-click `run_sgila.bat`. It creates the virtual environment,
 installs dependencies, prepares the database, and starts the local server.
 
+## Enterprise School Search
+
+Enterprise school search uses the imported DBE school list. On a fresh database,
+load the list before using the Enterprise finder:
+
+```powershell
+python manage.py import_schools "C:/path/to/National schools.csv"
+```
+
+The importer accepts the DBE semicolon-delimited school list as well as the
+project's normalized CSV format. The source list is not bundled with SGILA.
+
 ## Demo Accounts
 
 All demo accounts use the password `password123`.
@@ -52,10 +108,24 @@ intentionally want to reset the app to its original demo accounts.
 ## Email and OTP Testing
 
 The clean-machine package uses Django's console email backend by default. OTP and
-password-reset messages appear in the terminal. For inbox delivery, copy
-`.env.example` to `.env`, set `EMAIL_HOST_USER` and `EMAIL_HOST_PASSWORD`, then
-restart the server. Gmail requires an app password rather than the normal account
-password. SMTP is selected automatically when both values are configured.
+password-reset messages appear in the terminal; Help Center tickets are saved,
+but their support notification and confirmation email are not sent. The ticket
+API returns `201` when the ticket is saved, so check `confirmation_email_sent`
+(and `support_notification_sent`) to tell whether the emails were accepted for
+delivery.
+
+For inbox delivery, copy `.env.example` to `.env`, replace the example values,
+and restart the server. Set `EMAIL_HOST_USER` to the SMTP account and
+`EMAIL_HOST_PASSWORD` to its valid SMTP credential. For Gmail, use an App
+Password (not the normal account password; Google account 2-Step Verification
+must be enabled). Also set `DEFAULT_FROM_EMAIL` to an address allowed by that
+SMTP account and `SUPPORT_EMAIL` to the mailbox that should receive help
+requests. The example password is a placeholder and does not enable SMTP;
+without a usable credential, SGILA selects the console backend.
+
+A `*_sent: true` response means the configured email backend accepted the
+message, not that it reached the recipient's inbox. SMTP provider policy,
+recipient filtering, and spam handling can still affect final delivery.
 
 ## Yearly Grade-Confirmation Reminder Emails
 

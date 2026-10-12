@@ -120,6 +120,59 @@ class ImportCommandTests(TestCase):
         self.assertEqual(school.sector, 'public')
         self.assertEqual(school.status, 'open')
 
+    def test_imports_dbe_semicolon_file_for_enterprise_search(self):
+        handle = tempfile.NamedTemporaryFile(
+            'w', suffix='.csv', delete=False, encoding='cp1252', newline=''
+        )
+        writer = csv.DictWriter(
+            handle,
+            fieldnames=[
+                'NatEmis',
+                'Province',
+                'Official_Institution_Name',
+                'Status',
+                'Sector',
+                'Type_DoE',
+                'EIDistrict',
+                'Township_Village',
+                'Town_City',
+                'Quintile',
+                'Urban_Rural',
+                'Learners2025',
+            ],
+            delimiter=';',
+        )
+        writer.writeheader()
+        writer.writerow({
+            'NatEmis': '200500012',
+            'Province': 'EC',
+            'Official_Institution_Name': 'BALENI JUNIOR SECONDARY SCHOOL',
+            'Status': 'OPEN',
+            'Sector': 'PUBLIC',
+            'Type_DoE': 'ORDINARY SCHOOL',
+            'EIDistrict': 'ALFRED NZO EAST',
+            'Township_Village': '99',
+            'Town_City': 'BIZANA',
+            'Quintile': 'Q1',
+            'Urban_Rural': 'Rural',
+            'Learners2025': '297',
+        })
+        handle.close()
+
+        call_command('import_schools', handle.name, stdout=StringIO())
+
+        response = self.client.get('/api/schools/search/', {
+            'province': 'Eastern Cape',
+            'q': 'baleni junior',
+        })
+        self.assertEqual(response.status_code, 200)
+        result = response.json()['results'][0]
+        self.assertEqual(result['name'], 'BALENI JUNIOR SECONDARY SCHOOL')
+        self.assertEqual(result['province'], 'Eastern Cape')
+        self.assertEqual(result['quintile'], 1)
+        self.assertEqual(result['town'], 'BIZANA')
+        self.assertEqual(result['learners_2025'], 297)
+
     def test_missing_quintile_is_stored_as_null_and_reported(self):
         output = self.run_import([row(quintile='')])
 
