@@ -9,10 +9,10 @@ school finder with no edits here.
 The rules, in order:
 
 1. ``sector == 'independent'``  -> the Private/independent price, whatever
-   quintile the master list happens to record for that school.
-2. ``sector == 'public'`` with a quintile -> that quintile's price.
-3. ``sector == 'public'`` with no quintile -> nothing. We do not guess; the UI
-   asks the school to choose its own quintile.
+   school type the master list happens to record for that school.
+2. ``sector == 'public'`` with a school type -> that school type's price.
+3. ``sector == 'public'`` with no school type -> nothing. We do not guess; the UI
+   asks the school to choose its own school type.
 """
 
 from lessons.pricing import (
@@ -25,7 +25,7 @@ PRIVATE_SCHOOL_TYPE = 'private'
 
 # Shown when rule 3 applies, so the school knows why it has to choose.
 NO_QUINTILE_MESSAGE = (
-    "We don't have a quintile on record for this school. "
+    "We don't have a school type on record for this school. "
     "Please select it below."
 )
 
@@ -37,7 +37,7 @@ CONFIRM_ON_ACTIVATION_NOTE = (
 def school_type_for(school):
     """
     The ``lessons.pricing`` school-type key for this school, or ``None`` when
-    the caller has to ask (public school with no quintile on record).
+    the caller has to ask (public school with no school type on record).
     """
     if school.sector == 'independent':
         return PRIVATE_SCHOOL_TYPE
@@ -54,12 +54,12 @@ def price_for_school(school):
     return format_rand(price_per_learner_month(school_type))
 
 
-def needs_manual_quintile(school):
-    """True when we must not guess: a public school with no quintile on record."""
+def needs_manual_school_type(school):
+    """True when we must not guess: a public school with no school type on record."""
     return school_type_for(school) is None
 
 
-def quintile_note(school):
+def school_type_note(school):
     """One line explaining where this school's price came from."""
     if school.sector == 'independent':
         return (
@@ -67,9 +67,8 @@ def quintile_note(school):
         )
     if school.sector == 'public' and school.quintile:
         return (
-            f'Quintile {school.quintile} public school. Quintiles are the '
-            "Department of Basic Education's poverty ranking — Quintile 1 is "
-            'the poorest, Quintile 5 the least poor.'
+            f'School type {school.quintile} public school. '
+            'School types are based on the Department of Basic Education\'s classification.'
         )
     return NO_QUINTILE_MESSAGE
 
@@ -110,8 +109,8 @@ def serialise(school):
         # quote endpoint, which does the actual arithmetic.
         'price_school_type': school_type,
         'price_per_learner_month': price_for_school(school),
-        'needs_manual_quintile': needs_manual_quintile(school),
-        'quintile_note': quintile_note(school),
+        'needs_manual_school_type': needs_manual_school_type(school),
+        'school_type_note': school_type_note(school),
         'minimum_learners': minimum_learners(),
         'prefilled_learners': prefill_learners(school),
     }

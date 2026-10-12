@@ -2,7 +2,7 @@
  * Enterprise school finder.
  *
  * Choose a province, search the DBE master list for your school, and get the
- * quintile and price without picking anything by hand. Shared by the pricing
+ * price without picking anything by hand. Shared by the pricing
  * dialog on /subscription and /subscription/redeem-package.
  *
  * No price is calculated here. Each search result arrives with the school type it
@@ -279,9 +279,7 @@
       }
 
       var detail = [];
-      if (school.quintile) detail.push('Quintile ' + school.quintile);
-      else if (school.sector === 'independent') detail.push('Independent');
-      else detail.push('Quintile not on record');
+      if (school.sector === 'independent') detail.push('Independent');
       item.appendChild(el('span', 'sf-suggestion-quintile', detail.join(' \u00b7 ')));
 
       item.addEventListener('mousedown', function (event) {
@@ -363,12 +361,12 @@
 
     this.selectedName.textContent = school.display_label;
     this.selectedMeta.textContent = this.describeSchool(school);
-    this.selectedNote.textContent = school.quintile_note;
+    this.selectedNote.textContent = school.school_type_note || '';
     this.selectedPrice.textContent = school.price_per_learner_month;
     this.selectedPanel.hidden = false;
 
-    if (school.needs_manual_quintile) {
-      /* Rule 3: a public school with no quintile on record. We do not guess, so
+    if (school.needs_manual_school_type) {
+      /* Rule 3: a public school with no school type on record. We do not guess, so
          ask for it. */
       this.schoolType = '';
       this.showManualPrompt();

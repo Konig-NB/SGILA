@@ -1,4 +1,4 @@
-  {% load static %}
+{% load static %}
 {% comment %}
 The Enterprise price calculator dialog, opened from the Enterprise card.
 
@@ -22,8 +22,7 @@ dialog's open/close and focus behaviour.
         {% include 'includes/school_finder.html' %}
 
         <p class="pricing-note">
-          Not sure yet? The table below shows every school type's price.
-          {% if can_choose_plans %}Use your account to continue to activation when you're ready.{% else %}This pricing information does not activate a package; sign in to your account to manage activation.{% endif %}
+          Ready to get started? Click Activate Enterprise Package below.
         </p>
 
         <div class="pricing-result" data-pricing-result{% if not pricing_initial.valid %} hidden{% endif %}>
@@ -51,55 +50,31 @@ dialog's open/close and focus behaviour.
           {% endif %}
         </div>
 
-        <div class="pricing-table-wrap">
-          <table class="pricing-table">
-            <caption>Per-learner monthly price for every school type, at the {{ enterprise_minimum_learners_display }}-learner minimum</caption>
-            <thead>
-              <tr>
-                <th scope="col">School type</th>
-                <th scope="col">Per learner / month</th>
-                <th scope="col">For {{ enterprise_minimum_learners_display }} learners</th>
-              </tr>
-            </thead>
-            <tbody>
-              {% for row in pricing_rows %}
-                <tr{% if row.value == pricing_initial.school_type %} class="pricing-table-row-current"{% endif %}>
-                  <th scope="row">{{ row.label }}</th>
-                  <td>{{ row.per_learner_month }}</td>
-                  <td>{{ row.minimum_total_month }}</td>
-                </tr>
-              {% endfor %}
-            </tbody>
-          </table>
-        </div>
       </div>
 
       <div class="pricing-plain">
-        <p>
-          SGILA is billed to the school — or to the funder on the school's
-          behalf — and never to families.
-        </p>
-        <p>
-          The money usually comes from government, a Department of Basic
-          Education partnership, or a CSI grant.
-        </p>
-        <p>
-          What a school pays depends on its quintile and on how many learners
-          it brings to SGILA.
-        </p>
-        {% if pricing_show_funding_note %}
-          <p>
-            Schools in the lower quintiles receive more state funding and need
-            more learning support, so their per-learner price is higher.
-          </p>
-        {% endif %}
+        <h3 class="pricing-plain-heading">How Enterprise pricing works</h3>
+        <p>SGILA Enterprise is priced per learner, per month. Prices start from R20 per learner per month, with a minimum of 100 learners.</p>
+
+        <h4 class="pricing-plain-subheading">How your price is calculated</h4>
+        <ul class="pricing-plain-list">
+          <li><strong>Per learner, per month:</strong> the rate is set according to your school's profile.</li>
+          <li><strong>Total per month:</strong> the rate multiplied by the number of learners at your school.</li>
+          <li><strong>Total per year:</strong> your monthly total for 12 months.</li>
+        </ul>
+
+        <p><strong>Example:</strong> 100 learners at R40 per learner comes to R4,000 per month, or R48,000 per year.</p>
+
+        <p><strong>Who pays:</strong> Enterprise is billed to the school, or to a funder acting on the school's behalf, and never to families. It is available to public and independent schools.</p>
+
+        <p><strong>Please note:</strong> The amounts shown are estimates. Your final price is confirmed when you activate.</p>
       </div>
 
       <div class="account-dialog-actions">
         <button type="button" class="btn btn-light" data-close-enterprise-pricing>Close</button>
         {% if can_choose_plans %}
           <a class="btn btn-primary" data-pricing-activate
-             href="{{ pricing_redeem_url }}?school_type={{ pricing_initial.school_type }}&amp;learners={{ pricing_initial.learners }}">Activate Enterprise Package</a>
+             href="{{ pricing_redeem_url }}?school_type={{ pricing_initial.school_type }}&learners={{ pricing_initial.learners }}">Activate Enterprise Package</a>
         {% endif %}
       </div>
     </div>
@@ -156,3 +131,44 @@ dialog's open/close and focus behaviour.
     });
   })();
   </script>
+
+<style>
+/* Hide duplicate result boxes from school_finder in the dialog */
+.enterprise-pricing-dialog .sf-selected,
+.enterprise-pricing-dialog [data-sf-totals] {
+  display: none !important;
+}
+
+/* Styling for new pricing-plain content */
+.pricing-plain-heading {
+  margin-top: 1.5rem;
+  margin-bottom: 0.5rem;
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--ink);
+}
+.pricing-plain-subheading {
+  margin-top: 1.25rem;
+  margin-bottom: 0.5rem;
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--ink);
+}
+.pricing-plain-list {
+  margin: 0 0 1rem 1.25rem;
+  padding: 0;
+  list-style: disc;
+}
+.pricing-plain-list li {
+  margin-bottom: 0.4rem;
+  line-height: 1.5;
+}
+.pricing-plain p {
+  margin: 0.75rem 0;
+  line-height: 1.5;
+  color: var(--ink);
+}
+.pricing-plain p strong {
+  font-weight: 700;
+}
+</style>

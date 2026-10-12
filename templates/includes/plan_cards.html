@@ -51,14 +51,18 @@ package code on /subscription/redeem-package.
   </div>
   {% endif %}
 
-  <div class="epic-card epic-card-enterprise">
+<div class="epic-card epic-card-enterprise">
     <h2 class="epic-plan-name">Enterprise</h2>
-    <p class="epic-billed epic-billed-tight">For schools &amp; shared accounts</p>
+    <p class="epic-billed epic-billed-tight">For schools & shared accounts</p>
     <p class="epic-price"><span>From</span> {{ enterprise_start_price }}<span>/month per learner</span></p>
     <p class="epic-billed epic-billed-tight">Minimum {{ enterprise_minimum_learners_display }} learners</p>
+    {% if role == 'parent' %}
+    <a class="epic-cta epic-cta-enterprise" href="/subscription/redeem-package">Activate Enterprise Package</a>
+    {% elif role == 'teacher' %}
     <button type="button" class="subscription-details-link" data-open-enterprise-pricing>See full pricing details</button>
-    {% if can_choose_plans %}
-      <a class="epic-cta epic-cta-enterprise epic-cta-link" href="/subscription/redeem-package">Activate Enterprise Package</a>
+    <a class="epic-cta epic-cta-enterprise" href="/subscription/redeem-package">Activate</a>
+    {% elif role == 'guest' %}
+    <button type="button" class="subscription-details-link" data-open-enterprise-pricing>See full pricing details</button>
     {% endif %}
   </div>
 

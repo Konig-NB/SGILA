@@ -3417,25 +3417,10 @@ def enterprise_pricing_quote(request):
 @require_http_methods(['GET', 'POST'])
 def redeem_package_page(request):
     """
-    School-side redemption of a government/district-issued package code.
+    Enterprise package redemption for parents and teachers.
 
-    A school buys a package from its district or the DBE, is issued a
-    PackageCode (created by SGILA staff via admin), and enters it here with
-    just their school name — no card, no per-family payment. That flips their
-    Subscription to plan_type='enterprise' / status='active', linked to the
-    PackageCode, which is what actually unlocks story access:
-
-      * school-linked learners (no parent account, added via a class code)
-        follow the school's subscription instead of a parent's trial —
-        see learner_trial_expired;
-      * the school account itself stops being trial-expired, which is what
-        teacher_dashboard gates on — see account_trial_expired;
-      * for a parent redeeming on behalf of a school, the uncapped
-        enterprise plan (PLAN_CHILD_CAPS) lifts the active-learner limit,
-        so learners paused purely for plan capacity come back on.
-
-    The code row is locked while redeeming so two schools racing for the last
-    single-use code can't both get through.
+    Parents: simple package code entry only.
+    Teachers: full school search, pricing, and package code entry.
     """
     role = request.session.get('account_role')
     if role not in ('parent', 'teacher'):
@@ -3456,74 +3441,72 @@ def redeem_package_page(request):
         )
         dashboard_url = '/teacher/dashboard'
 
-    # A quote handed over from the pricing dialog identifies its school by id, so
-    # the finder can show the real record instead of a typed-in name.
+    # A quote handed over from the pricing dialog identifies its school by id,
+    # so the finder can show the real record instead of a typed-in name.
     chosen_school = preselected_school(request)
     school_name = subscription.school_name or getattr(account, 'school_name', '')
     if chosen_school is not None:
         school_name = chosen_school.name
 
-    context = {
-        'role': role,
-        'account': account,
-        'subscription': subscription,
-        'school_name': school_name,
-        'package_code': '',
-        # Optional figures handed over by the pricing calculator on
-        # /subscription. Purely informational — redemption still only needs the
-        # school name and package code below.
-        'enterprise_start_price': pricing.format_rand(pricing.start_price_per_learner_month()),
-        'enterprise_minimum_learners': pricing.minimum_learners(),
-        **enquiry_from_request(request),
-        # The school finder itself, with the chosen school preselected and its
-        # name auto-filled into the School name field below.
-        **school_context.finder_context(
-            instance='redeem',
-            school=chosen_school,
-            autofill_name=True,
-        ),
-    }
+    if role == 'parent':
+        # Parent: simple package code only
+        context = {
+            'role': role,
+            'account': account,
+            'subscription': subscription,
+            'package_code': '',
+        }
+        template = 'redeem_package.html'
+    else:
+        # Teacher: full activation page with school finder and pricing
+        context = {
+            'role': role,
+            'account': account,
+            'subscription': subscription,
+            'school_name': school_name,
+            'package_code': '',
+            'enterprise_start_price': pricing.format_rand(pricing.start_price_per_learner_month()),
+            'enterprise_minimum_learners': pricing.minimum_learners(),
+            **enquiry_from_request(request),
+            **school_context.finder_context(
+                instance='redeem',
+                school=chosen_school,
+                autofill_name=True,
+            ),
+        }
+        template = 'redeem_package_teacher.html'
 
     if request.method != 'POST':
-        return render(request, 'redeem_package.html', context)
+        return render(request, template, context)
 
-    school_name = request.POST.get('school_name', '').strip() or getattr(account, 'school_name', '')
-    code_value = request.POST.get('package_code', '').strip().upper()
+    if role == 'parent':
+        # Parent: only package_code
+        code_value = request.POST.get('package_code', '').strip().upper()
 
-    if not school_name or not code_value:
-        messages.error(request, 'Please enter both your school name and package code.')
-        context['school_name'] = school_name
-        context['package_code'] = code_value
-        context.update(enquiry_from_request(request, source='post'))
-        return render(request, 'redeem_package.html', context)
-
-    with transaction.atomic():
-        code_obj = PackageCode.objects.select_for_update().filter(code=code_value).first()
-        if not code_obj or not code_obj.is_redeemable:
-            messages.error(request, "This code is not valid or has already reached its limit. Please check the code from your district/government contact.")
-            context['school_name'] = school_name
+        if not code_value:
+            messages.error(request, 'Please enter your package code.')
             context['package_code'] = code_value
-            return render(request, 'redeem_package.html', context)
+            return render(request, template, context)
 
-        subscription.plan_type = 'enterprise'
-        subscription.status = 'active'
-        subscription.school_name = school_name
-        subscription.package_code = code_obj
-        # Annual billing to the school is the norm for enterprise packages, and
-        # the seat/cap fields only mean something for individual/family plans.
-        subscription.billing_cycle = 'annual'
-        subscription.extra_active_seats = 0
-        subscription.pending_seat_quantity = 0
-        subscription.save()
+        with transaction.atomic():
+            code_obj = PackageCode.objects.select_for_update().filter(code=code_value).first()
+            if not code_obj or not code_obj.is_redeemable:
+                messages.error(request, "This code is not valid or has already reached its limit. Please check the code from your district/government contact.")
+                context['package_code'] = code_value
+                return render(request, template, context)
 
-        code_obj.redemptions_count += 1
-        code_obj.save(update_fields=['redemptions_count'])
+            subscription.plan_type = 'enterprise'
+            subscription.status = 'active'
+            subscription.package_code = code_obj
+            subscription.billing_cycle = 'annual'
+            subscription.extra_active_seats = 0
+            subscription.pending_seat_quantity = 0
+            subscription.save()
 
-        # Enterprise has no active-learner cap, so anything paused only because
-        # a family plan ran out of seats can come straight back on. Learners the
-        # parent paused deliberately (DEACTIVATED_MANUAL) stay paused.
-        resumed = 0
-        if role == 'parent':
+            code_obj.redemptions_count += 1
+            code_obj.save(update_fields=['redemptions_count'])
+
+            resumed = 0
             capacity_paused = Child.objects.filter(
                 parent=account,
                 is_active=False,
@@ -3533,9 +3516,56 @@ def redeem_package_page(request):
                 child.reactivate()
                 resumed += 1
 
-    detail = f" {resumed} learner(s) paused for the plan limit are active again." if resumed else ""
-    messages.success(request, f"Your school's package is active! {school_name} now has full SGILA access.{detail}")
-    return redirect(dashboard_url)
+        detail = f" {resumed} learner(s) paused for the plan limit are active again." if resumed else ""
+        messages.success(request, f"Your school's package is active! You now have full SGILA access.{detail}")
+        return redirect(dashboard_url)
+
+    else:
+        # Teacher: school_name and package_code
+        school_name = request.POST.get('school_name', '').strip() or getattr(account, 'school_name', '')
+        code_value = request.POST.get('package_code', '').strip().upper()
+
+        if not school_name or not code_value:
+            messages.error(request, 'Please enter both your school name and package code.')
+            context['school_name'] = school_name
+            context['package_code'] = code_value
+            context.update(enquiry_from_request(request, source='post'))
+            return render(request, template, context)
+
+        with transaction.atomic():
+            code_obj = PackageCode.objects.select_for_update().filter(code=code_value).first()
+            if not code_obj or not code_obj.is_redeemable:
+                messages.error(request, "This code is not valid or has already reached its limit. Please check the code from your district/government contact.")
+                context['school_name'] = school_name
+                context['package_code'] = code_value
+                return render(request, template, context)
+
+            subscription.plan_type = 'enterprise'
+            subscription.status = 'active'
+            subscription.school_name = school_name
+            subscription.package_code = code_obj
+            subscription.billing_cycle = 'annual'
+            subscription.extra_active_seats = 0
+            subscription.pending_seat_quantity = 0
+            subscription.save()
+
+            code_obj.redemptions_count += 1
+            code_obj.save(update_fields=['redemptions_count'])
+
+            resumed = 0
+            if role == 'parent':
+                capacity_paused = Child.objects.filter(
+                    parent=account,
+                    is_active=False,
+                    deactivated_reason=Child.DEACTIVATED_PLAN_CAPACITY,
+                )
+                for child in capacity_paused:
+                    child.reactivate()
+                    resumed += 1
+
+        detail = f" {resumed} learner(s) paused for the plan limit are active again." if resumed else ""
+        messages.success(request, f"Your school's package is active! {school_name} now has full SGILA access.{detail}")
+        return redirect(dashboard_url)
 
 
 def subscription_payment_page(request):
