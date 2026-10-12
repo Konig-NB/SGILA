@@ -68,7 +68,16 @@
         <p id="teacher-school-status" class="teacher-school-status" role="status" aria-live="polite">Search for your school, or type its name if it is not listed.</p>
         <p id="teacher-school-quantile" class="teacher-school-quantile" aria-live="polite" hidden></p>
       </div>
-      <label>Grades taught<input type="text" name="grades_taught" placeholder="e.g. 1, 2"></label>
+      <fieldset class="teacher-grade-picker" aria-describedby="teacher-grade-help">
+        <legend>Grades you teach</legend>
+        <p id="teacher-grade-help">Select all the grades you teach.</p>
+        {% for grade in "1234" %}
+          <label>
+            <input type="checkbox" name="grades_taught" value="{{ grade }}"{% if grade in selected_grades %} checked{% endif %}>
+            Grade {{ grade }}
+          </label>
+        {% endfor %}
+      </fieldset>
       <label>Password
         <div class="password-field-wrap">
           <input type="password" name="password" id="password" required minlength="8"
@@ -241,6 +250,15 @@
     registrationForm.addEventListener('submit', () => {
       if (!schoolName.value.trim()) schoolName.value = schoolSearch.value.trim();
     });
+  }
+
+  const gradeCheckboxes = [...document.querySelectorAll('input[name="grades_taught"]')];
+  if (gradeCheckboxes.length) {
+    const updateGradeRequirement = () => {
+      gradeCheckboxes[0].required = !gradeCheckboxes.some((checkbox) => checkbox.checked);
+    };
+    gradeCheckboxes.forEach((checkbox) => checkbox.addEventListener('change', updateGradeRequirement));
+    updateGradeRequirement();
   }
 
   const SPECIAL_RE = /[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?~`]/;

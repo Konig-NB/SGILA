@@ -1,0 +1,83 @@
+{% extends 'base.html' %}
+{% load static %}
+{% block title %}Testimonials - SGILA{% endblock %}
+{% block content %}
+<section class="terms-page info-page testimonials-page">
+  <div class="terms-container">
+    <header class="terms-header">
+      <img src="{% static 'img/koaly_cutout.png' %}" alt="" class="terms-koaly">
+      <div>
+        <p class="eyebrow">SGILA community</p>
+        <h1>Testimonials</h1>
+        <p class="terms-meta">Experiences from parents, teachers and learners</p>
+      </div>
+    </header>
+    <div class="terms-body">
+      <p>Explore testimonials by audience. Shared stories will only be published with permission.</p>
+      <div class="testimonial-tabs" role="tablist" aria-label="Filter testimonials">
+        <button type="button" id="testimonial-tab-all" role="tab" aria-selected="true"
+                aria-controls="testimonial-panel-all" tabindex="0" data-testimonial-tab="all">All testimonials</button>
+        <button type="button" id="testimonial-tab-parents" role="tab" aria-selected="false"
+                aria-controls="testimonial-panel-parents" tabindex="-1" data-testimonial-tab="parents">Parents</button>
+        <button type="button" id="testimonial-tab-teachers" role="tab" aria-selected="false"
+                aria-controls="testimonial-panel-teachers" tabindex="-1" data-testimonial-tab="teachers">Teachers</button>
+        <button type="button" id="testimonial-tab-learners" role="tab" aria-selected="false"
+                aria-controls="testimonial-panel-learners" tabindex="-1" data-testimonial-tab="learners">Learners</button>
+      </div>
+      <section class="testimonial-panel" role="tabpanel" id="testimonial-panel-all"
+               aria-labelledby="testimonial-tab-all" data-testimonial-panel="all">
+        <h2>All testimonials</h2>
+        <p>Testimonials will appear here once community members have shared their experience and given permission to publish it.</p>
+      </section>
+      <section class="testimonial-panel" role="tabpanel" id="testimonial-panel-parents"
+               aria-labelledby="testimonial-tab-parents" data-testimonial-panel="parents" hidden>
+        <h2>Parents</h2>
+        <p>There are no parent testimonials to display yet.</p>
+      </section>
+      <section class="testimonial-panel" role="tabpanel" id="testimonial-panel-teachers"
+               aria-labelledby="testimonial-tab-teachers" data-testimonial-panel="teachers" hidden>
+        <h2>Teachers</h2>
+        <p>There are no teacher testimonials to display yet.</p>
+      </section>
+      <section class="testimonial-panel" role="tabpanel" id="testimonial-panel-learners"
+               aria-labelledby="testimonial-tab-learners" data-testimonial-panel="learners" hidden>
+        <h2>Learners</h2>
+        <p>There are no learner testimonials to display yet.</p>
+      </section>
+      <p class="testimonial-invitation">Would you like to share feedback? <a href="/help/">Contact us through Help and Feedback</a>.</p>
+    </div>
+  </div>
+</section>
+<script>
+(function () {
+  const tabs = [...document.querySelectorAll('[data-testimonial-tab]')];
+  const panels = [...document.querySelectorAll('[data-testimonial-panel]')];
+  if (!tabs.length || !panels.length) return;
+
+  function activateTab(tab, moveFocus) {
+    const selectedCategory = tab.dataset.testimonialTab;
+    tabs.forEach((item) => {
+      const selected = item === tab;
+      item.setAttribute('aria-selected', String(selected));
+      item.tabIndex = selected ? 0 : -1;
+      if (selected && moveFocus) item.focus();
+    });
+    panels.forEach((panel) => {
+      panel.hidden = panel.dataset.testimonialPanel !== selectedCategory;
+    });
+  }
+
+  tabs.forEach((tab, index) => {
+    tab.addEventListener('click', () => activateTab(tab, false));
+    tab.addEventListener('keydown', (event) => {
+      if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+      event.preventDefault();
+      const nextIndex = event.key === 'Home' ? 0
+        : event.key === 'End' ? tabs.length - 1
+          : (index + (event.key === 'ArrowRight' ? 1 : tabs.length - 1)) % tabs.length;
+      activateTab(tabs[nextIndex], true);
+    });
+  });
+})();
+</script>
+{% endblock %}

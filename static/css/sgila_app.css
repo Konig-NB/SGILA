@@ -11947,6 +11947,155 @@ body.home-page .nav-links .nav-cta {
   background: var(--sun);
 }
 
+.studio-footer {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: 32px;
+  padding: 28px clamp(24px, 6vw, 88px);
+  border-top: 1px solid var(--studio-line);
+  color: var(--studio-ink);
+  background: var(--studio-library);
+}
+
+.studio-footer-about {
+  max-width: 340px;
+}
+
+.studio-footer-about-links {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+.studio-footer-about-link {
+  display: inline-flex;
+  min-height: 34px;
+  align-items: center;
+  padding: 6px 13px;
+  border: 1px solid var(--studio-line);
+  border-radius: 999px;
+  color: var(--studio-ink);
+  background: var(--studio-surface);
+  font-size: .86rem;
+  font-weight: 800;
+  text-decoration: none;
+}
+
+.studio-footer-about-link:hover,
+.studio-footer-policies a:hover {
+  color: #e65347;
+}
+
+.studio-footer-about p {
+  margin: 8px 0 0;
+  color: var(--studio-muted);
+  font-size: .88rem;
+}
+
+.studio-footer-policies {
+  display: grid;
+  grid-template-columns: repeat(4, auto);
+  align-items: center;
+  gap: 8px 20px;
+}
+
+.studio-footer-policies h2 {
+  grid-column: 1 / -1;
+  margin: 0;
+  font-size: .94rem;
+}
+
+.studio-footer-policies a {
+  color: var(--studio-ink);
+  font-size: .86rem;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.studio-footer-copyright {
+  flex-basis: 100%;
+  margin: 0;
+  padding-top: 14px;
+  border-top: 1px solid var(--studio-line);
+  color: var(--studio-muted);
+  font-size: .8rem;
+  text-align: center;
+}
+
+.info-page .terms-container {
+  max-width: 880px;
+}
+
+.testimonial-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 24px 0;
+}
+
+.testimonial-tabs button {
+  min-height: 42px;
+  padding: 9px 16px;
+  border: 1px solid var(--studio-line);
+  border-radius: 999px;
+  color: var(--studio-ink);
+  background: var(--studio-surface);
+  font: inherit;
+  font-weight: 750;
+  cursor: pointer;
+}
+
+.testimonial-tabs button[aria-selected="true"] {
+  border-color: var(--studio-ink);
+  color: var(--studio-action-ink);
+  background: var(--sun);
+}
+
+.testimonial-tabs button:focus-visible {
+  outline: 3px solid #e65347;
+  outline-offset: 2px;
+}
+
+.testimonial-panel {
+  padding: 20px;
+  border: 1px solid var(--studio-line);
+  border-radius: 14px;
+  background: var(--studio-library);
+}
+
+.terms-body .testimonial-panel h2 {
+  margin-top: 0;
+}
+
+.terms-body .testimonial-panel p:last-child {
+  margin-bottom: 0;
+}
+
+.testimonial-invitation {
+  margin-top: 24px !important;
+}
+
+@media (max-width: 700px) {
+  .studio-footer {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 22px;
+    padding: 24px;
+  }
+
+  .studio-footer-policies {
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+
+  .studio-footer-policies h2 {
+    grid-column: auto;
+  }
+}
+
 .not-found {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(260px, 420px);
@@ -12971,6 +13120,87 @@ body:not(.diagram-body) .account-danger-zone {
   background: rgba(255, 245, 246, .94);
 }
 
+body:not(.diagram-body) .teacher-portal .portal-hero {
+  overflow: visible;
+  grid-template-columns: minmax(0, 1fr);
+}
+
+body:not(.diagram-body) .teacher-portal .portal-hero > div {
+  width: 100%;
+}
+
+body:not(.diagram-body) .teacher-school-header-picker {
+  position: relative;
+  z-index: 2;
+  display: grid;
+  width: min(760px, 100%);
+  gap: 8px;
+  margin-top: 14px;
+}
+
+body:not(.diagram-body) .teacher-school-header-picker > label {
+  color: var(--ink);
+  font-weight: 900;
+}
+
+body:not(.diagram-body) .teacher-school-header-picker .teacher-school-control {
+  min-width: 0;
+}
+
+body:not(.diagram-body) .teacher-school-header-picker input[type="search"] {
+  width: 100%;
+  min-height: 46px;
+  padding: 10px 14px;
+  border: 1px solid rgba(145, 178, 233, .7);
+  border-radius: 12px;
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+}
+
+body:not(.diagram-body) .teacher-school-header-picker .teacher-school-status {
+  min-height: 1.3em;
+  margin: 0;
+}
+
+body:not(.diagram-body) .teacher-grade-picker {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  margin: 4px 0;
+  padding: 0;
+  border: 0;
+}
+
+body:not(.diagram-body) .teacher-grade-picker legend {
+  width: 100%;
+  margin-bottom: 4px;
+  font-weight: 900;
+}
+
+body:not(.diagram-body) .teacher-grade-picker > p {
+  width: 100%;
+  margin: 0;
+  color: var(--muted);
+}
+
+body:not(.diagram-body) .teacher-grade-picker label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 750;
+}
+
+body:not(.diagram-body) .teacher-grade-picker input {
+  width: 18px;
+  height: 18px;
+  accent-color: #ffd22e;
+}
+
+body:not(.diagram-body) .teacher-school-header-picker .btn {
+  justify-self: start;
+}
+
 body:not(.diagram-body) .account-danger-zone h2 {
   margin: 4px 0 6px;
   color: #7d1f2a;
@@ -13165,6 +13395,15 @@ body:not(.diagram-body) .learner-access-badge {
   body:not(.diagram-body) .account-status-banner,
   body:not(.diagram-body) .account-danger-zone {
     grid-template-columns: 1fr;
+  }
+
+  body:not(.diagram-body) .teacher-portal .portal-hero {
+    grid-template-columns: 1fr;
+    gap: 18px;
+  }
+
+  body:not(.diagram-body) .teacher-school-header-picker {
+    width: 100%;
   }
 
   body:not(.diagram-body) .account-status-banner a {

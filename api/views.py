@@ -178,10 +178,13 @@ def parse_grades(grades_taught):
 
 
 def teacher_can_view_child(teacher, child):
-    if teacher.school_name.strip().lower() != child.school_name.strip().lower():
-        return False
     grades = parse_grades(teacher.grades_taught)
-    return not grades or child.grade in grades
+    if grades and child.grade not in grades:
+        return False
+    return (
+        child.teacher_id == teacher.id
+        or teacher.school_name.strip().lower() == child.school_name.strip().lower()
+    )
 
 
 def user_can_view_child(request, child):
