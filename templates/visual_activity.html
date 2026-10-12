@@ -87,6 +87,28 @@ function playAnswerSound(correct) {
   }
 }
 
+function playFeedbackVoice(correct) {
+  if (!('speechSynthesis' in window)) return;
+  const utterance = new SpeechSynthesisUtterance(correct ? 'Well done!' : 'Ohh No! Try again next time.');
+  const voices = window.speechSynthesis.getVoices();
+  const englishVoices = voices.filter((voice) => String(voice.lang || '').toLowerCase().startsWith('en'));
+  const childVoice = englishVoices.find((voice) => /zira|susan|samantha|jenny|aria|hazel|heather|karen|female|girl|kid|young/i.test(voice.name))
+    || englishVoices[0]
+    || voices[0]
+    || null;
+  if (childVoice) {
+    utterance.voice = childVoice;
+    utterance.lang = childVoice.lang || 'en-ZA';
+  } else {
+    utterance.lang = 'en-ZA';
+  }
+  utterance.rate = 0.9;
+  utterance.pitch = 1.25;
+  utterance.volume = 1;
+  window.speechSynthesis.cancel();
+  window.speechSynthesis.speak(utterance);
+}
+
 cards.forEach((card) => {
   card.querySelectorAll('button').forEach((button) => {
     button.addEventListener('click', async () => {
@@ -135,6 +157,7 @@ cards.forEach((card) => {
       feedback.textContent = correct
         ? `Correct! ${data.correct_word} matches this picture.`
         : `Not quite. This picture shows ${data.correct_word}.`;
+      playFeedbackVoice(correct);
       if (data.completed) {
         const existing = JSON.parse(sessionStorage.getItem(storageKey) || '{}');
         existing.visual_score = score;

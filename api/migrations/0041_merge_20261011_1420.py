@@ -8,6 +8,7 @@ class Migration(migrations.Migration):
     dependencies = [
         ('api', '0040_merge_20261004_1002'),
         ('api', '0040_merge_20261004_1417'),
+        ('api', '0041_merge_20261012_1044'),
     ]
 
     operations = [

@@ -72,8 +72,12 @@ function loadActivityVoices() {
 
 function getTherapeuticVoice(voices) {
   const english = voices.filter((voice) => voice.lang.toLowerCase().startsWith('en'));
-  const preferred = ['zira', 'susan', 'aria', 'sonia', 'hazel', 'google uk english female', 'natural'];
-  return english.find((voice) => preferred.some((name) => voice.name.toLowerCase().includes(name))) || english[0] || voices[0] || null;
+  const preferred = ['zira', 'susan', 'samantha', 'jenny', 'aria', 'hazel', 'heather', 'karen', 'google uk english female', 'female', 'girl', 'young', 'natural'];
+  return english.find((voice) => preferred.some((name) => voice.name.toLowerCase().includes(name)))
+    || english.find((voice) => /female|girl|kid|young/i.test(voice.name))
+    || english[0]
+    || voices[0]
+    || null;
 }
 
 function audio(label, highlightTarget = null) {
@@ -134,11 +138,13 @@ function audio(label, highlightTarget = null) {
 async function speakFeedback(text, feedback) {
   if (!('speechSynthesis' in window)) return;
   const voices = await loadActivityVoices();
-  const utterance = new SpeechSynthesisUtterance(text);
+  const isCorrect = Boolean(feedback?.classList?.contains('correct')) || /correct|well done|yay|spot on|superstar|great/i.test(text || '');
+  const speechText = isCorrect ? 'Well done!' : 'Ohh No! Try again next time.';
+  const utterance = new SpeechSynthesisUtterance(speechText);
   utterance.voice = getTherapeuticVoice(voices);
   utterance.lang = utterance.voice?.lang || 'en-ZA';
-  utterance.rate = 0.8;
-  utterance.pitch = 1.15;
+  utterance.rate = 0.9;
+  utterance.pitch = 1.25;
   utterance.volume = 1;
   feedback.querySelectorAll('.speech-word').forEach((word) => word.classList.remove('is-speaking'));
   utterance.onboundary = (event) => {

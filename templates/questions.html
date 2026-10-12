@@ -151,6 +151,35 @@ function setMascot(reaction, label) {
   mascot.querySelector('span').textContent = label;
 }
 
+function getChildVoice(voices) {
+  const englishVoices = (voices || []).filter((voice) => String(voice.lang || '').toLowerCase().startsWith('en'));
+  const nameHints = ['zira', 'susan', 'samantha', 'jenny', 'aria', 'hazel', 'heather', 'karen', 'female', 'girl', 'kid', 'young'];
+  return englishVoices.find((voice) => nameHints.some((hint) => voice.name.toLowerCase().includes(hint)))
+    || englishVoices.find((voice) => /female|girl|kid|young/i.test(voice.name))
+    || englishVoices[0]
+    || (voices && voices[0])
+    || null;
+}
+
+function speakAnswerFeedback(correct) {
+  if (!('speechSynthesis' in window)) return;
+  const text = correct ? 'Well done!' : 'Ohh No! Try again next time.';
+  const utterance = new SpeechSynthesisUtterance(text);
+  const voices = window.speechSynthesis.getVoices();
+  const chosenVoice = getChildVoice(voices);
+  if (chosenVoice) {
+    utterance.voice = chosenVoice;
+    utterance.lang = chosenVoice.lang || 'en-ZA';
+  } else {
+    utterance.lang = 'en-ZA';
+  }
+  utterance.rate = 0.9;
+  utterance.pitch = 1.25;
+  utterance.volume = 1;
+  window.speechSynthesis.cancel();
+  window.speechSynthesis.speak(utterance);
+}
+
 function activityTitle(activity, group) {
   const criterion = assessmentLabels[activity?.skill] || (group?.title || 'Story Activity').replace(/\s+Questions?$/i, '').trim();
   const format = activityTypeLabels[activity.activity_type] || 'Activity';
@@ -1585,6 +1614,8 @@ function showFeedback(data) {
     model.textContent = `${data.review_required ? 'Example answer' : 'Story answer'}: ${data.model_answer}`;
     messageArea.appendChild(model);
   }
+
+  speakAnswerFeedback(Boolean(data.correct));
 }
 
 async function submitActivity(activity, answer, selectedButton = null) {
