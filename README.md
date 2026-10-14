@@ -9,6 +9,8 @@ Clean Django web application for SGILA foundation phase reading.
 - Parent and teacher dashboards
 - Learner progress report dashboard
 - Teacher class codes
+- New teacher accounts include a 30-day trial; continued teacher access after
+  the trial requires an active Enterprise plan for the teacher's school
 - Parent/learner class-code linking
 - Subscription and package-code flows
 - Optional AI-assisted story generation

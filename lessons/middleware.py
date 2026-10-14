@@ -1,9 +1,12 @@
 from urllib.parse import urlencode
 
 from django.http import JsonResponse
-from django.shortcuts import redirect
+from django.shortcuts import redirect, render
 
-from api.account_access import child_access_status
+from api.account_access import (
+    child_access_status,
+    teacher_access_status,
+)
 from api.models import Child, Parent, Teacher
 
 
@@ -24,10 +27,15 @@ class AccountAccessMiddleware:
                 return self._blocked_response(request, 'parent_deactivated')
 
         if role == 'teacher' and account_id:
-            teacher = Teacher.objects.filter(pk=account_id).only('is_active').first()
+            teacher = Teacher.objects.filter(pk=account_id).only('is_active', 'school_name').first()
             if not teacher or not teacher.is_active:
                 request.session.flush()
                 return self._blocked_response(request, 'teacher_deactivated')
+            allowed, reason = teacher_access_status(teacher)
+            if not allowed and not self._teacher_management_path(request.path):
+                if request.path.startswith('/api/'):
+                    return self._blocked_response(request, reason)
+                return render(request, 'payment_due.html', {'role': 'teacher'})
 
         if role == 'learner' and account_id:
             child = Child.objects.select_related('parent').filter(pk=account_id).first()
@@ -40,6 +48,15 @@ class AccountAccessMiddleware:
                 return self._blocked_response(request, reason)
 
         return self.get_response(request)
+
+    @staticmethod
+    def _teacher_management_path(path):
+        """Keep plan and account management reachable after a trial lapses."""
+        return (
+            path in {'/logout', '/plans', '/teacher/school', '/teacher/deactivate', '/account/reactivate'}
+            or path == '/subscription'
+            or path.startswith('/subscription/')
+        )
 
     @staticmethod
     def _blocked_response(request, reason):

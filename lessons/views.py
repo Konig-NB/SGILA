@@ -70,6 +70,7 @@ from api.models import (
     title_case,
 )
 from api.account_access import (
+    ACCESS_TEACHER_TRIAL_EXPIRED,
     active_child_count,
     can_activate_child,
     child_reassignment_cooldown_until,
@@ -77,6 +78,7 @@ from api.account_access import (
     linked_parent_for_child,
     plan_active_child_cap,
     subscription_allows_children,
+    teacher_access_status,
 )
 from api.reporting import aggregate_rows, rows_for_record, rows_from_scores
 from api.grade4_story_framework import (
@@ -1214,9 +1216,10 @@ def verify_otp_page(request):
                 class_code=unique_code_for(Teacher),
             )
             ensure_teacher_codes(account)
+            Subscription.objects.create(teacher=account, plan_type='enterprise', status='trial')
             set_account_session(request, 'teacher', account)
             messages.success(request, f'Email verified. Share class code {account.class_code} with learners.')
-            return redirect('/teacher/dashboard')
+            return redirect('/teacher/welcome')
 
     # GET — show the form
     try:
@@ -1252,6 +1255,21 @@ def parent_welcome_page(request):
         'trial_days': Subscription.TRIAL_DAYS,
         'active_learner_cap': plan_active_child_cap(parent),
         'trial_end': trial_end,
+    })
+
+
+@require_http_methods(['GET'])
+def teacher_welcome_page(request):
+    """One-time landing page shown after a teacher verifies their email."""
+    if request.session.get('account_role') != 'teacher':
+        return redirect('/login?role=teacher')
+
+    teacher = get_object_or_404(Teacher, id=request.session.get('account_id'))
+    subscription = Subscription.objects.filter(teacher=teacher).first()
+    return render(request, 'teacher_welcome.html', {
+        'teacher': teacher,
+        'trial_days': Subscription.TRIAL_DAYS,
+        'trial_end': subscription.trial_ends_at if subscription else None,
     })
 
 
@@ -4219,7 +4237,8 @@ def teacher_dashboard(request):
     if request.session.get('account_role') != 'teacher':
         return redirect('/login?role=teacher')
     teacher = get_object_or_404(Teacher, id=request.session['account_id'])
-    if account_trial_expired(teacher):
+    allowed, reason = teacher_access_status(teacher)
+    if not allowed and reason == ACCESS_TEACHER_TRIAL_EXPIRED:
         return payment_due_response(request, {'role': 'teacher'})
     teacher_classes = ensure_teacher_codes(teacher)
     learners = Child.objects.filter(

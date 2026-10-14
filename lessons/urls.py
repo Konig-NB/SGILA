@@ -21,6 +21,7 @@ urlpatterns = [
     path('reset-password', views.reset_password_page, name='reset-password'),
     path('verify-otp', views.verify_otp_page, name='verify-otp'),
     path('welcome', views.parent_welcome_page, name='parent-welcome'),
+    path('teacher/welcome', views.teacher_welcome_page, name='teacher-welcome'),
     path('plans', views.public_plans_page, name='public-plans'),
     path('subscription', views.subscription_page, name='subscription-page'),
     path(
