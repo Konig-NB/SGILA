@@ -576,6 +576,95 @@ def test_grade_four_activity_interactions_and_results(live_server, page: Page):
 
 
 @pytest.mark.django_db(transaction=True)
+def test_grade_four_open_ended_feedback_voice_is_encouraging(live_server, page: Page):
+    parent = Parent.objects.create(
+        full_name="Open Response Parent",
+        email="open-response-parent@example.test",
+        password=hash_password("Parent-Pass-42!"),
+    )
+    Subscription.objects.create(parent=parent, plan_type="family", status="trial")
+    child = Child.objects.create(
+        parent=parent,
+        username="OpenResponseLearner",
+        first_name="Open Response",
+        last_name="Learner",
+        name="Open Response Learner",
+        grade=4,
+        parent_email=parent.email,
+        password=hash_password("Learner-Pass-42!"),
+    )
+    lesson = Lesson.objects.create(title="Open Response Practice", grade=4)
+    activities = [
+        {
+            "activity_type": ReadingActivity.MULTIPLE_CHOICE,
+            "skill": "literal_comprehension",
+            "question": "Which answer matches the story?",
+            "options": ["The story answer", "Not this"],
+            "correct_answer": "The story answer",
+            "group_title": "Remember the story",
+        },
+        {
+            "activity_type": ReadingActivity.REASONING,
+            "skill": "inference",
+            "question": "Why did the character help?",
+            "group_title": "Reasoning: Explain Your Thinking",
+        },
+        {
+            "activity_type": ReadingActivity.OPEN_ENDED,
+            "skill": "summarising",
+            "question": "What would you like to share?",
+            "group_title": "Writing: Share Your Ideas",
+        },
+    ]
+    for order, activity_data in enumerate(activities):
+        ReadingActivity.objects.create(
+            lesson=lesson,
+            order=order,
+            group_number=order + 1,
+            **activity_data,
+        )
+
+    page.goto(f"{live_server.url}/login?role=learner")
+    page.get_by_label("Username").fill(child.username)
+    page.get_by_label("Password").fill("Learner-Pass-42!")
+    page.get_by_role("button", name="Sign in").click()
+
+    page.add_init_script("""() => {
+      window.spokenFeedback = [];
+      Object.defineProperty(window, 'SpeechSynthesisUtterance', {
+        configurable: true,
+        value: function (text) { this.text = text; }
+      });
+      Object.defineProperty(window, 'speechSynthesis', {
+        configurable: true,
+        value: {
+          getVoices: () => [{name: 'Test English Voice', lang: 'en-ZA'}],
+          cancel: () => {},
+          speak: (utterance) => window.spokenFeedback.push(utterance.text)
+        }
+      });
+    }""")
+
+    page.goto(f"{live_server.url}/lessons/{lesson.id}/questions?activity_index=0")
+    page.get_by_role("button", name="Not this").click()
+    page.get_by_role("button", name="Check answer").click()
+    page.wait_for_function("window.spokenFeedback.length === 1")
+    assert page.evaluate("window.spokenFeedback[0]") == "Ohh No! Try again next time."
+
+    for index, response in [
+        (1, "The character made a brave choice because she helped her friend."),
+        (2, "I think the character felt brave. The story shows this clearly."),
+    ]:
+        page.goto(f"{live_server.url}/lessons/{lesson.id}/questions?activity_index={index}")
+        page.locator(".reading-response").fill(response)
+        page.get_by_role("button", name="Compare my answer").click()
+        page.wait_for_function(f"window.spokenFeedback.length === {index + 1}")
+        assert page.evaluate(f"window.spokenFeedback[{index}]") == (
+            "Great thinking! Thank you for sharing your ideas."
+        )
+
+
+@pytest.mark.django_db(transaction=True)
 def test_visual_pronunciation_and_all_spelling_types(live_server, page: Page):
     parent = Parent.objects.create(
         full_name="Phonics Parent",

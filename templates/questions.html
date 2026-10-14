@@ -161,9 +161,13 @@ function getChildVoice(voices) {
     || null;
 }
 
-function speakAnswerFeedback(correct) {
+function speakAnswerFeedback(correct, activity) {
   if (!('speechSynthesis' in window)) return;
-  const text = correct ? 'Well done!' : 'Ohh No! Try again next time.';
+  const isGradeFourOpenEnded = Number('{{ lesson.grade }}') === 4
+    && ['reasoning', 'open_ended'].includes(activity.activity_type);
+  const text = isGradeFourOpenEnded
+    ? 'Great thinking! Thank you for sharing your ideas.'
+    : (correct ? 'Well done!' : 'Ohh No! Try again next time.');
   const utterance = new SpeechSynthesisUtterance(text);
   const voices = window.speechSynthesis.getVoices();
   const chosenVoice = getChildVoice(voices);
@@ -1594,7 +1598,7 @@ function markScrambleAnswers(data) {
   });
 }
 
-function showFeedback(data) {
+function showFeedback(data, activity) {
   messageArea.classList.remove('hidden', 'correct', 'wrong', 'review');
   messageArea.classList.add(data.review_required ? 'review' : (data.correct ? 'correct' : 'wrong'));
 
@@ -1615,7 +1619,7 @@ function showFeedback(data) {
     messageArea.appendChild(model);
   }
 
-  speakAnswerFeedback(Boolean(data.correct));
+  speakAnswerFeedback(Boolean(data.correct), activity);
 }
 
 async function submitActivity(activity, answer, selectedButton = null) {
@@ -1661,7 +1665,7 @@ async function submitActivity(activity, answer, selectedButton = null) {
   markChoice(selectedButton, data);
   markMatchingAnswers(data);
   markScrambleAnswers(data);
-  showFeedback(data);
+  showFeedback(data, activity);
   setMascot(data.review_required || data.correct ? 'happy' : 'sad', data.review_required ? 'Good thinking. Compare your answer.' : (data.correct ? 'Great reading!' : 'Use the story answer to learn.'));
   const nextActivity = activities[current + 1];
   nextButton.textContent = current === activities.length - 1
