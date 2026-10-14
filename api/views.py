@@ -871,12 +871,49 @@ def questions(request, lesson_id):
     activities = list(lesson.reading_activities.all())
     if activities:
         for activity in activities:
+            options = activity.get_options()
+            question = activity.question
+            if lesson.grade == 2 and activity.activity_type == ReadingActivity.WORD_SCRAMBLE:
+                options = dict(options) if isinstance(options, dict) else options
+                items = options.get('items') if isinstance(options, dict) else None
+                if isinstance(items, list):
+                    items = [
+                        dict(item) if isinstance(item, dict) else item
+                        for item in items
+                    ]
+                    options['items'] = items
+                    expected = structured_reading_answer(activity)
+                    displayed_scrambles = []
+                    updated_scramble = False
+                    for item in items:
+                        if not isinstance(item, dict):
+                            continue
+                        answer = expected.get(str(item.get('key', '')))
+                        if not isinstance(answer, str) or not answer:
+                            continue
+                        scramble = item.get('scramble')
+                        scramble = scramble if isinstance(scramble, str) else ''
+                        if (
+                            sorted(scramble.casefold()) != sorted(answer.casefold())
+                            or scramble.casefold() == answer.casefold()
+                        ):
+                            letters = list(answer)
+                            random.shuffle(letters)
+                            scramble = ''.join(letters)
+                            if scramble.casefold() == answer.casefold() and len(letters) > 1:
+                                scramble = scramble[1:] + scramble[:1]
+                            item['scramble'] = scramble
+                            updated_scramble = True
+                        displayed_scrambles.append(', '.join(scramble))
+                    if updated_scramble and displayed_scrambles:
+                        question = 'Unscramble the letters: ' + '; '.join(displayed_scrambles)
+
             item = {
                 'activity_id': activity.id,
                 'activity_type': activity.activity_type,
                 'skill': activity.skill,
-                'question': activity.question,
-                'options': activity.get_options(),
+                'question': question,
+                'options': options,
                 'requires_review': activity.requires_review,
                 'group_number': activity.group_number or activity.order,
                 'group_title': activity.group_title or activity.get_activity_type_display(),

@@ -18,6 +18,7 @@ when the wording of an activity changes.
 """
 
 import json
+import random
 
 
 # --- Picture sheets -------------------------------------------------------
@@ -156,13 +157,19 @@ def fill_vowel(story, display_word, word, choices, answer):
 
 def unscramble(story, letters, word):
     """4. Spelling — Drag Letters (unscramble the letters into the word)."""
-    spaced = ', '.join(letters)
+    scrambled = list(letters)
+    random.shuffle(scrambled)
+    if scrambled == list(word):
+        # A non-uniform word always has a distinct one-position rotation.
+        scrambled = scrambled[1:] + scrambled[:1]
+    scrambled = ''.join(scrambled)
+    spaced = ', '.join(scrambled)
     return {
         'activity_type': 'word_scramble',
         'skill': 'spelling',
         'question': f'Unscramble the letters: {spaced}',
         'options': {
-            'items': [{'key': word.lower(), 'scramble': ''.join(letters)}],
+            'items': [{'key': word.lower(), 'scramble': scrambled}],
             'audio_text': word,
             'prompt_image': picture_for(story, word),
             'prompt_alt': word.title(),

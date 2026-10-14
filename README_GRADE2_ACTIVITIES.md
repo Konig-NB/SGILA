@@ -73,6 +73,8 @@ missing vowel (*A Dog's Life*, *The School Shed Is on Fire*), unscramble the
 letters (*A New Baby*, *Spring Day Surprise*), or choose the correct spelling
 (*Dan's Bad Week*). Every question shows the matching picture from the story's
 vocabulary sheet in `static/img/vocab_sheets/`.
+Scrambled words preserve the target's letters but use a different order whenever
+one is possible; legacy saved activities are corrected when served.
 
 **Fix the Mistake** shows a story sentence with one word swapped and gives three
 words to choose from, exactly as listed in the document.

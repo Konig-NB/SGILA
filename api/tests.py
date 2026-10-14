@@ -1405,6 +1405,32 @@ class SgilaFlowTests(TestCase):
         self.assertEqual(activity_data["activity_type"], "multiple_choice")
         self.assertNotIn("correct_answer", activity_data)
 
+    def test_grade_two_legacy_word_scramble_is_scrambled_when_served(self):
+        lesson = Lesson.objects.create(title="Legacy Scramble", grade=2)
+        activity = ReadingActivity.objects.create(
+            lesson=lesson,
+            order=1,
+            activity_type=ReadingActivity.WORD_SCRAMBLE,
+            skill="spelling",
+            question="Unscramble the letters: B, U, T, T, E, R, F, L, Y",
+            options={
+                "items": [{"key": "butterfly", "scramble": "BUTTERFLY"}],
+            },
+            correct_answer=json.dumps({"butterfly": "BUTTERFLY"}),
+        )
+
+        response = self.client.get(f"/api/lessons/{lesson.id}/questions")
+
+        self.assertEqual(response.status_code, 200)
+        activity_data = next(
+            item for item in response.json()
+            if item["activity_id"] == activity.id
+        )
+        scramble = activity_data["options"]["items"][0]["scramble"]
+        self.assertNotEqual(scramble.casefold(), "butterfly")
+        self.assertEqual(sorted(scramble.casefold()), sorted("butterfly"))
+        self.assertIn(", ".join(scramble), activity_data["question"])
+
     def test_reading_activity_is_checked_and_scored_server_side(self):
         child = Child.objects.create(
             name="Sipho",
