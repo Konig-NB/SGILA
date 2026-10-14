@@ -10,6 +10,7 @@ from .models import Child, Parent, Subscription
 
 ACCESS_PARENT_DEACTIVATED = 'parent_deactivated'
 ACCESS_TEACHER_DEACTIVATED = 'teacher_deactivated'
+ACCESS_TEACHER_TRIAL_EXPIRED = 'teacher_trial_expired'
 ACCESS_LEARNER_DEACTIVATED = 'learner_deactivated'
 ACCESS_SUBSCRIPTION_INACTIVE = 'subscription_inactive'
 CHILD_REASSIGNMENT_COOLDOWN = timedelta(days=3)
@@ -141,5 +142,23 @@ def child_access_status(child):
 def teacher_access_status(teacher):
     if not teacher.is_active:
         return False, ACCESS_TEACHER_DEACTIVATED
+    subscription = Subscription.objects.filter(teacher=teacher).first()
+    trial_started_at = (
+        min(teacher.created_at, subscription.created_at)
+        if subscription else teacher.created_at
+    )
+    if timezone.now() >= trial_started_at + timedelta(days=Subscription.TRIAL_DAYS):
+        active_enterprise = Subscription.objects.filter(
+            plan_type='enterprise',
+            status='active',
+        )
+        school_name = (teacher.school_name or '').strip()
+        if school_name:
+            active_enterprise = active_enterprise.filter(
+                Q(teacher=teacher) | Q(school_name__iexact=school_name)
+            )
+        else:
+            active_enterprise = active_enterprise.filter(teacher=teacher)
+        if not active_enterprise.exists():
+            return False, ACCESS_TEACHER_TRIAL_EXPIRED
     return True, ''
-

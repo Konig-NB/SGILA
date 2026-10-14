@@ -968,12 +968,41 @@ class SgilaFlowTests(TestCase):
             "otp_session": str(teacher_otp.id),
             "code": teacher_otp.code,
         })
-        self.assertRedirects(teacher_response, "/teacher/dashboard")
+        self.assertRedirects(teacher_response, "/teacher/welcome")
         teacher = Teacher.objects.get(email="teacher@example.com")
         self.assertEqual(teacher.grades_taught, "1,2")
         self.assertTrue(teacher.class_code)
         self.assertTrue(teacher.classes.exists())
+        teacher_trial = Subscription.objects.get(teacher=teacher)
+        self.assertEqual(teacher_trial.plan_type, "enterprise")
+        self.assertEqual(teacher_trial.status, "trial")
+        self.assertContains(self.client.get("/teacher/welcome"), "Free 30-day teacher trial")
         self.assertEqual(self.client.get("/teacher/dashboard").status_code, 200)
+
+    @patch("api.views.send_otp_email")
+    def test_api_teacher_registration_starts_trial_and_returns_welcome_path(self, send_otp_email):
+        response = self.client.post("/api/register", json.dumps({
+            "role": "teacher",
+            "full_name": "Api Teacher",
+            "email": "api-teacher-trial@example.com",
+            "school_name": "Thuthuka Primary",
+            "password": "password123",
+            "accepted_popia": True,
+        }), content_type="application/json")
+        self.assertEqual(response.status_code, 200)
+        otp = OTPToken.objects.get(email="api-teacher-trial@example.com", role="teacher")
+
+        response = self.client.post("/api/verify-otp", json.dumps({
+            "otp_session": str(otp.id),
+            "code": otp.code,
+        }), content_type="application/json")
+
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.json()["redirect_to"], "/teacher/welcome")
+        teacher = Teacher.objects.get(email="api-teacher-trial@example.com")
+        trial = Subscription.objects.get(teacher=teacher)
+        self.assertEqual(trial.status, "trial")
+        self.assertEqual(trial.plan_type, "enterprise")
 
     def test_teacher_registration_requires_valid_teaching_grades(self):
         response = self.client.post("/register", {

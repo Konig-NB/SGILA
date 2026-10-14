@@ -508,7 +508,8 @@ def verify_otp(request):
             password=make_password(pending.get('password', '')),
             accepted_popia=bool(pending.get('accepted_popia')),
         )
-        redirect_to = '/teacher/dashboard'
+        Subscription.objects.create(teacher=account, plan_type='enterprise', status='trial')
+        redirect_to = '/teacher/welcome'
 
     token = create_access_token({
         'sub': account.id,

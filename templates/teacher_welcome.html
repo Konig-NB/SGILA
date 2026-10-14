@@ -1,0 +1,40 @@
+{% extends 'base.html' %}
+{% load static %}
+{% block title %}Welcome, teacher - SGILA{% endblock %}
+{% block body_class %}welcome-body{% endblock %}
+{% block content %}
+
+<div class="welcome-overlay">
+  <div class="welcome-modal">
+    <img class="welcome-koaly" src="{% static 'img/koaly_happy.png' %}" alt="" aria-hidden="true">
+    <p class="eyebrow">Welcome to SGILA</p>
+    <h1>Hi {{ teacher.full_name }}, your teacher account is ready!</h1>
+    <p class="welcome-intro">Here is what you can expect as you get started with your class.</p>
+
+    <ul class="welcome-facts">
+      <li>
+        <strong>Free {{ trial_days }}-day teacher trial</strong>
+        <span>You have full access to your teacher dashboard{% if trial_end %} until {{ trial_end|date:"j F Y" }}{% endif %}. No card is needed to get started.</span>
+      </li>
+      <li>
+        <strong>See your learners and their progress</strong>
+        <span>View learners linked to your school, explore their reading activity, and see class progress from your dashboard.</span>
+      </li>
+      <li>
+        <strong>Share your teacher code</strong>
+        <span>Give parents your class code so learners can be connected to your class and appear on your dashboard.</span>
+      </li>
+      <li>
+        <strong>After your trial</strong>
+        <span>To keep using teacher features after 30 days, your school needs an active SGILA Enterprise plan.</span>
+      </li>
+    </ul>
+
+    <div class="welcome-actions">
+      <a class="btn btn-primary" href="/teacher/dashboard">Go to my teacher dashboard</a>
+      <a class="btn btn-light" href="/subscription">View school plans</a>
+    </div>
+  </div>
+</div>
+
+{% endblock %}
