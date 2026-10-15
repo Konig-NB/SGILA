@@ -113,26 +113,42 @@ if _database_url:
             ssl_require=not DEBUG,
         )
     }
-elif not DEBUG:
-    raise ImproperlyConfigured('DATABASE_URL must be set for production deployments.')
-elif os.environ.get('DB_ENGINE', 'sqlite').lower() in {'postgres', 'postgresql'}:
-    DATABASES = {
-        'default': {
-            'ENGINE': 'django.db.backends.postgresql',
-            'NAME': os.environ.get('DB_NAME', 'sgila_db'),
-            'USER': os.environ.get('DB_USER', 'postgres'),
-            'PASSWORD': os.environ.get('DB_PASSWORD', ''),
-            'HOST': os.environ.get('DB_HOST', 'localhost'),
-            'PORT': os.environ.get('DB_PORT', '5432'),
-        }
-    }
 else:
-    DATABASES = {
-        'default': {
-            'ENGINE': 'django.db.backends.sqlite3',
-            'NAME': BASE_DIR / 'db.sqlite3',
+    _db_engine = os.environ.get('DB_ENGINE', 'postgresql').lower()
+    if _db_engine in {'postgres', 'postgresql'}:
+        _db_name = os.environ.get('DB_NAME')
+        _db_user = os.environ.get('DB_USER')
+        _db_password = os.environ.get('DB_PASSWORD')
+        if not _db_name or not _db_user or _db_password is None:
+            raise ImproperlyConfigured(
+                'Set DB_NAME, DB_USER, and DB_PASSWORD, or provide DATABASE_URL, '
+                'for PostgreSQL.'
+            )
+        DATABASES = {
+            'default': {
+                'ENGINE': 'django.db.backends.postgresql',
+                'NAME': _db_name,
+                'USER': _db_user,
+                'PASSWORD': _db_password,
+                'HOST': os.environ.get('DB_HOST', 'localhost'),
+                'PORT': os.environ.get('DB_PORT', '5432'),
+                'CONN_MAX_AGE': 600,
+                'CONN_HEALTH_CHECKS': True,
+            }
         }
-    }
+    elif _db_engine == 'sqlite':
+        if not DEBUG:
+            raise ImproperlyConfigured('SQLite is only supported for local development.')
+        DATABASES = {
+            'default': {
+                'ENGINE': 'django.db.backends.sqlite3',
+                'NAME': BASE_DIR / 'db.sqlite3',
+            }
+        }
+    else:
+        raise ImproperlyConfigured(
+            'DB_ENGINE must be postgresql or sqlite.'
+        )
 
 LANGUAGE_CODE = 'en-us'
 TIME_ZONE = 'Africa/Johannesburg'

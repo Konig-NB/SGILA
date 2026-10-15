@@ -8,9 +8,10 @@ build; each web-service start runs database migrations before starting Gunicorn.
 The Blueprint does not create a database or choose a paid service plan. Before
 the first deploy, provide `DJANGO_SECRET_KEY` and `DATABASE_URL` in Render's
 environment settings. Connect an existing PostgreSQL database and use its
-connection URL for `DATABASE_URL`; production deliberately refuses to start
-without both a secret key and a database URL. Do not use the local SQLite file
-for a hosted deployment.
+connection URL for `DATABASE_URL`. Production requires a secret key and
+PostgreSQL configuration; outside the Blueprint, either `DATABASE_URL` or the
+component `DB_NAME`, `DB_USER`, and `DB_PASSWORD` variables can supply that
+configuration. Do not use the local SQLite file for a hosted deployment.
 
 Render's `RENDER_EXTERNAL_HOSTNAME` is automatically allowed as a host and
 trusted HTTPS origin. If you add a custom domain, add its hostname to
@@ -54,7 +55,21 @@ paid disk or provision a storage service.
 
 1. Extract `SGILA_App.zip` to a normal local folder.
 2. Open PowerShell or Command Prompt in the extracted `SGILA_App` folder.
-3. Run these commands:
+3. Install and start PostgreSQL, then create a database and login role. For
+   example, in `psql` (enter the role password at the prompt):
+
+```sql
+CREATE ROLE sgila_user LOGIN;
+\password sgila_user
+CREATE DATABASE sgila_db OWNER sgila_user;
+```
+
+4. Copy `.env.example` to `.env` and set `DB_NAME`, `DB_USER`, and
+   `DB_PASSWORD` to match the PostgreSQL database and role you created.
+   `DB_HOST` and `DB_PORT` default to `localhost` and `5432` in the settings;
+   change them if your PostgreSQL server uses a different address. Keep `.env`
+   private and do not commit it.
+5. Run these commands:
 
 ```powershell
 python -m venv .venv
@@ -68,7 +83,37 @@ python -m venv .venv
 .venv\Scripts\python.exe manage.py runserver
 ```
 
-4. Open `http://127.0.0.1:8000/`.
+6. Open `http://127.0.0.1:8000/`.
+
+PostgreSQL is the default database. To keep using SQLite for a local-only
+development run, set `DB_ENGINE=sqlite` in `.env`; no PostgreSQL credentials
+are needed in that mode. SQLite is not supported when `DJANGO_DEBUG=False`.
+
+### Moving Existing SQLite Data to PostgreSQL
+
+Back up `db.sqlite3` before starting. The Django fixture commands below copy
+database records only; copy the `media/` files separately if the database
+contains uploaded-file paths. For the export, set `DB_ENGINE=sqlite` and
+temporarily remove or comment out `DATABASE_URL` in `.env` if it is set
+(`DATABASE_URL` takes precedence over `DB_ENGINE`). Store the fixture somewhere
+private outside the repository (it may contain personal data):
+
+```powershell
+.venv\Scripts\python.exe manage.py dumpdata --natural-foreign --natural-primary --exclude contenttypes --exclude auth.permission --indent 2 --output C:/secure-backup/sgila-data.json
+```
+
+Then configure `.env` for PostgreSQL (`DB_ENGINE=postgresql`, `DB_NAME`,
+`DB_USER`, `DB_PASSWORD`, and, if needed, `DB_HOST`/`DB_PORT`) and run:
+
+```powershell
+.venv\Scripts\python.exe manage.py migrate
+.venv\Scripts\python.exe manage.py loaddata C:/secure-backup/sgila-data.json
+```
+
+Verify the migrated users and application data before retiring the SQLite
+backup. This fixture workflow should be tested on a backup first for any
+project-specific data or customizations; it does not migrate uploaded files or
+database-server settings.
 
 Alternatively, double-click `run_sgila.bat`. It creates the virtual environment,
 installs dependencies, prepares the database, and starts the local server.
