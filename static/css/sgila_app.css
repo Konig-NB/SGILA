@@ -8661,6 +8661,8 @@ body:not(.diagram-body) .matching-prompt-card {
   align-items: center;
   justify-content: space-between;
   gap: 8px;
+  width: 100%;
+  min-width: 0;
   min-height: 44px;
   padding: 8px 10px;
   border: 2px solid var(--auto-d8dee8-bd);
@@ -8670,9 +8672,16 @@ body:not(.diagram-body) .matching-prompt-card {
   font-size: 0.95rem;
   font-family: inherit;
   text-align: left;
-  white-space: nowrap;
+  white-space: normal;
+  box-sizing: border-box;
   cursor: pointer;
   transition: box-shadow 0.15s ease, transform 0.1s ease;
+}
+body:not(.diagram-body) .matching-prompt-text {
+  flex: 1 1 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  white-space: normal;
 }
 body:not(.diagram-body) .matching-choice-card {
   display: flex;
@@ -8794,6 +8803,28 @@ body:not(.diagram-body) .matching-correction {
   color: var(--auto-14624c-t);
   font-size: .88rem;
   font-weight: 900;
+}
+
+body:not(.diagram-body) .matching-feedback-summary {
+  max-width: 100%;
+  margin-top: 12px;
+  padding: 12px 14px;
+  border-left: 4px solid #d64552;
+  border-radius: 8px;
+  background: var(--auto-fff7f8-bg);
+  color: var(--auto-9b2430-t);
+  box-sizing: border-box;
+  overflow-wrap: anywhere;
+}
+
+body:not(.diagram-body) .matching-feedback-summary h3 {
+  margin: 0 0 6px;
+  font-size: 1rem;
+}
+
+body:not(.diagram-body) .matching-feedback-summary ul {
+  margin: 0;
+  padding-left: 1.25rem;
 }
 
 body:not(.diagram-body) .scramble-rows {

@@ -665,6 +665,91 @@ def test_grade_four_open_ended_feedback_voice_is_encouraging(live_server, page: 
 
 
 @pytest.mark.django_db(transaction=True)
+def test_grade_four_matching_wrong_answer_feedback_stays_outside_prompt_buttons(live_server, page: Page):
+    parent = Parent.objects.create(
+        full_name="Matching Parent",
+        email="matching-parent@example.test",
+        password=hash_password("Parent-Pass-42!"),
+    )
+    Subscription.objects.create(parent=parent, plan_type="family", status="trial")
+    child = Child.objects.create(
+        parent=parent,
+        username="MatchingLearner",
+        first_name="Matching",
+        last_name="Learner",
+        name="Matching Learner",
+        grade=4,
+        parent_email=parent.email,
+        password=hash_password("Learner-Pass-42!"),
+    )
+    lesson = Lesson.objects.create(title="Grade 4 Vocabulary - Matching", grade=4)
+    ReadingActivity.objects.create(
+        lesson=lesson,
+        order=1,
+        group_number=1,
+        group_title="Vocabulary",
+        activity_type=ReadingActivity.MATCHING,
+        skill="vocabulary_in_context",
+        question="Match each word with its meaning.",
+        options={
+            "prompts": [
+                {"key": "1", "text": "a very long vocabulary prompt that must wrap inside its own button without pushing the other column"},
+                {"key": "2", "text": "grateful"},
+            ],
+            "choices": [
+                {"key": "a", "text": "did something repeatedly"},
+                {"key": "b", "text": "feeling thankful"},
+                {"key": "c", "text": "a small thing"},
+            ],
+        },
+        correct_answer='{"1":"a","2":"b"}',
+    )
+
+    page.goto(f"{live_server.url}/login?role=learner")
+    page.get_by_label("Username").fill(child.username)
+    page.get_by_label("Password").fill("Learner-Pass-42!")
+    page.get_by_role("button", name="Sign in").click()
+
+    page.goto(f"{live_server.url}/lessons/{lesson.id}/questions")
+    prompts = page.locator(".matching-prompt-card")
+    choices = page.locator(".matching-choice-card")
+    prompts.nth(0).click()
+    choices.nth(0).click()
+    prompts.nth(1).click()
+    choices.nth(2).click()
+    page.get_by_role("button", name="Check matches").click()
+
+    expect(prompts.nth(0).locator(".matching-result-badge")).to_have_text("Correct")
+    expect(prompts.nth(1).locator(".matching-result-badge")).to_have_text("Incorrect")
+    expect(prompts.locator(".matching-correction")).to_have_count(0)
+    summary = page.locator(".matching-feedback-summary")
+    expect(summary).to_contain_text("grateful - Correct match: feeling thankful")
+    expect(summary).not_to_contain_text("a very long vocabulary prompt")
+    assert page.evaluate("""() => {
+      const board = document.querySelector('.matching-board');
+      const promptColumn = document.querySelector('.matching-prompt-cards');
+      const choiceColumn = document.querySelector('.matching-choice-cards');
+      const promptButton = document.querySelector('.matching-prompt-card');
+      const columnBounds = promptColumn.getBoundingClientRect();
+      const choiceBounds = choiceColumn.getBoundingClientRect();
+      const buttonBounds = promptButton.getBoundingClientRect();
+      return board.nextElementSibling.classList.contains('matching-feedback-summary')
+        && promptButton.scrollWidth <= promptButton.clientWidth
+        && buttonBounds.right <= columnBounds.right + 1
+        && columnBounds.right <= choiceBounds.left;
+    }""")
+
+    page.goto(f"{live_server.url}/lessons/{lesson.id}/questions")
+    prompts.nth(0).click()
+    choices.nth(0).click()
+    prompts.nth(1).click()
+    choices.nth(1).click()
+    page.get_by_role("button", name="Check matches").click()
+    expect(page.locator(".matching-result-badge")).to_have_count(2)
+    expect(page.locator(".matching-feedback-summary")).to_have_count(0)
+
+
+@pytest.mark.django_db(transaction=True)
 def test_visual_pronunciation_and_all_spelling_types(live_server, page: Page):
     parent = Parent.objects.create(
         full_name="Phonics Parent",
