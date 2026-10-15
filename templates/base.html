@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>{% block title %}SGILA{% endblock %}</title>
   {% load static %}
-  <link rel="stylesheet" href="{% static 'css/sgila_app.css' %}?v=teacher-school-search-20260930-01">
+  <link rel="stylesheet" href="{% static 'css/sgila_app.css' %}?v=enterprise-checkbox-dark-mode-20261012-01-teacher-grade-selection-01">
   <script>
     // Applied before paint so the page never flashes the wrong theme on load.
     (function () {
@@ -25,7 +25,7 @@
     </a>
     {% if request.path == '/' and not request.session.account_role %}
     <div class="home-nav-links" aria-label="Homepage sections">
-      <a href="/subscription">Plans</a>
+      <a href="/plans">Plans</a>
       <a href="/help/">Help and Feedback</a>
     </div>
     {% endif %}
@@ -34,6 +34,9 @@
         <span class="theme-toggle-icon" aria-hidden="true"></span>
         <span class="theme-toggle-label">Dark Mode</span>
       </button>
+      {% if request.path != '/' or request.session.account_role %}
+        <a href="/help/">Help</a>
+      {% endif %}
       {% if request.session.account_role == 'learner' %}
         <span>{{ request.session.child_name }}</span>
         <a href="/grade/{{ request.session.child_grade }}">Lessons</a>
@@ -160,7 +163,6 @@
 
     function closeModal() {
       modal.classList.add('hidden');
-      modal.style.display = 'none';
     }
 
     async function refreshScore() {
@@ -186,7 +188,6 @@
 
     function openModal() {
       modal.classList.remove('hidden');
-      modal.style.display = 'grid';
       continueButton.focus();
       refreshScore();
     }

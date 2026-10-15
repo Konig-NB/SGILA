@@ -2,7 +2,7 @@ from pathlib import Path
 
 from django.conf import settings
 from django.test import SimpleTestCase
-from django.urls import Resolver404, resolve
+from django.urls import resolve
 
 
 class ActivityAudioTemplateTests(SimpleTestCase):
@@ -24,6 +24,8 @@ class ParentDashboardChildDeletionTests(SimpleTestCase):
         self.assertNotIn('/parent/delete-child/', template)
         self.assertNotIn('Delete this learner profile permanently', template)
 
-    def test_child_delete_route_is_not_registered(self):
-        with self.assertRaises(Resolver404):
-            resolve('/parent/delete-child/1')
+    def test_child_delete_route_returns_the_custom_not_found_page(self):
+        match = resolve('/parent/delete-child/1')
+
+        self.assertEqual(match.url_name, None)
+        self.assertEqual(self.client.get('/parent/delete-child/1').status_code, 404)

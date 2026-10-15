@@ -9,12 +9,17 @@ Clean Django web application for SGILA foundation phase reading.
 - Parent and teacher dashboards
 - Learner progress report dashboard
 - Teacher class codes
+- New teacher accounts include a 30-day trial; continued teacher access after
+  the trial requires an active Enterprise plan for the teacher's school
 - Parent/learner class-code linking
 - Subscription and package-code flows
 - Optional AI-assisted story generation
 - API endpoints for lessons, activities, scoring, and progress
 
 ## Quick Start
+
+For clean-machine setup and Render deployment instructions, see
+[README_RUN.md](README_RUN.md).
 
 ```bash
 pip install django djangorestframework
@@ -105,4 +110,16 @@ templates/           HTML templates
 static/css/          App styling
 static/img/          Koaly, Lerato, and lesson assets
 static/diagrams/     UI flow diagrams and PDFs
+scripts/grade2/      Legacy one-off Grade 2 content maintenance scripts
+scripts/diagnostics/ Standalone checks and diagnostic probes
+artifacts/           Retained generated code dumps and a test log
 ```
+
+Run relocated Python utilities from the repository root as modules, for
+example: `python -m scripts.diagnostics.check_activities`. Run the JavaScript
+diagnostic with `node scripts/diagnostics/simulate.js`; API probes require the
+local server to be running. Grade 2 maintenance scripts are in `scripts/grade2/`;
+see
+[README_GRADE2_ACTIVITIES.md](README_GRADE2_ACTIVITIES.md) for their invocation
+and the recommended management command. The files in `artifacts/` are retained
+snapshots/log output, not Django source or runtime inputs.

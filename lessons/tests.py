@@ -1,10 +1,94 @@
 import json
 
-from django.test import Client, TestCase
+from datetime import timedelta
 
-from api.models import Child, Lesson, Parent, Progress, ReadingActivity
+from django.test import Client, TestCase
+from django.utils import timezone
+
+from api.models import Child, Lesson, Parent, Progress, ReadingActivity, Subscription, Teacher
 from api.reporting import rows_for_record
 from lessons.views import activity_choices_for
+
+
+class TeacherTrialAccessTests(TestCase):
+	def create_teacher_session(self, email='teacher-trial@example.com'):
+		teacher = Teacher.objects.create(
+			full_name='Trial Teacher',
+			email=email,
+			school_name='Thuthuka Primary',
+			password='not-a-real-password',
+		)
+		trial = Subscription.objects.create(
+			teacher=teacher,
+			plan_type='enterprise',
+			status='trial',
+		)
+		session = self.client.session
+		session['account_role'] = 'teacher'
+		session['account_id'] = teacher.id
+		session.save()
+		return teacher, trial
+
+	def test_active_trial_keeps_teacher_dashboard_access(self):
+		self.create_teacher_session()
+
+		response = self.client.get('/teacher/dashboard')
+
+		self.assertEqual(response.status_code, 200)
+
+	def test_expired_trial_blocks_teacher_features_but_keeps_plan_access(self):
+		teacher, trial = self.create_teacher_session()
+		Subscription.objects.filter(pk=trial.pk).update(
+			created_at=timezone.now() - timedelta(days=31),
+			status='pending',
+		)
+
+		response = self.client.get('/teacher/dashboard')
+		plan_response = self.client.get('/subscription')
+		api_response = self.client.get('/api/messages/unread-count')
+
+		self.assertEqual(response.status_code, 200)
+		self.assertContains(response, 'Your free trial has ended')
+		self.assertEqual(plan_response.status_code, 200)
+		self.assertEqual(api_response.status_code, 403)
+		self.assertEqual(api_response.json()['reason'], 'teacher_trial_expired')
+
+	def test_legacy_teacher_without_subscription_does_not_get_an_extra_trial(self):
+		teacher, trial = self.create_teacher_session()
+		trial.delete()
+		Teacher.objects.filter(pk=teacher.pk).update(
+			created_at=timezone.now() - timedelta(days=31),
+		)
+
+		response = self.client.get('/teacher/dashboard')
+
+		self.assertContains(response, 'Your free trial has ended')
+
+	def test_active_enterprise_plan_for_school_keeps_expired_teacher_access(self):
+		teacher, trial = self.create_teacher_session()
+		Subscription.objects.filter(pk=trial.pk).update(
+			created_at=timezone.now() - timedelta(days=31),
+		)
+		school_subscription_owner = Teacher.objects.create(
+			full_name='School Administrator',
+			email='enterprise-owner@example.com',
+			school_name='Another School',
+			password='not-a-real-password',
+		)
+		enterprise = Subscription.objects.create(
+			teacher=school_subscription_owner,
+			plan_type='enterprise',
+			status='pending',
+			school_name='THUTHUKA PRIMARY',
+		)
+
+		blocked_response = self.client.get('/teacher/dashboard')
+		enterprise.status = 'active'
+		enterprise.save(update_fields=['status'])
+		allowed_response = self.client.get('/teacher/dashboard')
+
+		self.assertContains(blocked_response, 'Your free trial has ended')
+		self.assertEqual(allowed_response.status_code, 200)
 
 
 class GradeAccessTests(TestCase):

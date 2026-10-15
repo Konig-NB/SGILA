@@ -50,6 +50,16 @@
     <a href="{{ activity_resume_url|default:first_activity_url }}" class="btn btn-primary btn-large">
       {% if lesson.grade == 1 %}Start 3 activities{% else %}Answer questions{% endif %}
     </a>
+    {% if activity_choices %}
+      <section class="story-activity-choices" aria-labelledby="story-activities-title">
+        <h2 id="story-activities-title">Story activities</h2>
+        <div class="story-activity-choice-list">
+          {% for activity in activity_choices %}
+            <a href="{{ activity.url }}" class="btn btn-light">{{ activity.label }}</a>
+          {% endfor %}
+        </div>
+      </section>
+    {% endif %}
   </div>
 </section>
 <script>

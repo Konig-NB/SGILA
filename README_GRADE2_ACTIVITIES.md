@@ -36,6 +36,23 @@ One story at a time:
 The command clears that story's old Grade 2 activities first and rewrites them,
 so running it twice does not create duplicates. Grades 1, 3 and 4 are untouched.
 
+## Legacy one-off scripts
+
+The original per-story loaders and related maintenance scripts are grouped in
+`scripts/grade2/`. From the repository root, invoke them as Python modules, for
+example:
+
+```powershell
+python -m scripts.grade2.add_grade2_a_dogs_life
+python -m scripts.grade2.update_all_grade2
+```
+
+The other per-story loaders follow the `add_grade2_<story>` module names in that
+folder. These scripts directly edit database content and are retained for
+historical/manual maintenance; use `sync_grade2_activities` for normal loading
+or updates. In particular, `clear_grade2` clears activities for every Grade 2
+lesson and should not be run casually.
+
 ## Editing an activity
 
 Change the wording in `api/grade2_activity_blueprints.py`, then run
@@ -56,6 +73,8 @@ missing vowel (*A Dog's Life*, *The School Shed Is on Fire*), unscramble the
 letters (*A New Baby*, *Spring Day Surprise*), or choose the correct spelling
 (*Dan's Bad Week*). Every question shows the matching picture from the story's
 vocabulary sheet in `static/img/vocab_sheets/`.
+Scrambled words preserve the target's letters but use a different order whenever
+one is possible; legacy saved activities are corrected when served.
 
 **Fix the Mistake** shows a story sentence with one word swapped and gives three
 words to choose from, exactly as listed in the document.

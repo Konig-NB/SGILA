@@ -121,12 +121,10 @@
         link.href = withReturnToMenu(activity.url, card.dataset.lessonId); link.textContent = activity.label; options.appendChild(link);
       });
       modal.classList.remove('hidden');
-      modal.style.display = 'grid';
     });
   });
   function closePicker() {
     modal.classList.add('hidden');
-    modal.style.display = 'none';
   }
   document.getElementById('activity-picker-cancel').addEventListener('click', closePicker);
   document.getElementById('activity-picker-close').addEventListener('click', closePicker);

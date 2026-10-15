@@ -14,8 +14,7 @@ from django.contrib.auth.hashers import check_password, make_password
 import json
 import hashlib
 import re
-import csv
-from functools import lru_cache
+
 
 import logging
 import threading
@@ -65,6 +64,7 @@ from .models import (
 from .account_access import child_access_status, linked_parent_for_child
 from .jwt_utils import create_access_token, token_from_request
 from .reporting import rows_for_record
+from schools.directory import school_directory_records, search_school_records
 
 
 # ─────────────────────────────────────────────────────────────
@@ -79,49 +79,13 @@ def json_body(request):
         return {}
 
 
-@lru_cache(maxsize=1)
-def school_directory_records():
-    """Load only the sanitized public fields needed by teacher registration."""
-    directory_path = django_settings.BASE_DIR / 'static' / 'data' / 'national_schools.csv'
-    if not directory_path.is_file():
-        return ()
-
-    with directory_path.open(encoding='utf-8-sig', newline='') as directory_file:
-        return tuple(
-            {
-                'school_name': row['school_name'].strip(),
-                'location': (
-                    '' if row['location'].strip().upper() in {'99', 'UNKNOWN', 'NULL', 'N/A'}
-                    else row['location'].strip()
-                ),
-                'quantile': row['quantile'].strip(),
-            }
-            for row in csv.DictReader(directory_file)
-            if row.get('school_name', '').strip()
-        )
-
-
 @require_http_methods(['GET'])
 def school_search(request):
-    query = request.GET.get('q', '').strip()[:100].casefold()
-    if len(query) < 2:
-        return JsonResponse({'results': []})
-
-    matches = []
-    for school in school_directory_records():
-        normalized_name = school['school_name'].casefold()
-        normalized_location = school['location'].casefold()
-        if query in normalized_name or query in normalized_location:
-            name_rank = 0 if normalized_name.startswith(query) else 1
-            matches.append((name_rank, school))
-
-    matches.sort(key=lambda match: (
-        match[0],
-        match[1]['school_name'].casefold(),
-        match[1]['location'].casefold(),
-        match[1]['quantile'],
-    ))
-    return JsonResponse({'results': [school for _rank, school in matches[:12]]})
+    return JsonResponse({
+        'results': search_school_records(
+            request.GET.get('q'), school_directory_records()
+        ),
+    })
 
 
 def calculate_stars(percentage):
@@ -178,10 +142,13 @@ def parse_grades(grades_taught):
 
 
 def teacher_can_view_child(teacher, child):
-    if teacher.school_name.strip().lower() != child.school_name.strip().lower():
-        return False
     grades = parse_grades(teacher.grades_taught)
-    return not grades or child.grade in grades
+    if grades and child.grade not in grades:
+        return False
+    return (
+        child.teacher_id == teacher.id
+        or teacher.school_name.strip().lower() == child.school_name.strip().lower()
+    )
 
 
 def user_can_view_child(request, child):
@@ -541,7 +508,8 @@ def verify_otp(request):
             password=make_password(pending.get('password', '')),
             accepted_popia=bool(pending.get('accepted_popia')),
         )
-        redirect_to = '/teacher/dashboard'
+        Subscription.objects.create(teacher=account, plan_type='enterprise', status='trial')
+        redirect_to = '/teacher/welcome'
 
     token = create_access_token({
         'sub': account.id,
@@ -904,12 +872,49 @@ def questions(request, lesson_id):
     activities = list(lesson.reading_activities.all())
     if activities:
         for activity in activities:
+            options = activity.get_options()
+            question = activity.question
+            if lesson.grade == 2 and activity.activity_type == ReadingActivity.WORD_SCRAMBLE:
+                options = dict(options) if isinstance(options, dict) else options
+                items = options.get('items') if isinstance(options, dict) else None
+                if isinstance(items, list):
+                    items = [
+                        dict(item) if isinstance(item, dict) else item
+                        for item in items
+                    ]
+                    options['items'] = items
+                    expected = structured_reading_answer(activity)
+                    displayed_scrambles = []
+                    updated_scramble = False
+                    for item in items:
+                        if not isinstance(item, dict):
+                            continue
+                        answer = expected.get(str(item.get('key', '')))
+                        if not isinstance(answer, str) or not answer:
+                            continue
+                        scramble = item.get('scramble')
+                        scramble = scramble if isinstance(scramble, str) else ''
+                        if (
+                            sorted(scramble.casefold()) != sorted(answer.casefold())
+                            or scramble.casefold() == answer.casefold()
+                        ):
+                            letters = list(answer)
+                            random.shuffle(letters)
+                            scramble = ''.join(letters)
+                            if scramble.casefold() == answer.casefold() and len(letters) > 1:
+                                scramble = scramble[1:] + scramble[:1]
+                            item['scramble'] = scramble
+                            updated_scramble = True
+                        displayed_scrambles.append(', '.join(scramble))
+                    if updated_scramble and displayed_scrambles:
+                        question = 'Unscramble the letters: ' + '; '.join(displayed_scrambles)
+
             item = {
                 'activity_id': activity.id,
                 'activity_type': activity.activity_type,
                 'skill': activity.skill,
-                'question': activity.question,
-                'options': activity.get_options(),
+                'question': question,
+                'options': options,
                 'requires_review': activity.requires_review,
                 'group_number': activity.group_number or activity.order,
                 'group_title': activity.group_title or activity.get_activity_type_display(),

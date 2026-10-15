@@ -52,30 +52,78 @@ from api.models import (
     current_school_year,
 )
 from api.story_eligibility import check_ai_story_eligibility
+from schools.models import School
 
 
 class SchoolDirectorySearchTests(TestCase):
-    @patch('api.views.school_directory_records', return_value=(
-        {'school_name': 'BIZANA PRIMARY SCHOOL', 'location': 'BIZANA', 'quantile': 'Q1'},
-        {'school_name': 'BIZANA SECONDARY SCHOOL', 'location': 'BIZANA', 'quantile': 'Q3'},
-        {'school_name': 'OTHER SCHOOL', 'location': 'OTHER TOWN', 'quantile': ''},
-    ))
-    def test_search_returns_matching_school_and_public_quantile_fields(self, _directory):
-        response = self.client.get('/api/schools/search/', {'q': 'bizana primary'})
+    @patch('api.views.school_directory_records')
+    def test_teacher_search_uses_its_own_csv_endpoint(self, records):
+        records.return_value = (
+            {
+                'school_name': 'BALENI PRIMARY SCHOOL',
+                'location': 'Bizana',
+                'quantile': 'Q1',
+            },
+            {
+                'school_name': 'BIZANA HIGH SCHOOL',
+                'location': 'Baleni',
+                'quantile': 'Q2',
+            },
+        )
+
+        response = self.client.get(
+            '/api/teacher/schools/search/',
+            {'q': 'bal'},
+        )
 
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json()['results'], [{
-            'school_name': 'BIZANA PRIMARY SCHOOL',
-            'location': 'BIZANA',
-            'quantile': 'Q1',
-        }])
+        self.assertEqual(
+            response.json()['results'],
+            [
+                {
+                    'school_name': 'BALENI PRIMARY SCHOOL',
+                    'location': 'Bizana',
+                    'quantile': 'Q1',
+                },
+                {
+                    'school_name': 'BIZANA HIGH SCHOOL',
+                    'location': 'Baleni',
+                    'quantile': 'Q2',
+                },
+            ],
+        )
 
-    @patch('api.views.school_directory_records')
-    def test_short_search_term_does_not_load_directory(self, directory):
-        response = self.client.get('/api/schools/search/', {'q': 'B'})
+    def test_search_returns_matching_school_and_public_quantile_fields(self):
+        school = School.objects.create(
+            emis_number='200500001',
+            name='BIZANA PRIMARY SCHOOL',
+            province='Eastern Cape',
+            district='Alfred Nzo East',
+            town='Bizana',
+            quintile=1,
+            sector='public',
+            status='open',
+        )
+        response = self.client.get('/api/schools/search/', {
+            'province': 'Eastern Cape',
+            'q': 'bizana primary',
+        })
 
-        self.assertEqual(response.json(), {'results': []})
-        directory.assert_not_called()
+        self.assertEqual(response.status_code, 200)
+        result = response.json()['results'][0]
+        self.assertEqual(result['id'], school.id)
+        self.assertEqual(result['name'], 'BIZANA PRIMARY SCHOOL')
+        self.assertEqual(result['town'], 'Bizana')
+        self.assertEqual(result['quintile'], 1)
+
+    def test_short_search_term_is_rejected_before_searching(self):
+        response = self.client.get('/api/schools/search/', {
+            'province': 'Eastern Cape',
+            'q': 'B',
+        })
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.json()['code'], 'query_too_short')
 
 
 class HelpCenterApiTests(TestCase):
@@ -263,7 +311,8 @@ class HelpCenterApiTests(TestCase):
         self.assertEqual(ticket.email, user.email)
 
     @override_settings(EMAIL_BACKEND='django.core.mail.backends.console.EmailBackend')
-    def test_console_backend_reports_email_as_not_delivered(self):
+    @patch('api.help_center_views.EmailMessage.send')
+    def test_console_backend_reports_email_as_not_delivered(self, mock_send):
         response = self.client.post(
             '/api/help/tickets/',
             json.dumps({
@@ -279,6 +328,7 @@ class HelpCenterApiTests(TestCase):
         self.assertFalse(response.json()['support_notification_sent'])
         self.assertFalse(response.json()['confirmation_email_sent'])
         self.assertEqual(SupportTicket.objects.count(), 1)
+        mock_send.assert_not_called()
 
     @patch('api.help_center_views.EmailMessage.send', side_effect=[1, RuntimeError('client mailbox rejected')])
     def test_support_delivery_is_reported_when_confirmation_fails(self, mock_send):
@@ -401,7 +451,7 @@ class HelpCenterApiTests(TestCase):
         self.assertContains(help_page, 'Help and Feedback')
         self.assertContains(help_page, 'Back to Homepage')
         self.assertContains(help_page, 'Report a bug or share a suggestion')
-        self.assertContains(help_page, 'Contact the Sgila team')
+        self.assertContains(help_page, 'Contact the SGILA team')
         self.assertNotContains(help_page, 'What do you need help with?')
         self.assertContains(help_page, 'Send feedback')
         self.assertContains(help_page, "Please don't include sensitive information in your message.")
@@ -417,8 +467,25 @@ class HelpCenterApiTests(TestCase):
         self.assertContains(homepage, 'Help and Feedback')
         self.assertNotContains(homepage, '/help/#contact')
         self.assertNotContains(homepage, '/help/#feedback')
-        self.assertNotContains(homepage, 'For families')
-        self.assertNotContains(homepage, 'For schools')
+        self.assertContains(homepage, 'For families')
+        self.assertContains(homepage, 'For schools')
+
+        login_page = self.client.get('/login')
+        self.assertContains(login_page, 'href="/help/"')
+
+        parent = Parent.objects.create(
+            full_name='Help Link Parent',
+            email='help-link-parent@example.com',
+            password=make_password('password123'),
+        )
+        session = self.client.session
+        session['account_role'] = 'parent'
+        session['account_id'] = parent.id
+        session['account_name'] = parent.full_name
+        session.save()
+
+        signed_in_homepage = self.client.get('/')
+        self.assertContains(signed_in_homepage, 'href="/help/"')
 
 
 class SgilaFlowTests(TestCase):
@@ -891,7 +958,7 @@ class SgilaFlowTests(TestCase):
             "full_name": "Miss Khumalo",
             "email": "teacher@example.com",
             "school_name": "Thuthuka Primary",
-            "grades_taught": "1,2",
+            "grades_taught": ["1", "2"],
             "password": "password123",
             "accepted_popia": "on",
         })
@@ -901,11 +968,60 @@ class SgilaFlowTests(TestCase):
             "otp_session": str(teacher_otp.id),
             "code": teacher_otp.code,
         })
-        self.assertRedirects(teacher_response, "/teacher/dashboard")
+        self.assertRedirects(teacher_response, "/teacher/welcome")
         teacher = Teacher.objects.get(email="teacher@example.com")
+        self.assertEqual(teacher.grades_taught, "1,2")
         self.assertTrue(teacher.class_code)
         self.assertTrue(teacher.classes.exists())
+        teacher_trial = Subscription.objects.get(teacher=teacher)
+        self.assertEqual(teacher_trial.plan_type, "enterprise")
+        self.assertEqual(teacher_trial.status, "trial")
+        self.assertContains(self.client.get("/teacher/welcome"), "Free 30-day teacher trial")
         self.assertEqual(self.client.get("/teacher/dashboard").status_code, 200)
+
+    @patch("api.views.send_otp_email")
+    def test_api_teacher_registration_starts_trial_and_returns_welcome_path(self, send_otp_email):
+        response = self.client.post("/api/register", json.dumps({
+            "role": "teacher",
+            "full_name": "Api Teacher",
+            "email": "api-teacher-trial@example.com",
+            "school_name": "Thuthuka Primary",
+            "password": "password123",
+            "accepted_popia": True,
+        }), content_type="application/json")
+        self.assertEqual(response.status_code, 200)
+        otp = OTPToken.objects.get(email="api-teacher-trial@example.com", role="teacher")
+
+        response = self.client.post("/api/verify-otp", json.dumps({
+            "otp_session": str(otp.id),
+            "code": otp.code,
+        }), content_type="application/json")
+
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.json()["redirect_to"], "/teacher/welcome")
+        teacher = Teacher.objects.get(email="api-teacher-trial@example.com")
+        trial = Subscription.objects.get(teacher=teacher)
+        self.assertEqual(trial.status, "trial")
+        self.assertEqual(trial.plan_type, "enterprise")
+
+    def test_teacher_registration_requires_valid_teaching_grades(self):
+        response = self.client.post("/register", {
+            "role": "teacher",
+            "full_name": "Miss Khumalo",
+            "email": "teacher-invalid-registration@example.com",
+            "school_name": "Thuthuka Primary",
+            "grades_taught": ["1", "5"],
+            "password": "password123",
+            "accepted_popia": "on",
+        })
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Select at least one valid teaching grade")
+        self.assertFalse(OTPToken.objects.filter(
+            email="teacher-invalid-registration@example.com",
+            role="teacher",
+        ).exists())
+        self.assertContains(response, 'value="1" checked')
 
     def test_parent_can_add_child_with_teacher_class_code(self):
         parent = Parent.objects.create(
@@ -1144,6 +1260,96 @@ class SgilaFlowTests(TestCase):
         self.assertNotContains(response, "Learner At Another School")
         self.assertContains(response, "No learners found yet.")
 
+    def test_teacher_can_update_school_name_and_keep_access_to_linked_learners(self):
+        teacher = Teacher.objects.create(
+            full_name="Miss Khumalo",
+            email="teacher-edit-school@example.com",
+            school_name="Old School",
+            grades_taught="1",
+            password=make_password("StrongPass123!"),
+            accepted_popia=True,
+        )
+        child = Child.objects.create(
+            name="Linked learner",
+            age=7,
+            grade=1,
+            school_name="Old School",
+            parent_email="learner-school@example.com",
+            password=make_password("LearnerPass123!"),
+            teacher=teacher,
+        )
+        session = self.client.session
+        session['account_role'] = 'teacher'
+        session['account_id'] = teacher.id
+        session.save()
+
+        dashboard = self.client.get('/teacher/dashboard')
+        self.assertContains(dashboard, 'id="teacher-school-update-form"')
+        self.assertContains(dashboard, 'id="teacher-school-search"')
+        self.assertContains(dashboard, 'id="teacher-school-results"')
+        self.assertContains(dashboard, 'value="Old School"')
+        self.assertContains(dashboard, 'Grades you teach')
+        self.assertLess(
+            dashboard.content.index(b'id="teacher-school-update-form"'),
+            dashboard.content.index(b'class="portal-metrics"'),
+        )
+        response = self.client.post('/teacher/school', {
+            'school_name': '  new academy  ',
+            'grades_taught': ['2', '1', '2'],
+        })
+
+        self.assertRedirects(response, '/teacher/dashboard')
+        teacher.refresh_from_db()
+        child.refresh_from_db()
+        self.assertEqual(teacher.school_name, 'New Academy')
+        self.assertEqual(teacher.grades_taught, '1,2')
+        self.assertEqual(child.school_name, 'Old School')
+        self.assertEqual(self.client.get(f'/api/progress/{child.id}').status_code, 200)
+        self.assertContains(self.client.get('/teacher/dashboard'), 'Linked Learner')
+
+    def test_teacher_must_choose_at_least_one_valid_teaching_grade(self):
+        teacher = Teacher.objects.create(
+            full_name="Miss Khumalo",
+            email="teacher-invalid-grade@example.com",
+            school_name="Existing School",
+            grades_taught="1,2",
+            password=make_password("StrongPass123!"),
+            accepted_popia=True,
+        )
+        session = self.client.session
+        session['account_role'] = 'teacher'
+        session['account_id'] = teacher.id
+        session.save()
+
+        response = self.client.post('/teacher/school', {
+            'school_name': 'New School',
+            'grades_taught': ['5'],
+        })
+
+        self.assertRedirects(response, '/teacher/dashboard')
+        teacher.refresh_from_db()
+        self.assertEqual(teacher.school_name, 'Existing School')
+        self.assertEqual(teacher.grades_taught, '1,2')
+
+    def test_teacher_school_name_cannot_be_saved_blank(self):
+        teacher = Teacher.objects.create(
+            full_name="Miss Khumalo",
+            email="teacher-empty-school@example.com",
+            school_name="Existing School",
+            password=make_password("StrongPass123!"),
+            accepted_popia=True,
+        )
+        session = self.client.session
+        session['account_role'] = 'teacher'
+        session['account_id'] = teacher.id
+        session.save()
+
+        response = self.client.post('/teacher/school', {'school_name': '   '})
+
+        self.assertRedirects(response, '/teacher/dashboard')
+        teacher.refresh_from_db()
+        self.assertEqual(teacher.school_name, 'Existing School')
+
     def test_hidden_score_fields_do_not_control_saved_results(self):
         child = Child.objects.create(
             name="Sipho",
@@ -1227,6 +1433,32 @@ class SgilaFlowTests(TestCase):
         activity_data = response.json()[0]
         self.assertEqual(activity_data["activity_type"], "multiple_choice")
         self.assertNotIn("correct_answer", activity_data)
+
+    def test_grade_two_legacy_word_scramble_is_scrambled_when_served(self):
+        lesson = Lesson.objects.create(title="Legacy Scramble", grade=2)
+        activity = ReadingActivity.objects.create(
+            lesson=lesson,
+            order=1,
+            activity_type=ReadingActivity.WORD_SCRAMBLE,
+            skill="spelling",
+            question="Unscramble the letters: B, U, T, T, E, R, F, L, Y",
+            options={
+                "items": [{"key": "butterfly", "scramble": "BUTTERFLY"}],
+            },
+            correct_answer=json.dumps({"butterfly": "BUTTERFLY"}),
+        )
+
+        response = self.client.get(f"/api/lessons/{lesson.id}/questions")
+
+        self.assertEqual(response.status_code, 200)
+        activity_data = next(
+            item for item in response.json()
+            if item["activity_id"] == activity.id
+        )
+        scramble = activity_data["options"]["items"][0]["scramble"]
+        self.assertNotEqual(scramble.casefold(), "butterfly")
+        self.assertEqual(sorted(scramble.casefold()), sorted("butterfly"))
+        self.assertIn(", ".join(scramble), activity_data["question"])
 
     def test_reading_activity_is_checked_and_scored_server_side(self):
         child = Child.objects.create(
@@ -2437,6 +2669,138 @@ class ChildReassignmentCooldownTests(TestCase):
         self.assertContains(response, 'class="account-dialog cooldown-notice-dialog"')
         self.assertContains(response, 'role="alertdialog"')
         self.assertNotContains(response, 'class="alert alert-cooldown-popup error"')
+
+
+class PublicInformationPagesTests(TestCase):
+    def test_homepage_has_about_and_policy_links(self):
+        response = self.client.get('/')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'class="studio-footer"')
+        self.assertContains(response, 'href="/about">About Us</a>')
+        self.assertNotContains(response, 'href="/testimonials"')
+        self.assertContains(response, 'Useful links')
+        self.assertNotContains(response, '>Policies<')
+        self.assertContains(response, 'href="/terms">Terms and Conditions</a>')
+        self.assertContains(response, 'href="/privacy">Privacy</a>')
+        self.assertContains(response, 'href="/access-information">Access Information</a>')
+        self.assertContains(response, 'SGILA app © 2026 – All rights reserved')
+
+    def test_about_privacy_and_access_information_pages_are_public(self):
+        pages = [
+            ('/about', 'What is SGILA?'),
+            ('/privacy', 'Privacy Notice'),
+            ('/access-information', 'Access Information'),
+            ('/terms', 'Terms &amp; Conditions'),
+            ('/testimonials', 'All testimonials'),
+        ]
+
+        for path, expected_text in pages:
+            with self.subTest(path=path):
+                response = self.client.get(path)
+                self.assertEqual(response.status_code, 200)
+                self.assertContains(response, expected_text)
+
+    def test_testimonials_page_has_filter_sections_for_each_audience(self):
+        response = self.client.get('/testimonials')
+
+        for category in ('All testimonials', 'Parents', 'Teachers', 'Learners'):
+            with self.subTest(category=category):
+                self.assertContains(response, f'>{category}</button>')
+
+
+class PublicPlansPageTests(TestCase):
+    def test_public_plans_are_informational_and_subscription_redirects_there(self):
+        response = self.client.get('/plans')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'This page is for information only')
+        self.assertContains(response, 'sign in to')
+        self.assertContains(response, 'See full pricing details')
+        self.assertNotContains(response, 'Start with a free trial')
+        self.assertNotContains(response, 'Activate Enterprise Package')
+        self.assertNotContains(response, 'data-pricing-activate')
+        self.assertNotContains(response, 'href="/subscription/redeem-package"')
+        self.assertNotContains(response, 'Choose Individual Plan')
+        self.assertNotContains(response, 'Choose Family Plan')
+
+        subscription_response = self.client.get('/subscription')
+        self.assertRedirects(subscription_response, '/plans')
+
+    def test_public_enterprise_plan_is_presented_as_a_school_advertisement(self):
+        response = self.client.get('/plans')
+
+        self.assertContains(response, 'epic-card-enterprise enterprise-ad')
+        self.assertContains(response, 'Bring CAPS-aligned reading adventures to your school')
+        self.assertContains(response, 'Available to public and independent schools')
+        self.assertContains(response, 'Billed to the school or a funder, never families')
+        self.assertContains(response, 'Minimum 100 learners')
+        self.assertContains(response, '/month per learner')
+        self.assertContains(response, 'data-open-enterprise-pricing')
+        self.assertContains(response, 'See full pricing details')
+        self.assertContains(response, 'How Enterprise pricing works')
+        self.assertNotContains(response, 'Final pricing is confirmed on activation.')
+        self.assertNotContains(response, 'School name')
+        self.assertNotContains(response, 'Search by school name or town')
+        self.assertNotContains(response, 'Search the national school directory')
+        self.assertNotContains(response, 'Number of learners')
+
+    def test_signed_in_subscription_selection_and_enterprise_activation_remain(self):
+        parent = Parent.objects.create(
+            full_name='Plans Test Parent',
+            email='plans-parent@example.com',
+            password=make_password('password123'),
+            accepted_popia=True,
+        )
+        Subscription.objects.create(parent=parent, plan_type='family', status='trial')
+        session = self.client.session
+        session['account_role'] = 'parent'
+        session['account_id'] = parent.id
+        session.save()
+
+        response = self.client.get('/subscription')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Choose Family Plan')
+        self.assertContains(response, 'Activate Enterprise Package')
+        self.assertContains(response, 'data-pricing-activate')
+
+        response = self.client.post('/subscription', {'plan': 'family'})
+        self.assertRedirects(response, '/subscription/payment')
+
+    def test_signed_in_subscription_pages_hide_trial_skip_and_keep_controls(self):
+        parent = Parent.objects.create(
+            full_name='Subscription Page Parent',
+            email='subscription-parent@example.com',
+            password=make_password('password123'),
+            accepted_popia=True,
+        )
+        teacher = Teacher.objects.create(
+            full_name='Subscription Page Teacher',
+            email='subscription-teacher@example.com',
+            password=make_password('password123'),
+            school_name='Test School',
+            accepted_popia=True,
+        )
+
+        for role, account in (('parent', parent), ('teacher', teacher)):
+            with self.subTest(role=role):
+                session = self.client.session
+                session['account_role'] = role
+                session['account_id'] = account.id
+                session.save()
+
+                response = self.client.get('/subscription')
+
+                self.assertEqual(response.status_code, 200)
+                self.assertNotContains(response, 'Not right now')
+                self.assertContains(response, 'Choose Individual Plan')
+                self.assertContains(response, 'Choose Family Plan')
+                self.assertContains(response, 'Activate Enterprise Package')
+                self.assertContains(response, 'Cancel subscription')
+                if role == 'teacher':
+                    self.assertContains(response, 'Activate school package')
+                    self.assertContains(response, 'action="/subscription/redeem-package"')
 
 
 class CurriculumSeedTests(TestCase):

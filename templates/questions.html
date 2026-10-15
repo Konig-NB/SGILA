@@ -151,6 +151,39 @@ function setMascot(reaction, label) {
   mascot.querySelector('span').textContent = label;
 }
 
+function getChildVoice(voices) {
+  const englishVoices = (voices || []).filter((voice) => String(voice.lang || '').toLowerCase().startsWith('en'));
+  const nameHints = ['zira', 'susan', 'samantha', 'jenny', 'aria', 'hazel', 'heather', 'karen', 'female', 'girl', 'kid', 'young'];
+  return englishVoices.find((voice) => nameHints.some((hint) => voice.name.toLowerCase().includes(hint)))
+    || englishVoices.find((voice) => /female|girl|kid|young/i.test(voice.name))
+    || englishVoices[0]
+    || (voices && voices[0])
+    || null;
+}
+
+function speakAnswerFeedback(correct, activity) {
+  if (!('speechSynthesis' in window)) return;
+  const isGradeFourOpenEnded = Number('{{ lesson.grade }}') === 4
+    && ['reasoning', 'open_ended'].includes(activity.activity_type);
+  const text = isGradeFourOpenEnded
+    ? 'Great thinking! Thank you for sharing your ideas.'
+    : (correct ? 'Well done!' : 'Ohh No! Try again next time.');
+  const utterance = new SpeechSynthesisUtterance(text);
+  const voices = window.speechSynthesis.getVoices();
+  const chosenVoice = getChildVoice(voices);
+  if (chosenVoice) {
+    utterance.voice = chosenVoice;
+    utterance.lang = chosenVoice.lang || 'en-ZA';
+  } else {
+    utterance.lang = 'en-ZA';
+  }
+  utterance.rate = 0.9;
+  utterance.pitch = 1.25;
+  utterance.volume = 1;
+  window.speechSynthesis.cancel();
+  window.speechSynthesis.speak(utterance);
+}
+
 function activityTitle(activity, group) {
   const criterion = assessmentLabels[activity?.skill] || (group?.title || 'Story Activity').replace(/\s+Questions?$/i, '').trim();
   const format = activityTypeLabels[activity.activity_type] || 'Activity';
@@ -377,25 +410,13 @@ function renderActivityMedia(activity, questionText, instructionText) {
     listen.className = 'btn btn-light activity-listen';
     listen.textContent = 'Listen';
     const isPhonicsWord = config.presentation === 'grade1_phonics';
-    if (isPhonicsWord) {
-      const spokenText = config.audio_text;
-      listen.addEventListener('click', () => speakActivityText(
-        spokenText,
-        listen,
-        null,
-      ));
-    } else {
-      const instructionEl = document.getElementById('activity-instruction');
-      const instruction = instructionText || typeInstructions[activity.activity_type] || '';
-      const question = activity.question;
-      const spokenText = instruction;
-      const highlightElements = instructionEl ? [instructionEl, questionText] : [questionText];
-      listen.addEventListener('click', () => speakActivityText(
-        spokenText,
-        listen,
-        highlightElements,
-      ));
-    }
+    const spokenText = isPhonicsWord ? config.audio_text : activity.question;
+    const highlightElements = isPhonicsWord ? null : [questionText];
+    listen.addEventListener('click', () => speakActivityText(
+      spokenText,
+      listen,
+      highlightElements,
+    ));
     actions.appendChild(listen);
   }
   media.appendChild(actions);
@@ -1442,6 +1463,19 @@ function markMatchingAnswers(data) {
   const expectedAnswers = data.correct_answer;
   if (!expectedAnswers || typeof expectedAnswers !== 'object') return;
 
+  const activeConfig = activityConfig(activities[current] || {});
+  const answerLabel = (value) => (
+    (activeConfig.choices || []).find((choice) => String(choice.key) === String(value))?.text
+    || String(value)
+  );
+  const appendCorrection = (container, isCorrect, correctValue) => {
+    if (isCorrect) return;
+    const correction = document.createElement('span');
+    correction.className = 'matching-correction';
+    correction.textContent = `Correct match: ${answerLabel(correctValue)}`;
+    container.appendChild(correction);
+  };
+
   responseArea.querySelectorAll('.drag-match-target').forEach((target) => {
     const promptKey = target.dataset.prompt;
     if (!promptKey) return;
@@ -1451,6 +1485,7 @@ function markMatchingAnswers(data) {
     badge.className = 'matching-result-badge';
     badge.textContent = isCorrect ? 'Correct' : 'Incorrect';
     target.appendChild(badge);
+    appendCorrection(target, isCorrect, expectedAnswers[promptKey]);
   });
 
   const gradeFourCards = responseArea.querySelectorAll('.matching-prompt-card');
@@ -1467,6 +1502,16 @@ function markMatchingAnswers(data) {
       badge.className = 'matching-result-badge';
       badge.textContent = isCorrect ? 'Correct' : 'Incorrect';
       card.appendChild(badge);
+      appendCorrection(card, isCorrect, correctValue);
+
+      responseArea.querySelectorAll('.matching-choice-card').forEach((choiceCard) => {
+        if (choiceCard.dataset.choice === choiceKey) {
+          choiceCard.classList.add(isCorrect ? 'match-correct' : 'match-wrong');
+        }
+        if (!isCorrect && choiceCard.dataset.choice === correctValue) {
+          choiceCard.classList.add('match-correct');
+        }
+      });
     });
     return;
   }
@@ -1479,6 +1524,7 @@ function markMatchingAnswers(data) {
     badge.className = 'matching-result-badge';
     badge.textContent = isCorrect ? 'Correct' : 'Incorrect';
     pair.appendChild(badge);
+    appendCorrection(pair, isCorrect, correctValue);
   });
 
   responseArea.querySelectorAll('.matching-word:not([hidden])').forEach((word) => {
@@ -1489,6 +1535,7 @@ function markMatchingAnswers(data) {
     badge.className = 'matching-result-badge';
     badge.textContent = isCorrect ? 'Correct' : 'Incorrect';
     word.appendChild(badge);
+    appendCorrection(word, isCorrect, correctValue);
   });
   responseArea.querySelectorAll('.matching-row').forEach((row) => {
     if (row.dataset.choice !== undefined) {
@@ -1499,6 +1546,7 @@ function markMatchingAnswers(data) {
       badge.className = 'matching-result-badge';
       badge.textContent = isCorrect ? 'Correct' : 'Incorrect';
       row.querySelector('strong').appendChild(badge);
+      appendCorrection(row, isCorrect, correctValue);
       return;
     }
     const select = row.querySelector('select');
@@ -1510,6 +1558,7 @@ function markMatchingAnswers(data) {
     badge.className = 'matching-result-badge';
     badge.textContent = isCorrect ? 'Correct' : 'Incorrect';
     row.querySelector('strong').appendChild(badge);
+    appendCorrection(row, isCorrect, correctValue);
   });
 }
 
@@ -1549,7 +1598,7 @@ function markScrambleAnswers(data) {
   });
 }
 
-function showFeedback(data) {
+function showFeedback(data, activity) {
   messageArea.classList.remove('hidden', 'correct', 'wrong', 'review');
   messageArea.classList.add(data.review_required ? 'review' : (data.correct ? 'correct' : 'wrong'));
 
@@ -1569,6 +1618,8 @@ function showFeedback(data) {
     model.textContent = `${data.review_required ? 'Example answer' : 'Story answer'}: ${data.model_answer}`;
     messageArea.appendChild(model);
   }
+
+  speakAnswerFeedback(Boolean(data.correct), activity);
 }
 
 async function submitActivity(activity, answer, selectedButton = null) {
@@ -1614,7 +1665,7 @@ async function submitActivity(activity, answer, selectedButton = null) {
   markChoice(selectedButton, data);
   markMatchingAnswers(data);
   markScrambleAnswers(data);
-  showFeedback(data);
+  showFeedback(data, activity);
   setMascot(data.review_required || data.correct ? 'happy' : 'sad', data.review_required ? 'Good thinking. Compare your answer.' : (data.correct ? 'Great reading!' : 'Use the story answer to learn.'));
   const nextActivity = activities[current + 1];
   nextButton.textContent = current === activities.length - 1
