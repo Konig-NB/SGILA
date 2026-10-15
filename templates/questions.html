@@ -905,7 +905,10 @@ function renderMatching(activity) {
       card.dataset.color = color;
       card.setAttribute('aria-label', `Prompt: ${prompt.text}`);
       card.style.borderColor = color;
-      card.textContent = prompt.text;
+      const label = document.createElement('span');
+      label.className = 'matching-prompt-text';
+      label.textContent = prompt.text;
+      card.appendChild(label);
       card.addEventListener('click', () => {
         if (activePromptKey === prompt.key) {
           activePromptKey = null;
@@ -1490,6 +1493,7 @@ function markMatchingAnswers(data) {
 
   const gradeFourCards = responseArea.querySelectorAll('.matching-prompt-card');
   if (gradeFourCards.length) {
+    const feedbackItems = [];
     gradeFourCards.forEach((card) => {
       const promptKey = card.dataset.prompt;
       const selection = window.sgilaCurrentMatches && window.sgilaCurrentMatches[promptKey];
@@ -1497,12 +1501,16 @@ function markMatchingAnswers(data) {
       const correctValue = String(expectedAnswers[promptKey] || '');
       const isCorrect = choiceKey === correctValue;
       card.classList.add(isCorrect ? 'match-correct' : 'match-wrong');
+      card.querySelector('.matching-result-badge')?.remove();
 
       const badge = document.createElement('span');
       badge.className = 'matching-result-badge';
       badge.textContent = isCorrect ? 'Correct' : 'Incorrect';
       card.appendChild(badge);
-      appendCorrection(card, isCorrect, correctValue);
+      if (!isCorrect) {
+        const prompt = (activeConfig.prompts || []).find((item) => String(item.key) === promptKey);
+        feedbackItems.push(`${prompt?.text || promptKey} - Correct match: ${answerLabel(correctValue)}`);
+      }
 
       responseArea.querySelectorAll('.matching-choice-card').forEach((choiceCard) => {
         if (choiceCard.dataset.choice === choiceKey) {
@@ -1513,6 +1521,21 @@ function markMatchingAnswers(data) {
         }
       });
     });
+    if (feedbackItems.length) {
+      const summary = document.createElement('section');
+      summary.className = 'matching-feedback-summary';
+      summary.setAttribute('aria-live', 'polite');
+      const heading = document.createElement('h3');
+      heading.textContent = 'Review these matches';
+      const list = document.createElement('ul');
+      feedbackItems.forEach((text) => {
+        const item = document.createElement('li');
+        item.textContent = text;
+        list.appendChild(item);
+      });
+      summary.append(heading, list);
+      responseArea.querySelector('.matching-board')?.after(summary);
+    }
     return;
   }
 
