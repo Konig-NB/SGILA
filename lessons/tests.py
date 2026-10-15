@@ -341,6 +341,114 @@ class ActivityMenuLabelTests(TestCase):
 
 
 class ActivityScoreReportingTests(TestCase):
+	def test_paused_scores_survive_logout_and_combine_with_resumed_scores(self):
+		parent = Parent.objects.create(
+			full_name='Paused Score Parent',
+			email='paused-score-parent@example.com',
+			password='not-a-real-password',
+		)
+		child = Child.objects.create(
+			parent=parent,
+			name='Paused Score Learner',
+			username='PausedScoreLearner',
+			grade=2,
+			parent_email=parent.email,
+			password='not-a-real-password',
+		)
+		lesson = Lesson.objects.create(title='Paused Grade Two Story', grade=2)
+		ReadingActivity.objects.create(
+			lesson=lesson,
+			activity_type=ReadingActivity.MULTIPLE_CHOICE,
+			skill='literal_comprehension',
+			question='What happened?',
+		)
+
+		first_client = Client()
+		session = first_client.session
+		session['account_role'] = 'learner'
+		session['account_id'] = child.id
+		session['child_id'] = child.id
+		session['child_grade'] = child.grade
+		session[f'lesson_{lesson.id}_reading_skill_scores'] = {
+			'literal_comprehension': {'score': 2, 'total': 3},
+		}
+		session.save()
+		first_session_key = session.session_key
+
+		pause_response = first_client.post(
+			f'/lessons/{lesson.id}/activity-pause',
+			data=json.dumps({
+				'resume_url': f'/lessons/{lesson.id}/questions?activity_index=0',
+				'score': {'score': 2, 'total': 3},
+			}),
+			content_type='application/json',
+		)
+		self.assertEqual(pause_response.status_code, 200)
+		pause_entry = Child.objects.get(pk=child.pk).paused_activities[str(lesson.id)]
+		self.assertEqual(pause_entry['session_key'], first_session_key)
+		self.assertEqual(
+			pause_entry['assessment_scores']['literal_comprehension'],
+			{'score': 2, 'total': 3},
+		)
+
+		resumed_client = Client()
+		resumed_session = resumed_client.session
+		resumed_session['account_role'] = 'learner'
+		resumed_session['account_id'] = child.id
+		resumed_session['child_id'] = child.id
+		resumed_session['child_grade'] = child.grade
+		resumed_session[f'lesson_{lesson.id}_visual_score'] = 1
+		resumed_session[f'lesson_{lesson.id}_visual_total'] = 2
+		resumed_session.save()
+		second_pause_response = resumed_client.post(
+			f'/lessons/{lesson.id}/activity-pause',
+			data=json.dumps({
+				'resume_url': f'/lessons/{lesson.id}/questions?activity_index=0',
+				'score': {'score': 1, 'total': 2},
+			}),
+			content_type='application/json',
+		)
+		self.assertEqual(second_pause_response.status_code, 200)
+		pause_entry = Child.objects.get(pk=child.pk).paused_activities[str(lesson.id)]
+		self.assertEqual((pause_entry['score'], pause_entry['total']), (3, 5))
+		self.assertEqual(
+			{
+				key: (values['score'], values['total'])
+				for key, values in pause_entry['assessment_scores'].items()
+			},
+			{
+				'literal_comprehension': (2, 3),
+				'visual_literacy': (1, 2),
+			},
+		)
+
+		final_client = Client()
+		final_session = final_client.session
+		final_session['account_role'] = 'learner'
+		final_session['account_id'] = child.id
+		final_session['child_id'] = child.id
+		final_session['child_grade'] = child.grade
+		final_session[f'lesson_{lesson.id}_spelling_score'] = 1
+		final_session[f'lesson_{lesson.id}_spelling_total'] = 2
+		final_session.save()
+
+		results_response = final_client.get(f'/lessons/{lesson.id}/results')
+
+		self.assertEqual(results_response.status_code, 200)
+		record = Progress.objects.get(child=child, lesson=lesson)
+		self.assertEqual((record.total_score, record.total_possible), (4, 7))
+		self.assertEqual(
+			{
+				key: (values['score'], values['total'])
+				for key, values in record.assessment_scores.items()
+			},
+			{
+				'literal_comprehension': (2, 3),
+				'visual_literacy': (1, 2),
+				'spelling': (1, 2),
+			},
+		)
+
 	def test_grade_three_completion_marks_appear_in_the_report(self):
 		parent = Parent.objects.create(
 			full_name='Grade Three Parent',

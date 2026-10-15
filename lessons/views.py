@@ -2507,11 +2507,28 @@ def activity_pause(request, lesson_id):
                 possible = max(int(client_score.get('total', 0)), 0)
             except (TypeError, ValueError):
                 return JsonResponse({'error': 'Invalid activity score.'}, status=400)
+        assessment_scores = session_assessment_scores(request, lesson)
+        if (
+            not request.session.get(f'lesson_{lesson.id}_reading_skill_scores')
+            and f'lesson_{lesson.id}_comprehension_score' not in request.session
+        ):
+            assessment_scores.pop('reading', None)
+        assessment_scores = merge_paused_assessment_scores(
+            paused_entry.get('assessment_scores') if isinstance(paused_entry, dict) else None,
+            assessment_scores,
+            isinstance(paused_entry, dict)
+            and paused_entry.get('session_key') == request.session.session_key,
+        )
+        if lesson.grade != 3 and assessment_scores:
+            score = sum(item['score'] for item in assessment_scores.values())
+            possible = sum(item['total'] for item in assessment_scores.values())
         paused_activities = dict(child.paused_activities or {})
         paused_activities[str(lesson.id)] = {
             'url': resume_url,
             'score': score,
             'total': possible,
+            'assessment_scores': assessment_scores,
+            'session_key': request.session.session_key,
             'updated_at': timezone.now().isoformat(),
         }
         child.paused_activities = paused_activities
@@ -2521,6 +2538,22 @@ def activity_pause(request, lesson_id):
         saved_score, saved_total = score, possible
 
     score, possible = activity_score_summary(request, lesson)
+    if isinstance(saved_score, int) and request.method == 'GET':
+        current_scores = session_assessment_scores(request, lesson)
+        if (
+            not request.session.get(f'lesson_{lesson.id}_reading_skill_scores')
+            and f'lesson_{lesson.id}_comprehension_score' not in request.session
+        ):
+            current_scores.pop('reading', None)
+        merged_scores = merge_paused_assessment_scores(
+            paused_entry.get('assessment_scores') if isinstance(paused_entry, dict) else None,
+            current_scores,
+            isinstance(paused_entry, dict)
+            and paused_entry.get('session_key') == request.session.session_key,
+        )
+        if merged_scores:
+            score = sum(item['score'] for item in merged_scores.values())
+            possible = sum(item['total'] for item in merged_scores.values())
     if not any(key in request.session for key in (
         f'lesson_{lesson.id}_reading_skill_scores',
         f'lesson_{lesson.id}_comprehension_score',
@@ -2533,6 +2566,8 @@ def activity_pause(request, lesson_id):
         f'lesson_{lesson.id}_theme_score',
         f'lesson_{lesson.id}_prediction_score',
     )) and saved_score is not None:
+        score, possible = saved_score, saved_total or 0
+    elif request.method == 'POST' and saved_score is not None:
         score, possible = saved_score, saved_total or 0
     return JsonResponse({'score': score, 'total': possible})
 
@@ -2694,6 +2729,20 @@ def add_assessment_score(scores, key, score, total):
     bucket['total'] += total
 
 
+def merge_paused_assessment_scores(paused_scores, current_scores, same_session):
+    merged_scores = {}
+    if isinstance(paused_scores, dict):
+        for key, values in paused_scores.items():
+            if isinstance(values, dict):
+                add_assessment_score(merged_scores, key, values.get('score'), values.get('total'))
+    if same_session:
+        merged_scores.update(current_scores)
+    else:
+        for key, values in current_scores.items():
+            add_assessment_score(merged_scores, key, values['score'], values['total'])
+    return merged_scores
+
+
 def session_assessment_scores(request, lesson):
     prefix = f'lesson_{lesson.id}'
     scores = {}
@@ -2752,6 +2801,8 @@ def results_page(request, lesson_id):
         return response
     lesson = get_object_or_404(Lesson, id=lesson_id, grade=child.grade)
     prefix = f'lesson_{lesson_id}'
+    paused_entry = (child.paused_activities or {}).get(str(lesson_id))
+    paused_scores = paused_entry.get('assessment_scores') if isinstance(paused_entry, dict) else None
     # A completed lesson no longer needs its "continue later" marker.
     paused_activities = dict(child.paused_activities or {})
     paused_activities.pop(str(lesson_id), None)
@@ -2767,9 +2818,22 @@ def results_page(request, lesson_id):
         'theme_score', 'theme_total', 'prediction_score', 'prediction_total',
     )
     has_fresh_result = any(f'{prefix}_{suffix}' in request.session for suffix in fresh_suffixes)
+    if isinstance(paused_scores, dict) and paused_scores:
+        has_fresh_result = True
 
     if has_fresh_result:
         assessment_scores = session_assessment_scores(request, lesson)
+        if isinstance(paused_scores, dict):
+            if (
+                not request.session.get(f'{prefix}_reading_skill_scores')
+                and f'{prefix}_comprehension_score' not in request.session
+            ):
+                assessment_scores.pop('reading', None)
+            assessment_scores = merge_paused_assessment_scores(
+                paused_scores,
+                assessment_scores,
+                paused_entry.get('session_key') == request.session.session_key,
+            )
         total_score = sum(item['score'] for item in assessment_scores.values())
         total_possible = sum(item['total'] for item in assessment_scores.values())
         percentage = round((total_score / total_possible) * 100) if total_possible else 0
