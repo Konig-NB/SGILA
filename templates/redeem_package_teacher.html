@@ -24,11 +24,6 @@
       <span class="field-hint">Type at least 3 letters</span>
     </label>
 
-    <label class="subscription-field redeem-field">
-      Number of learners
-      <input type="number" name="learners" value="{{ school_finder.minimum_learners|default:100 }}" min="{{ school_finder.minimum_learners|default:100 }}" step="1" inputmode="numeric" required>
-    </label>
-
     {% if enquiry_quote.valid %}
       <input type="hidden" name="school_type" value="{{ enquiry_school_type }}">
       <div class="pricing-result redeem-price-box" data-pricing-result>
